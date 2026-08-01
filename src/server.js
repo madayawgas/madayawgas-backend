@@ -1,3 +1,5 @@
+import "./test/init.js"
+
 require('dotenv').config();
 const app = require('./app');
 const { testConnection, pool } = require('./config/database');

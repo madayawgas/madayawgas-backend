@@ -2,9 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userService = require('./users.service');
 const asyncHandler = require('../../utils/asyncHandler');
-const validate = require('../../middleware/validate.middleware');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
-const { updateUserSchema, userIdParamSchema } = require('./users.validation');
 
 /**
  * @route   GET /api/users
@@ -49,7 +47,6 @@ router.get(
 router.get(
   '/:id',
   authenticate,
-  validate(userIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     const user = await userService.getUserById(req.params.id);
     res.status(200).json({
@@ -67,8 +64,6 @@ router.get(
 router.put(
   '/:id',
   authenticate,
-  validate(userIdParamSchema, 'params'),
-  validate(updateUserSchema, 'body'),
   asyncHandler(async (req, res) => {
     const updatedUser = await userService.updateUser(req.params.id, req.body);
     res.status(200).json({
@@ -88,7 +83,6 @@ router.delete(
   '/:id',
   authenticate,
   authorize('admin'),
-  validate(userIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     await userService.deleteUser(req.params.id);
     res.status(200).json({
