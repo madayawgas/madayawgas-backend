@@ -1,51 +1,59 @@
-import "./test/init.js"
+require("dotenv").config();
 
-require('dotenv').config();
-const app = require('./app');
-const { testConnection, pool } = require('./config/database');
+const app = require("./app");
 
 const PORT = process.env.PORT || 5000;
+const DB_CLIENT = process.env.DB_CLIENT || "sqlite";
 
-// Uncaught Exception Handler
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-  console.error(err.name, err.message, err.stack);
-  process.exit(1);
-});
+// ======================
+// Database Initialization
+// ======================
 
+async function initializeDatabase() {
+  switch (DB_CLIENT) {
+    case "sqlite":
+      require("./test/init");
+      console.log("📦 Using SQLite");
+      break;
+
+    case "postgres":
+      const { testConnection } = require("./config/database");
+
+      await testConnection();
+
+      console.log("🐘 Using PostgreSQL");
+
+      break;
+
+    default:
+      throw new Error(`Unsupported database: ${DB_CLIENT}`);
+  }
+}
+
+// ======================
 // Start Server
-const startServer = async () => {
-  // Test PostgreSQL Connection
-  await testConnection();
+// ======================
 
-  const server = app.listen(PORT, () => {
-    console.log(`🚀 MadayawGas Backend server running in [${process.env.NODE_ENV || 'development'}] mode on port ${PORT}`);
-    console.log(`👉 Health check: http://localhost:${PORT}/health`);
-    console.log(`👉 API base URL: http://localhost:${PORT}/api`);
-  });
+async function startServer() {
+  try {
+    await initializeDatabase();
 
-  // Unhandled Rejection Handler
-  process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-    console.error(err);
-    server.close(() => {
-      process.exit(1);
+    app.listen(PORT, () => {
+      console.log("");
+      console.log("🚀 MadayawGas Backend");
+      console.log(`Environment : ${process.env.NODE_ENV}`);
+      console.log(`Database    : ${DB_CLIENT}`);
+      console.log(`Port        : ${PORT}`);
+      console.log(`Health      : http://localhost:${PORT}/health`);
+      console.log(`API         : http://localhost:${PORT}/api`);
+      console.log("");
     });
-  });
+  } catch (error) {
+    console.error("Failed to start server.");
+    console.error(error);
 
-  // Graceful Shutdown Handler
-  const gracefulShutdown = (signal) => {
-    console.log(`Received ${signal}. Shutting down gracefully...`);
-    server.close(async () => {
-      console.log('Http server closed.');
-      await pool.end();
-      console.log('PostgreSQL connection pool closed.');
-      process.exit(0);
-    });
-  };
-
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-};
+    process.exit(1);
+  }
+}
 
 startServer();

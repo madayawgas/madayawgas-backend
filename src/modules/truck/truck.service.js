@@ -1,38 +1,32 @@
-const truckRepository = require('./truck.repository');
+import * as repository from "./truck.repository.js";
 
-class TruckService {
-  async getAllTrucks() {
-    return await truckRepository.findAll();
-  }
-
-  async getTruck(id) {
-    const truck = await truckRepository.findById(Number(id));
-    if (!truck) {
-      const error = new Error('Truck not found.');
-      error.statusCode = 404;
-      throw error;
-    }
-    return truck;
-  }
-
-  async getAvailableTrucks() {
-    return await truckRepository.findAvailable();
-  }
-
-  async getMaintenanceLogs(id) {
-    await this.getTruck(id);
-    return await truckRepository.findMaintenanceLogs(Number(id));
-  }
-
-  async updateFuel(id, fuelLevel) {
-    if (fuelLevel === undefined || fuelLevel < 0 || fuelLevel > 100) {
-      const error = new Error('Fuel level must be a number between 0 and 100.');
-      error.statusCode = 400;
-      throw error;
-    }
-    await this.getTruck(id);
-    return await truckRepository.updateFuelLevel(Number(id), fuelLevel);
-  }
+export function getAllTrucks() {
+  return repository.findAll();
 }
 
-module.exports = new TruckService();
+export function getTruck(id) {
+  const truck = repository.findById(Number(id));
+
+  if (!truck) throw new Error("Truck not found.");
+
+  return truck;
+}
+
+export function getAvailableTrucks() {
+  return repository.findAvailable();
+}
+
+export function getMaintenanceLogs(id) {
+  const logs = repository.findMaintenanceLogs(Number(id));
+
+  if (!logs) throw new Error("Truck not found.");
+
+  return logs;
+}
+
+export function updateFuel(id, fuelLevel) {
+  if (fuelLevel < 0 || fuelLevel > 100)
+    throw new Error("Fuel level must be between 0 and 100.");
+
+  return repository.updateFuelLevel(Number(id), fuelLevel);
+}
