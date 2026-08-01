@@ -1,6 +1,6 @@
 # MadayawGas Backend API
 
-A clean, modular RESTful API built with Express.js and PostgreSQL for managing MadayawGas operations including Authentication, User Roles, Inventory, and Deliveries.
+A clean, modular RESTful API built with Express.js and PostgreSQL for managing MadayawGas operations including Authentication, User Roles, Inventory, Deliveries, and Truck Fleet Management.
 
 ---
 
@@ -20,7 +20,6 @@ madayawgas-backend/
 │   │
 │   ├── middleware/
 │   │   ├── auth.middleware.js     # JWT Verification & RBAC authorization
-│   │   ├── validate.middleware.js # Zod schema validation middleware
 │   │   └── error.middleware.js    # Global error handler middleware
 │   │
 │   ├── routes/
@@ -31,26 +30,27 @@ madayawgas-backend/
 │   │   ├── auth/                  # Authentication Module
 │   │   │   ├── auth.routes.js
 │   │   │   ├── auth.service.js
-│   │   │   ├── auth.repository.js
-│   │   │   └── auth.validation.js
+│   │   │   └── auth.repository.js
 │   │   │
 │   │   ├── users/                 # User Management Module
 │   │   │   ├── users.routes.js
 │   │   │   ├── users.service.js
-│   │   │   ├── users.repository.js
-│   │   │   └── users.validation.js
+│   │   │   └── users.repository.js
 │   │   │
 │   │   ├── inventory/             # Inventory Module
 │   │   │   ├── inventory.routes.js
 │   │   │   ├── inventory.service.js
-│   │   │   ├── inventory.repository.js
-│   │   │   └── inventory.validation.js
+│   │   │   └── inventory.repository.js
 │   │   │
-│   │   └── deliveries/            # Deliveries Module
-│   │       ├── deliveries.routes.js
-│   │       ├── deliveries.service.js
-│   │       ├── deliveries.repository.js
-│   │       └── deliveries.validation.js
+│   │   ├── deliveries/            # Deliveries Module
+│   │   │   ├── deliveries.routes.js
+│   │   │   ├── deliveries.service.js
+│   │   │   └── deliveries.repository.js
+│   │   │
+│   │   └── truck/                 # Truck Fleet Module
+│   │       ├── truck.routes.js
+│   │       ├── truck.service.js
+│   │       └── truck.repository.js
 │   │
 │   └── utils/
 │       └── asyncHandler.js        # Catch async errors in route handlers
@@ -70,7 +70,7 @@ madayawgas-backend/
 - PostgreSQL database
 
 ### 2. Environment Setup
-Create a `.env` file in the root directory (or use the pre-generated one):
+Create a `.env` file in the root directory:
 
 ```env
 PORT=5000
@@ -143,18 +143,29 @@ CREATE TABLE IF NOT EXISTS deliveries (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS trucks (
+    id SERIAL PRIMARY KEY,
+    plate_number VARCHAR(50) UNIQUE NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    capacity_kg NUMERIC(10, 2) NOT NULL,
+    assigned_driver_id INT REFERENCES users(id) ON DELETE SET NULL,
+    fuel_level INT DEFAULT 100,
+    status VARCHAR(50) DEFAULT 'Available',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ---
 
 ## 🔗 Module Architecture & Data Flow
 
-Each module follows a clean 4-tier layered architecture:
+Each module follows a clean 3-tier layered architecture:
 
-1. **Routes (`*.routes.js`)**: Defines endpoints, applies validation & auth middleware, and calls service methods wrapped in `asyncHandler`.
-2. **Validation (`*.validation.js`)**: Uses **Zod** to validate request bodies, query parameters, and URL route parameters.
-3. **Service (`*.service.js`)**: Contains pure business logic, authorization rules, data formatting, and domain validations.
-4. **Repository (`*.repository.js`)**: Direct database access using parameterized SQL queries with the PostgreSQL `pg` pool (`db.query`).
+1. **Routes (`*.routes.js`)**: Defines endpoints, applies auth middleware, and calls service methods wrapped in `asyncHandler`.
+2. **Service (`*.service.js`)**: Contains pure business logic, authorization checks, and data manipulation.
+3. **Repository (`*.repository.js`)**: Direct database access using parameterized SQL queries with the PostgreSQL `pg` pool (`db.query`).
 
 ---
 
@@ -186,3 +197,10 @@ Each module follows a clean 4-tier layered architecture:
 - `GET /api/deliveries/:id` - Get delivery details (Protected)
 - `POST /api/deliveries` - Create delivery (Protected)
 - `PATCH /api/deliveries/:id/status` - Update delivery status (Protected)
+
+### Trucks (`/api/truck`)
+- `GET /api/truck` - List all trucks
+- `GET /api/truck/available` - List available trucks
+- `GET /api/truck/:id` - Get single truck details by ID
+- `GET /api/truck/:id/maintenance` - Get maintenance logs for a truck
+- `PATCH /api/truck/:id/fuel` - Update fuel level for a truck

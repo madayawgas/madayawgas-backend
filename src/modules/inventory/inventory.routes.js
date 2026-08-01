@@ -2,23 +2,15 @@ const express = require('express');
 const router = express.Router();
 const inventoryService = require('./inventory.service');
 const asyncHandler = require('../../utils/asyncHandler');
-const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
-const {
-  createInventoryItemSchema,
-  updateInventoryItemSchema,
-  inventoryIdParamSchema,
-  inventoryQuerySchema,
-} = require('./inventory.validation');
 
 /**
  * @route   GET /api/inventory
  * @desc    Get paginated inventory items
- * @access  Public (or Protected via authenticate middleware)
+ * @access  Public
  */
 router.get(
   '/',
-  validate(inventoryQuerySchema, 'query'),
   asyncHandler(async (req, res) => {
     const result = await inventoryService.getAllItems(req.query);
     res.status(200).json({
@@ -35,7 +27,6 @@ router.get(
  */
 router.get(
   '/:id',
-  validate(inventoryIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     const item = await inventoryService.getItemById(req.params.id);
     res.status(200).json({
@@ -53,7 +44,6 @@ router.get(
 router.post(
   '/',
   authenticate,
-  validate(createInventoryItemSchema, 'body'),
   asyncHandler(async (req, res) => {
     const newItem = await inventoryService.createItem(req.body);
     res.status(201).json({
@@ -72,8 +62,6 @@ router.post(
 router.put(
   '/:id',
   authenticate,
-  validate(inventoryIdParamSchema, 'params'),
-  validate(updateInventoryItemSchema, 'body'),
   asyncHandler(async (req, res) => {
     const updatedItem = await inventoryService.updateItem(req.params.id, req.body);
     res.status(200).json({
@@ -92,7 +80,6 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
-  validate(inventoryIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     await inventoryService.deleteItem(req.params.id);
     res.status(200).json({

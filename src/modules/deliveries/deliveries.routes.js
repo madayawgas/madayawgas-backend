@@ -2,13 +2,7 @@ const express = require('express');
 const router = express.Router();
 const deliveryService = require('./deliveries.service');
 const asyncHandler = require('../../utils/asyncHandler');
-const validate = require('../../middleware/validate.middleware');
 const { authenticate } = require('../../middleware/auth.middleware');
-const {
-  createDeliverySchema,
-  updateDeliveryStatusSchema,
-  deliveryIdParamSchema,
-} = require('./deliveries.validation');
 
 /**
  * @route   GET /api/deliveries
@@ -35,7 +29,6 @@ router.get(
 router.get(
   '/:id',
   authenticate,
-  validate(deliveryIdParamSchema, 'params'),
   asyncHandler(async (req, res) => {
     const delivery = await deliveryService.getDeliveryById(req.params.id);
     res.status(200).json({
@@ -53,7 +46,6 @@ router.get(
 router.post(
   '/',
   authenticate,
-  validate(createDeliverySchema, 'body'),
   asyncHandler(async (req, res) => {
     const newDelivery = await deliveryService.createDelivery(req.body);
     res.status(201).json({
@@ -72,8 +64,6 @@ router.post(
 router.patch(
   '/:id/status',
   authenticate,
-  validate(deliveryIdParamSchema, 'params'),
-  validate(updateDeliveryStatusSchema, 'body'),
   asyncHandler(async (req, res) => {
     const updatedDelivery = await deliveryService.updateDeliveryStatus(req.params.id, req.body);
     res.status(200).json({
