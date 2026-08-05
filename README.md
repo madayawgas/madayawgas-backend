@@ -3,7 +3,7 @@
 Before cloning the project, install the following:
 
 - Git
-- nvm for Windows: https://github.com/coreybutler/nvm-windows/releases
+- nvm: https://www.nvmnode.com/guide/download.html
 
 ---
 
