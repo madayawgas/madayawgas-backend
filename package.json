@@ -3,11 +3,9 @@
   "version": "1.0.0",
   "description": "MadayawGas Backend API",
   "main": "src/server.js",
-
-   "engines": {
+  "engines": {
     "node": "22.19.0"
   },
-
   "scripts": {
     "preinstall": "node scripts/check-node.js",
     "start": "node src/server.js",
@@ -24,7 +22,7 @@
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^13.0.2",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
