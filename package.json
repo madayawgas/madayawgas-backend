@@ -13,7 +13,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "db:setup": "node database/scripts/setup.js",
     "db:migrate": "node database/scripts/migrate.js",
-    "db:export": "node database/scripts/export-schema.js"
+    "db:export": "node database/scripts/export-schema.js",
+    "prepare": "husky"
   },
   "keywords": [
     "express",
@@ -33,6 +34,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
     "nodemon": "^3.1.14"
   }
 }
