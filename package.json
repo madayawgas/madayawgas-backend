@@ -10,7 +10,9 @@
     "preinstall": "node scripts/check-node.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db:setup": "node database/scripts/setup.js",
+    "db:migrate": "node database/scripts/migrate.js"
   },
   "keywords": [
     "express",
@@ -22,7 +24,6 @@
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
