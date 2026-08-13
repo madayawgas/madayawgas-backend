@@ -2,10 +2,12 @@ const { Client } = require("pg");
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { migrate } = require("./migrate");
+const { pool } = require("../connection");
+
 require("dotenv").config();
 
 const REQUIRED_POSTGRES_MAJOR = 18;
-
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
@@ -14,11 +16,10 @@ if (!databaseUrl) {
 }
 
 /**
- * Find pg_dump without requiring the user to add PostgreSQL
- * to their system PATH.
+ * Find pg_dump without requiring the user
+ * to add PostgreSQL to PATH.
  */
 function findPgDump() {
-  // First, try pg_dump from PATH.
   try {
     execFileSync("pg_dump", ["--version"], {
       stdio: "ignore",
@@ -26,10 +27,9 @@ function findPgDump() {
 
     return "pg_dump";
   } catch {
-    // Not in PATH. Continue searching.
+    // Continue searching.
   }
 
-  // Windows PostgreSQL installation directory.
   const postgresDir = "C:\\Program Files\\PostgreSQL";
 
   if (!fs.existsSync(postgresDir)) {
@@ -37,7 +37,9 @@ function findPgDump() {
   }
 
   const versions = fs
-    .readdirSync(postgresDir, { withFileTypes: true })
+    .readdirSync(postgresDir, {
+      withFileTypes: true,
+    })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .filter((name) => /^\d+$/.test(name))
@@ -55,36 +57,27 @@ function findPgDump() {
 }
 
 /**
- * Check whether the installed PostgreSQL version
- * matches the project's required major version.
+ * Check PostgreSQL version.
  */
 function checkPostgresVersion() {
   const pgDump = findPgDump();
 
   if (!pgDump) {
-    console.error("✗ pg_dump could not be found.");
-    console.error("Please make sure PostgreSQL 18 is installed.");
-    process.exit(1);
+    throw new Error(
+      "pg_dump could not be found. Please make sure PostgreSQL 18 is installed.",
+    );
   }
 
-  let output;
+  const output = execFileSync(pgDump, ["--version"], {
+    encoding: "utf8",
+  }).trim();
 
-  try {
-    output = execFileSync(pgDump, ["--version"], {
-      encoding: "utf8",
-    }).trim();
-  } catch (error) {
-    console.error("✗ Failed to run pg_dump.");
-    console.error(error.message);
-    process.exit(1);
-  }
-
-  const match = output.match(/PostgreSQL\)?\s+(\d+)\./);
+  const match = output.match(/(\d+)\.(\d+)(?:\.\d+)?/);
 
   if (!match) {
-    console.error("✗ Could not determine PostgreSQL version.");
-    console.error(`pg_dump returned: ${output}`);
-    process.exit(1);
+    throw new Error(
+      `Could not determine PostgreSQL version.\npg_dump returned: ${output}`,
+    );
   }
 
   const majorVersion = Number(match[1]);
@@ -92,14 +85,12 @@ function checkPostgresVersion() {
   console.log(`PostgreSQL version detected: ${majorVersion}.x`);
 
   if (majorVersion !== REQUIRED_POSTGRES_MAJOR) {
-    console.error(`✗ PostgreSQL ${REQUIRED_POSTGRES_MAJOR}.x is required.`);
-    console.error(`You have PostgreSQL ${majorVersion}.x installed.`);
-    process.exit(1);
+    throw new Error(
+      `PostgreSQL ${REQUIRED_POSTGRES_MAJOR}.x is required. You have PostgreSQL ${majorVersion}.x installed.`,
+    );
   }
 
   console.log(`✓ PostgreSQL ${REQUIRED_POSTGRES_MAJOR}.x is supported.`);
-
-  return pgDump;
 }
 
 /**
@@ -110,7 +101,6 @@ async function createDatabaseIfNotExists() {
 
   const databaseName = decodeURIComponent(url.pathname.slice(1));
 
-  // Connect to the default PostgreSQL database.
   url.pathname = "/postgres";
 
   const client = new Client({
@@ -126,8 +116,6 @@ async function createDatabaseIfNotExists() {
     );
 
     if (result.rowCount === 0) {
-      // Database names cannot be parameterized,
-      // so we safely quote the identifier.
       const safeDatabaseName = databaseName.replace(/"/g, '""');
 
       await client.query(`CREATE DATABASE "${safeDatabaseName}"`);
@@ -141,76 +129,6 @@ async function createDatabaseIfNotExists() {
   }
 }
 
-/**
- * Run all pending migrations.
- */
-async function runMigrations() {
-  const client = new Client({
-    connectionString: databaseUrl,
-  });
-
-  try {
-    await client.connect();
-
-    await client.query(`
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                id SERIAL PRIMARY KEY,
-                filename TEXT UNIQUE NOT NULL,
-                applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-        `);
-
-    const migrationsDir = path.join(__dirname, "..", "migrations");
-
-    if (!fs.existsSync(migrationsDir)) {
-      console.log("No migrations directory found.");
-      return;
-    }
-
-    const files = fs
-      .readdirSync(migrationsDir)
-      .filter((file) => file.endsWith(".sql"))
-      .sort();
-
-    for (const file of files) {
-      const alreadyApplied = await client.query(
-        "SELECT 1 FROM schema_migrations WHERE filename = $1",
-        [file],
-      );
-
-      if (alreadyApplied.rowCount > 0) {
-        continue;
-      }
-
-      console.log(`Running migration: ${file}`);
-
-      const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-
-      await client.query("BEGIN");
-
-      try {
-        await client.query(sql);
-
-        await client.query(
-          "INSERT INTO schema_migrations (filename) VALUES ($1)",
-          [file],
-        );
-
-        await client.query("COMMIT");
-
-        console.log(`✓ ${file}`);
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      }
-    }
-
-    console.log("✓ Migrations complete.");
-  } finally {
-    await client.end();
-  }
-}
-
 async function setup() {
   try {
     console.log("Setting up MadayawGas database...\n");
@@ -219,14 +137,16 @@ async function setup() {
 
     await createDatabaseIfNotExists();
 
-    await runMigrations();
+    await migrate();
 
     console.log("\n✓ Database setup complete.");
   } catch (error) {
     console.error("\n✗ Database setup failed:");
     console.error(error.message);
 
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await pool.end();
   }
 }
 
