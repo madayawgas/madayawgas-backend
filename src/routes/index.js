@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const usersRoutes = require('../modules/users/users.routes');
+const usersRoutes = require('../features/users/users.routes');
 
 
 // Register API Module Routes

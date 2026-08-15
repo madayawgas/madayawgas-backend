@@ -1,0 +1,72 @@
+const usersService = require('../features/users/users.service');
+
+/**
+ * Authentication Middleware
+ * Validates server-side session from HTTP cookie, refreshes idle expiration,
+ * and attaches authenticated user & session to request context.
+ */
+const authenticate = async (req, res, next) => {
+  try {
+    const rawToken = req.cookies?.mg_sid;
+
+    if (!rawToken) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Unauthorized',
+      });
+    }
+
+    const authResult = await usersService.validateSession(rawToken);
+
+    if (!authResult) {
+      res.clearCookie('mg_sid', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+      });
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Unauthorized',
+      });
+    }
+
+    req.user = authResult.user;
+    req.session = authResult.session;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * RBAC Permission Authorization Middleware
+ * Enforces permission requirements for protected endpoints.
+ * Returns 403 Forbidden if user lacks the required permission.
+ */
+const requirePermission = (permission) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Unauthorized',
+      });
+    }
+
+    const hasPerm = req.user.permissions && req.user.permissions.includes(permission);
+
+    if (!hasPerm) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'Forbidden',
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = {
+  authenticate,
+  requirePermission,
+};
