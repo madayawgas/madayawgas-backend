@@ -296,5 +296,34 @@ test('Authentication System Integration Tests', async (t) => {
     const allowedBody = await allowedRes.json();
     assert.equal(allowedBody.message, 'Access granted');
   });
+
+  await t.test('9. PermissionService Utility Functions (can, canAll, canAny, isScopedToOwn)', async () => {
+    const permissionService = require('../features/users/permission.service');
+
+    const salesUser = {
+      permissions: ['sales.view_own', 'sales.create', 'sales.update', 'delivery.view_own'],
+    };
+
+    const adminUser = {
+      permissions: ['sales.view', 'sales.create', 'sales.update', 'sales.delete', 'users.manage'],
+    };
+
+    // test can()
+    assert.equal(permissionService.can(salesUser, 'sales.create'), true);
+    assert.equal(permissionService.can(salesUser, 'users.manage'), false);
+
+    // test canAll()
+    assert.equal(permissionService.canAll(salesUser, ['sales.create', 'sales.update']), true);
+    assert.equal(permissionService.canAll(salesUser, ['sales.create', 'users.manage']), false);
+
+    // test canAny()
+    assert.equal(permissionService.canAny(salesUser, ['users.manage', 'sales.create']), true);
+    assert.equal(permissionService.canAny(salesUser, ['users.manage', 'users.view']), false);
+
+    // test isScopedToOwn()
+    assert.equal(permissionService.isScopedToOwn(salesUser, 'sales'), true);
+    assert.equal(permissionService.isScopedToOwn(adminUser, 'sales'), false);
+  });
 });
+
 

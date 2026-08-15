@@ -1,17 +1,16 @@
-const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
-
-const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
-const ABSOLUTE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const sessionService = require('./session.service');
+const permissionService = require('./permission.service');
 
 /**
- * Service layer containing core business logic for authentication,
- * session management, password hashing, and authorization data assembly.
+ * Service layer focused strictly on user authentication credentials,
+ * user profile assembly, and password management.
+ * Delegates session lifecycle to sessionService and RBAC to permissionService.
  */
 class UsersService {
   /**
-   * Authenticates user credentials and generates a server-side session.
+   * Authenticates user credentials and delegates session creation.
    */
   async login(username, password) {
     if (!username || !password) {
@@ -20,7 +19,7 @@ class UsersService {
 
     const user = await usersRepository.findUserByUsername(username);
 
-    // Generic response to avoid leaking username existence or state
+    // Generic error response to avoid leaking username existence
     if (!user || !user.is_active || user.is_blocked) {
       throw new Error('Invalid credentials');
     }
@@ -30,19 +29,11 @@ class UsersService {
       throw new Error('Invalid credentials');
     }
 
-    // Cryptographically secure session token
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    // Delegate session creation to session.service
+    const { token } = await sessionService.createSession(user.id);
 
-    const expiresAt = new Date(Date.now() + IDLE_TIMEOUT_MS);
-
-    await usersRepository.createSession({
-      userId: user.id,
-      tokenHash,
-      expiresAt,
-    });
-
-    const permissions = await usersRepository.getPermissionsByRoleId(user.role_id);
+    // Delegate permission loading to permission.service
+    const permissions = await permissionService.getPermissionsForRole(user.role_id);
 
     const userSummary = {
       id: user.id,
@@ -56,55 +47,24 @@ class UsersService {
     };
 
     return {
-      token: rawToken,
+      token,
       user: userSummary,
     };
   }
 
   /**
-   * Validates server-side session token.
-   * Enforces 8-hour idle timeout and 30-day absolute lifetime.
-   * Refreshes idle expiration if session is valid.
+   * Validates server-side session token and constructs user context.
    */
   async validateSession(rawToken) {
-    if (!rawToken || typeof rawToken !== 'string') {
+    const validSession = await sessionService.validateSession(rawToken);
+    if (!validSession) {
       return null;
     }
 
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const sessionData = await usersRepository.findSessionByTokenHash(tokenHash);
+    const { sessionData, newExpiresAt } = validSession;
 
-    if (!sessionData || sessionData.revoked_at) {
-      return null;
-    }
-
-    // Check account status
-    if (!sessionData.is_active || sessionData.is_blocked) {
-      await usersRepository.revokeSession(sessionData.session_id);
-      return null;
-    }
-
-    const now = Date.now();
-    const idleExpiresAt = new Date(sessionData.expires_at).getTime();
-    const createdAt = new Date(sessionData.created_at).getTime();
-    const absoluteExpiresAt = createdAt + ABSOLUTE_LIFETIME_MS;
-
-    // Validate Rule: current_time < idle_expires_at AND current_time < absolute_expires_at
-    if (now >= idleExpiresAt || now >= absoluteExpiresAt) {
-      await usersRepository.revokeSession(sessionData.session_id);
-      return null;
-    }
-
-    // Refresh Idle Expiration (capped at absolute_expires_at)
-    let newExpiresAtMs = now + IDLE_TIMEOUT_MS;
-    if (newExpiresAtMs > absoluteExpiresAt) {
-      newExpiresAtMs = absoluteExpiresAt;
-    }
-
-    const newExpiresAt = new Date(newExpiresAtMs);
-    await usersRepository.updateSessionExpiration(sessionData.session_id, newExpiresAt);
-
-    const permissions = await usersRepository.getPermissionsByRoleId(sessionData.role_id);
+    // Delegate permission loading to permission.service
+    const permissions = await permissionService.getPermissionsForRole(sessionData.role_id);
 
     return {
       user: {
@@ -126,21 +86,14 @@ class UsersService {
   }
 
   /**
-   * Invalidates server-side session and logs out user.
+   * Delegates logout session revocation.
    */
   async logout(rawToken) {
-    if (!rawToken || typeof rawToken !== 'string') {
-      return true;
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    await usersRepository.revokeSessionByTokenHash(tokenHash);
-    return true;
+    return sessionService.revokeSession(rawToken);
   }
 
   /**
-   * Updates user password after verifying current password.
-   * Revokes all active user sessions upon completion.
+   * Updates user password and revokes all active user sessions.
    */
   async changePassword(userId, currentPassword, newPassword) {
     if (!currentPassword || !newPassword) {
@@ -164,8 +117,8 @@ class UsersService {
     const newPasswordHash = await bcrypt.hash(newPassword, 10);
     await usersRepository.updatePasswordHash(userId, newPasswordHash);
 
-    // Invalidate existing sessions for security
-    await usersRepository.revokeAllUserSessions(userId);
+    // Revoke all active sessions for security via sessionService
+    await sessionService.revokeAllUserSessions(userId);
 
     return { message: 'Password changed successfully' };
   }
