@@ -3,6 +3,7 @@ const cors = require('cors');
 const corsOptions = require('./config/cors');
 const routes = require('./routes');
 const errorHandler = require('./middleware/error.middleware');
+const cookieParser = require('./middleware/cookie.middleware');
 
 const app = express();
 
@@ -10,6 +11,8 @@ const app = express();
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser);
+
 
 // Root / Health Check Endpoint
 app.get('/health', (req, res) => {
