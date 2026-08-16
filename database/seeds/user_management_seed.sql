@@ -272,4 +272,41 @@ SELECT
     FALSE
 FROM roles r
 WHERE r.name = 'Super Admin'
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (username) DO NOTHING;
+
+
+-- ============================================================
+-- 8. SAMPLE SALES PERSON ACCOUNT
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
+SELECT
+    'sales_user',
+    '$2b$10$O8AfEtFmtQ1uFpWUoi0v..gvs6GW6oxTCR8ktMP8YEaQbb9WC/NAm',
+    'Juan',
+    'Sales',
+    r.id,
+    TRUE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Sales Person'
+ON CONFLICT (username) DO NOTHING;
+
+
+-- ============================================================
+-- 9. SAMPLE FLEET MANAGER ACCOUNT
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
+SELECT
+    'fleet_user',
+    '$2b$10$bq7z2fNj0nWrrHSbDSlXJ.hdu8gs2dc.356FGdx20TPhHcJjVv8Pi',
+    'Carlos',
+    'Fleet',
+    r.id,
+    TRUE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Fleet Manager'
+ON CONFLICT (username) DO NOTHING;
+

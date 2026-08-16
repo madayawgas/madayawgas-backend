@@ -1,4 +1,4 @@
-const usersService = require('../features/users/users.service');
+const authService = require('../features/users/auth.service');
 const permissionService = require('../features/users/permission.service');
 
 /**
@@ -17,7 +17,7 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    const authResult = await usersService.validateSession(rawToken);
+    const authResult = await authService.validateSession(rawToken);
 
     if (!authResult) {
       res.clearCookie('mg_sid', {

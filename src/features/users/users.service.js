@@ -1,126 +1,87 @@
-const bcrypt = require('bcrypt');
-const usersRepository = require('./users.repository');
-const sessionService = require('./session.service');
+const authService = require('./auth.service');
+const profileService = require('./profile.service');
+const managementService = require('./management.service');
 const permissionService = require('./permission.service');
 
 /**
- * Service layer focused strictly on user authentication credentials,
- * user profile assembly, and password management.
- * Delegates session lifecycle to sessionService and RBAC to permissionService.
+ * Users Service (Facade)
+ * Delegates to domain-specific services:
+ * - authService (authentication, session lifecycle, login, logout, password change)
+ * - profileService (user profile retrieval, personal info updates)
+ * - managementService (admin user creation, credentials reset, status deactivation/blocking, roles)
+ * - permissionService (RBAC evaluation)
  */
 class UsersService {
-  /**
-   * Authenticates user credentials and delegates session creation.
-   */
-  async login(username, password) {
-    if (!username || !password) {
-      throw new Error('Invalid credentials');
-    }
-
-    const user = await usersRepository.findUserByUsername(username);
-
-    // Generic error response to avoid leaking username existence
-    if (!user || !user.is_active || user.is_blocked) {
-      throw new Error('Invalid credentials');
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
-    }
-
-    // Delegate session creation to session.service
-    const { token } = await sessionService.createSession(user.id);
-
-    // Delegate permission loading to permission.service
-    const permissions = await permissionService.getPermissionsForRole(user.role_id);
-
-    const userSummary = {
-      id: user.id,
-      username: user.username,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      birthdate: user.birthdate,
-      role: user.role_name,
-      roleId: user.role_id,
-      permissions,
-    };
-
-    return {
-      token,
-      user: userSummary,
-    };
+  // --- Auth Delegation ---
+  login(username, password) {
+    return authService.login(username, password);
   }
 
-  /**
-   * Validates server-side session token and constructs user context.
-   */
-  async validateSession(rawToken) {
-    const validSession = await sessionService.validateSession(rawToken);
-    if (!validSession) {
-      return null;
-    }
-
-    const { sessionData, newExpiresAt } = validSession;
-
-    // Delegate permission loading to permission.service
-    const permissions = await permissionService.getPermissionsForRole(sessionData.role_id);
-
-    return {
-      user: {
-        id: sessionData.user_id,
-        username: sessionData.username,
-        firstName: sessionData.first_name,
-        lastName: sessionData.last_name,
-        birthdate: sessionData.birthdate,
-        role: sessionData.role_name,
-        roleId: sessionData.role_id,
-        permissions,
-      },
-      session: {
-        id: sessionData.session_id,
-        createdAt: sessionData.created_at,
-        expiresAt: newExpiresAt,
-      },
-    };
+  validateSession(rawToken) {
+    return authService.validateSession(rawToken);
   }
 
-  /**
-   * Delegates logout session revocation.
-   */
-  async logout(rawToken) {
-    return sessionService.revokeSession(rawToken);
+  logout(rawToken) {
+    return authService.logout(rawToken);
   }
 
-  /**
-   * Updates user password and revokes all active user sessions.
-   */
-  async changePassword(userId, currentPassword, newPassword) {
-    if (!currentPassword || !newPassword) {
-      throw new Error('Current password and new password are required');
-    }
+  changePassword(userId, currentPassword, newPassword) {
+    return authService.changePassword(userId, currentPassword, newPassword);
+  }
 
-    if (typeof newPassword !== 'string' || newPassword.length < 8) {
-      throw new Error('New password must be at least 8 characters long');
-    }
+  // --- Profile Delegation ---
+  getProfile(userId) {
+    return profileService.getProfile(userId);
+  }
 
-    const user = await usersRepository.findUserWithPasswordById(userId);
-    if (!user) {
-      throw new Error('User not found');
-    }
+  updateProfile(actorUser, targetUserId, updateData) {
+    return profileService.updateProfile(actorUser, targetUserId, updateData);
+  }
 
-    const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isCurrentValid) {
-      throw new Error('Current password is incorrect');
-    }
+  // --- Management Delegation ---
+  createUser(actorUser, userData) {
+    return managementService.createUser(actorUser, userData);
+  }
 
-    const newPasswordHash = await bcrypt.hash(newPassword, 10);
-    await usersRepository.updatePasswordHash(userId, newPasswordHash);
+  getAllUsers() {
+    return managementService.getAllUsers();
+  }
 
-    // Revoke all active sessions for security via sessionService
-    await sessionService.revokeAllUserSessions(userId);
+  getUserById(targetId) {
+    return managementService.getUserById(targetId);
+  }
 
-    return { message: 'Password changed successfully' };
+  updateUserRole(actorUser, targetUserId, roleId) {
+    return managementService.updateUserRole(actorUser, targetUserId, roleId);
+  }
+
+  updateCredentials(actorUser, targetUserId, credentials) {
+    return managementService.updateCredentials(actorUser, targetUserId, credentials);
+  }
+
+  setUserStatus(actorUser, targetUserId, status) {
+    return managementService.setUserStatus(actorUser, targetUserId, status);
+  }
+
+  getRoles() {
+    return managementService.getRoles();
+  }
+
+  // --- Permission Delegation ---
+  can(userOrPermissions, permission) {
+    return permissionService.can(userOrPermissions, permission);
+  }
+
+  canAll(userOrPermissions, permissionsList) {
+    return permissionService.canAll(userOrPermissions, permissionsList);
+  }
+
+  canAny(userOrPermissions, permissionsList) {
+    return permissionService.canAny(userOrPermissions, permissionsList);
+  }
+
+  isScopedToOwn(userOrPermissions, domain) {
+    return permissionService.isScopedToOwn(userOrPermissions, domain);
   }
 }
 

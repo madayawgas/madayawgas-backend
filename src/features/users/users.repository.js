@@ -1,7 +1,7 @@
 const { query } = require('../../../database/connection');
 
 /**
- * Repository layer for user and session database operations.
+ * Repository layer for user, role, permission, audit, and session database operations.
  * Handles SQL queries using parameterized statements only.
  * Free of business logic.
  */
@@ -39,6 +39,136 @@ class UsersRepository {
     return res.rows[0] || null;
   }
 
+  async findAllUsers() {
+    const res = await query(
+      `SELECT u.id, u.username, u.first_name, u.last_name, u.birthdate, u.role_id, u.is_active, u.is_blocked, u.created_at, r.name as role_name
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
+       ORDER BY u.created_at DESC`
+    );
+    return res.rows;
+  }
+
+  async createUser({ username, passwordHash, firstName, lastName, birthdate = null, roleId }) {
+    const res = await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, birthdate, role_id, is_active, is_blocked)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE)
+       RETURNING id, username, first_name, last_name, birthdate, role_id, is_active, is_blocked, created_at`,
+      [username, passwordHash, firstName, lastName, birthdate, roleId]
+    );
+    return res.rows[0];
+  }
+
+  async updateUserProfile(id, { firstName, lastName, birthdate, roleId }) {
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (firstName !== undefined) {
+      updates.push(`first_name = $${idx++}`);
+      values.push(firstName);
+    }
+    if (lastName !== undefined) {
+      updates.push(`last_name = $${idx++}`);
+      values.push(lastName);
+    }
+    if (birthdate !== undefined) {
+      updates.push(`birthdate = $${idx++}`);
+      values.push(birthdate);
+    }
+    if (roleId !== undefined) {
+      updates.push(`role_id = $${idx++}`);
+      values.push(roleId);
+    }
+
+    if (updates.length === 0) {
+      return this.findUserById(id);
+    }
+
+    values.push(id);
+    await query(
+      `UPDATE users
+       SET ${updates.join(', ')}
+       WHERE id = $${idx}`,
+      values
+    );
+
+    return this.findUserById(id);
+  }
+
+  async updateUserCredentials(id, { username, passwordHash }) {
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (username !== undefined) {
+      updates.push(`username = $${idx++}`);
+      values.push(username);
+    }
+    if (passwordHash !== undefined) {
+      updates.push(`password_hash = $${idx++}`);
+      values.push(passwordHash);
+    }
+
+    if (updates.length === 0) {
+      return this.findUserById(id);
+    }
+
+    values.push(id);
+    await query(
+      `UPDATE users
+       SET ${updates.join(', ')}
+       WHERE id = $${idx}`,
+      values
+    );
+
+    return this.findUserById(id);
+  }
+
+  async updateUserStatus(id, { isActive, isBlocked }) {
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${idx++}`);
+      values.push(isActive);
+    }
+    if (isBlocked !== undefined) {
+      updates.push(`is_blocked = $${idx++}`);
+      values.push(isBlocked);
+    }
+
+    if (updates.length === 0) {
+      return this.findUserById(id);
+    }
+
+    values.push(id);
+    await query(
+      `UPDATE users
+       SET ${updates.join(', ')}
+       WHERE id = $${idx}`,
+      values
+    );
+
+    return this.findUserById(id);
+  }
+
+  async findRoles() {
+    const res = await query(`SELECT id, name, description FROM roles ORDER BY name ASC`);
+    return res.rows;
+  }
+
+  async findRoleById(roleId) {
+    const res = await query(`SELECT id, name, description FROM roles WHERE id = $1`, [roleId]);
+    return res.rows[0] || null;
+  }
+
+  async findRoleByName(roleName) {
+    const res = await query(`SELECT id, name, description FROM roles WHERE name = $1`, [roleName]);
+    return res.rows[0] || null;
+  }
+
   async getPermissionsByRoleId(roleId) {
     const res = await query(
       `SELECT p.name
@@ -48,6 +178,16 @@ class UsersRepository {
       [roleId]
     );
     return res.rows.map((row) => row.name);
+  }
+
+  async createAuditLog({ userId, targetUserId = null, action, description = null }) {
+    const res = await query(
+      `INSERT INTO audit_logs (user_id, target_user_id, action, description)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, user_id, target_user_id, action, description, created_at`,
+      [userId, targetUserId, action, description]
+    );
+    return res.rows[0];
   }
 
   async createSession({ userId, tokenHash, expiresAt }) {
