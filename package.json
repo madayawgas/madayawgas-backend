@@ -10,7 +10,7 @@
     "preinstall": "node scripts/check-node.js",
     "start": "node src/server.js",
     "dev": "npm run db:migrate && nodemon src/server.js",
-    "test": "node --test src/test/auth.test.js",
+    "test": "node --test src/test/*.test.js",
     "db:setup": "node database/scripts/setup.js",
     "db:migrate": "node database/scripts/migrate.js",
     "db:export": "node database/scripts/export-schema.js",
@@ -29,7 +29,6 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
     "pg": "^8.22.0",
     "zod": "^4.4.3"
   },

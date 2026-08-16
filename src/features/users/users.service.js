@@ -1,173 +1,87 @@
-const crypto = require('crypto');
-const bcrypt = require('bcrypt');
-const usersRepository = require('./users.repository');
-
-const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
-const ABSOLUTE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const authService = require('./auth.service');
+const profileService = require('./profile.service');
+const managementService = require('./management.service');
+const permissionService = require('./permission.service');
 
 /**
- * Service layer containing core business logic for authentication,
- * session management, password hashing, and authorization data assembly.
+ * Users Service (Facade)
+ * Delegates to domain-specific services:
+ * - authService (authentication, session lifecycle, login, logout, password change)
+ * - profileService (user profile retrieval, personal info updates)
+ * - managementService (admin user creation, credentials reset, status deactivation/blocking, roles)
+ * - permissionService (RBAC evaluation)
  */
 class UsersService {
-  /**
-   * Authenticates user credentials and generates a server-side session.
-   */
-  async login(username, password) {
-    if (!username || !password) {
-      throw new Error('Invalid credentials');
-    }
-
-    const user = await usersRepository.findUserByUsername(username);
-
-    // Generic response to avoid leaking username existence or state
-    if (!user || !user.is_active || user.is_blocked) {
-      throw new Error('Invalid credentials');
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
-    }
-
-    // Cryptographically secure session token
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-
-    const expiresAt = new Date(Date.now() + IDLE_TIMEOUT_MS);
-
-    await usersRepository.createSession({
-      userId: user.id,
-      tokenHash,
-      expiresAt,
-    });
-
-    const permissions = await usersRepository.getPermissionsByRoleId(user.role_id);
-
-    const userSummary = {
-      id: user.id,
-      username: user.username,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      birthdate: user.birthdate,
-      role: user.role_name,
-      roleId: user.role_id,
-      permissions,
-    };
-
-    return {
-      token: rawToken,
-      user: userSummary,
-    };
+  // --- Auth Delegation ---
+  login(username, password) {
+    return authService.login(username, password);
   }
 
-  /**
-   * Validates server-side session token.
-   * Enforces 8-hour idle timeout and 30-day absolute lifetime.
-   * Refreshes idle expiration if session is valid.
-   */
-  async validateSession(rawToken) {
-    if (!rawToken || typeof rawToken !== 'string') {
-      return null;
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const sessionData = await usersRepository.findSessionByTokenHash(tokenHash);
-
-    if (!sessionData || sessionData.revoked_at) {
-      return null;
-    }
-
-    // Check account status
-    if (!sessionData.is_active || sessionData.is_blocked) {
-      await usersRepository.revokeSession(sessionData.session_id);
-      return null;
-    }
-
-    const now = Date.now();
-    const idleExpiresAt = new Date(sessionData.expires_at).getTime();
-    const createdAt = new Date(sessionData.created_at).getTime();
-    const absoluteExpiresAt = createdAt + ABSOLUTE_LIFETIME_MS;
-
-    // Validate Rule: current_time < idle_expires_at AND current_time < absolute_expires_at
-    if (now >= idleExpiresAt || now >= absoluteExpiresAt) {
-      await usersRepository.revokeSession(sessionData.session_id);
-      return null;
-    }
-
-    // Refresh Idle Expiration (capped at absolute_expires_at)
-    let newExpiresAtMs = now + IDLE_TIMEOUT_MS;
-    if (newExpiresAtMs > absoluteExpiresAt) {
-      newExpiresAtMs = absoluteExpiresAt;
-    }
-
-    const newExpiresAt = new Date(newExpiresAtMs);
-    await usersRepository.updateSessionExpiration(sessionData.session_id, newExpiresAt);
-
-    const permissions = await usersRepository.getPermissionsByRoleId(sessionData.role_id);
-
-    return {
-      user: {
-        id: sessionData.user_id,
-        username: sessionData.username,
-        firstName: sessionData.first_name,
-        lastName: sessionData.last_name,
-        birthdate: sessionData.birthdate,
-        role: sessionData.role_name,
-        roleId: sessionData.role_id,
-        permissions,
-      },
-      session: {
-        id: sessionData.session_id,
-        createdAt: sessionData.created_at,
-        expiresAt: newExpiresAt,
-      },
-    };
+  validateSession(rawToken) {
+    return authService.validateSession(rawToken);
   }
 
-  /**
-   * Invalidates server-side session and logs out user.
-   */
-  async logout(rawToken) {
-    if (!rawToken || typeof rawToken !== 'string') {
-      return true;
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    await usersRepository.revokeSessionByTokenHash(tokenHash);
-    return true;
+  logout(rawToken) {
+    return authService.logout(rawToken);
   }
 
-  /**
-   * Updates user password after verifying current password.
-   * Revokes all active user sessions upon completion.
-   */
-  async changePassword(userId, currentPassword, newPassword) {
-    if (!currentPassword || !newPassword) {
-      throw new Error('Current password and new password are required');
-    }
+  changePassword(userId, currentPassword, newPassword) {
+    return authService.changePassword(userId, currentPassword, newPassword);
+  }
 
-    if (typeof newPassword !== 'string' || newPassword.length < 8) {
-      throw new Error('New password must be at least 8 characters long');
-    }
+  // --- Profile Delegation ---
+  getProfile(userId) {
+    return profileService.getProfile(userId);
+  }
 
-    const user = await usersRepository.findUserWithPasswordById(userId);
-    if (!user) {
-      throw new Error('User not found');
-    }
+  updateProfile(actorUser, targetUserId, updateData) {
+    return profileService.updateProfile(actorUser, targetUserId, updateData);
+  }
 
-    const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isCurrentValid) {
-      throw new Error('Current password is incorrect');
-    }
+  // --- Management Delegation ---
+  createUser(actorUser, userData) {
+    return managementService.createUser(actorUser, userData);
+  }
 
-    const newPasswordHash = await bcrypt.hash(newPassword, 10);
-    await usersRepository.updatePasswordHash(userId, newPasswordHash);
+  getAllUsers() {
+    return managementService.getAllUsers();
+  }
 
-    // Invalidate existing sessions for security
-    await usersRepository.revokeAllUserSessions(userId);
+  getUserById(targetId) {
+    return managementService.getUserById(targetId);
+  }
 
-    return { message: 'Password changed successfully' };
+  updateUserRole(actorUser, targetUserId, roleId) {
+    return managementService.updateUserRole(actorUser, targetUserId, roleId);
+  }
+
+  updateCredentials(actorUser, targetUserId, credentials) {
+    return managementService.updateCredentials(actorUser, targetUserId, credentials);
+  }
+
+  setUserStatus(actorUser, targetUserId, status) {
+    return managementService.setUserStatus(actorUser, targetUserId, status);
+  }
+
+  getRoles() {
+    return managementService.getRoles();
+  }
+
+  // --- Permission Delegation ---
+  can(userOrPermissions, permission) {
+    return permissionService.can(userOrPermissions, permission);
+  }
+
+  canAll(userOrPermissions, permissionsList) {
+    return permissionService.canAll(userOrPermissions, permissionsList);
+  }
+
+  canAny(userOrPermissions, permissionsList) {
+    return permissionService.canAny(userOrPermissions, permissionsList);
+  }
+
+  isScopedToOwn(userOrPermissions, domain) {
+    return permissionService.isScopedToOwn(userOrPermissions, domain);
   }
 }
 

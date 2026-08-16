@@ -1,4 +1,5 @@
-const usersService = require('../features/users/users.service');
+const authService = require('../features/users/auth.service');
+const permissionService = require('../features/users/permission.service');
 
 /**
  * Authentication Middleware
@@ -16,7 +17,7 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    const authResult = await usersService.validateSession(rawToken);
+    const authResult = await authService.validateSession(rawToken);
 
     if (!authResult) {
       res.clearCookie('mg_sid', {
@@ -41,7 +42,7 @@ const authenticate = async (req, res, next) => {
 
 /**
  * RBAC Permission Authorization Middleware
- * Enforces permission requirements for protected endpoints.
+ * Uses permissionService.can to enforce route-level permissions.
  * Returns 403 Forbidden if user lacks the required permission.
  */
 const requirePermission = (permission) => {
@@ -53,9 +54,7 @@ const requirePermission = (permission) => {
       });
     }
 
-    const hasPerm = req.user.permissions && req.user.permissions.includes(permission);
-
-    if (!hasPerm) {
+    if (!permissionService.can(req.user, permission)) {
       return res.status(403).json({
         status: 'fail',
         message: 'Forbidden',
