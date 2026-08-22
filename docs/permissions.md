@@ -1,5 +1,6 @@
-| dashboard.view      | View the dashboard.                                          |
+| Permission          | Description                                                  |
 | ------------------- | ------------------------------------------------------------ |
+| dashboard.view      | View the dashboard.                                          |
 | fleet.view          | View fleet and maintenance information.                      |
 | fleet.manage        | Create, update, and manage fleet and maintenance records.    |
 | route.view          | View route dispatch information.                             |
