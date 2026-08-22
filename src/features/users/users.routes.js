@@ -1,414 +1,80 @@
 const express = require('express');
 const router = express.Router();
-const authService = require('./auth.service');
-const profileService = require('./profile.service');
-const managementService = require('./management.service');
-const permissionService = require('./permission.service');
+const usersController = require('./users.controller');
 const { authenticate, requirePermission } = require('../../middleware/auth.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
 
-const COOKIE_NAME = 'mg_sid';
+// ==========================================
+// Authentication & Session Routes (Public)
+// ==========================================
 
-const getCookieOptions = () => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  path: '/',
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
-});
+router.post('/login', asyncHandler(usersController.login.bind(usersController)));
+router.post('/logout', asyncHandler(usersController.logout.bind(usersController)));
 
-/**
- * POST /api/users/login
- * User login endpoint
- */
-router.post(
-  '/login',
-  asyncHandler(async (req, res) => {
-    const { username, password } = req.body || {};
+// ==========================================
+// User Profile & Account Routes (Protected)
+// ==========================================
 
-    if (!username || !password) {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid credentials',
-      });
-    }
+router.get('/me', authenticate, asyncHandler(usersController.getMe.bind(usersController)));
+router.patch('/me', authenticate, asyncHandler(usersController.updateMe.bind(usersController)));
+router.post('/change-password', authenticate, asyncHandler(usersController.changePassword.bind(usersController)));
 
-    try {
-      const { token, user } = await authService.login(username, password);
+// ==========================================
+// User Administration & RBAC Routes (Admin)
+// ==========================================
 
-      res.cookie(COOKIE_NAME, token, getCookieOptions());
-
-      return res.status(200).json({
-        status: 'success',
-        data: { user },
-      });
-    } catch (err) {
-      if (err.message === 'Invalid credentials') {
-        return res.status(401).json({
-          status: 'fail',
-          message: 'Invalid credentials',
-        });
-      }
-      throw err;
-    }
-  })
-);
-
-/**
- * POST /api/users/logout
- * User logout endpoint
- */
-router.post(
-  '/logout',
-  asyncHandler(async (req, res) => {
-    const rawToken = req.cookies?.[COOKIE_NAME];
-
-    if (rawToken) {
-      await authService.logout(rawToken);
-    }
-
-    res.clearCookie(COOKIE_NAME, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-    });
-
-    return res.status(200).json({
-      status: 'success',
-      message: 'Successfully logged out',
-    });
-  })
-);
-
-/**
- * GET /api/users/me
- * Profile endpoint for currently authenticated user
- */
-router.get(
-  '/me',
-  authenticate,
-  asyncHandler(async (req, res) => {
-    return res.status(200).json({
-      status: 'success',
-      data: {
-        user: req.user,
-      },
-    });
-  })
-);
-
-/**
- * PATCH /api/users/me
- * Update personal profile of currently authenticated user
- */
-router.patch(
-  '/me',
-  authenticate,
-  asyncHandler(async (req, res) => {
-    const { firstName, lastName, birthdate } = req.body || {};
-
-    try {
-      const updatedUser = await profileService.updateProfile(req.user, req.user.id, {
-        firstName,
-        lastName,
-        birthdate,
-      });
-
-      return res.status(200).json({
-        status: 'success',
-        data: {
-          user: updatedUser,
-        },
-      });
-    } catch (err) {
-      return res.status(400).json({
-        status: 'fail',
-        message: err.message,
-      });
-    }
-  })
-);
-
-/**
- * POST /api/users/change-password
- * Password change endpoint for authenticated users
- */
-router.post(
-  '/change-password',
-  authenticate,
-  asyncHandler(async (req, res) => {
-    const { currentPassword, newPassword } = req.body || {};
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Current password and new password are required',
-      });
-    }
-
-    try {
-      await authService.changePassword(req.user.id, currentPassword, newPassword);
-
-      res.clearCookie(COOKIE_NAME, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-      });
-
-      return res.status(200).json({
-        status: 'success',
-        message: 'Password changed successfully. Please log in again.',
-      });
-    } catch (err) {
-      if (
-        err.message === 'Current password is incorrect' ||
-        err.message === 'New password must be at least 8 characters long' ||
-        err.message === 'User not found'
-      ) {
-        return res.status(400).json({
-          status: 'fail',
-          message: err.message,
-        });
-      }
-      throw err;
-    }
-  })
-);
-
-/**
- * GET /api/users/roles
- * Retrieve list of all available system roles (Admin)
- */
 router.get(
   '/roles',
   authenticate,
   requirePermission('users.manage'),
-  asyncHandler(async (req, res) => {
-    const roles = await managementService.getRoles();
-    return res.status(200).json({
-      status: 'success',
-      data: { roles },
-    });
-  })
+  asyncHandler(usersController.getRoles.bind(usersController))
 );
 
-/**
- * GET /api/users/admin-only-test
- * Example RBAC protected route requiring 'users.manage' permission
- */
 router.get(
   '/admin-only-test',
   authenticate,
   requirePermission('users.manage'),
-  (req, res) => {
-    return res.status(200).json({
-      status: 'success',
-      message: 'Access granted',
-    });
-  }
+  usersController.adminOnlyTest.bind(usersController)
 );
 
-/**
- * GET /api/users
- * Retrieve list of all users (requires users.view permission)
- */
 router.get(
   '/',
   authenticate,
   requirePermission('users.view'),
-  asyncHandler(async (req, res) => {
-    const users = await managementService.getAllUsers();
-    return res.status(200).json({
-      status: 'success',
-      data: { users },
-    });
-  })
+  asyncHandler(usersController.getAllUsers.bind(usersController))
 );
 
-/**
- * POST /api/users
- * Register / Create a new user account (Admin operation, requires users.manage)
- */
 router.post(
   '/',
   authenticate,
   requirePermission('users.manage'),
-  asyncHandler(async (req, res) => {
-    const { username, password, firstName, lastName, birthdate, roleId } = req.body || {};
-
-    try {
-      const newUser = await managementService.createUser(req.user, {
-        username,
-        password,
-        firstName,
-        lastName,
-        birthdate,
-        roleId,
-      });
-
-      return res.status(201).json({
-        status: 'success',
-        data: {
-          user: newUser,
-        },
-      });
-    } catch (err) {
-      return res.status(400).json({
-        status: 'fail',
-        message: err.message,
-      });
-    }
-  })
+  asyncHandler(usersController.createUser.bind(usersController))
 );
 
-/**
- * GET /api/users/:id
- * Retrieve user details by ID (requires users.view permission or viewing self)
- */
 router.get(
   '/:id',
   authenticate,
-  asyncHandler(async (req, res) => {
-    const isSelf = req.user.id === req.params.id;
-    const canView = permissionService.can(req.user, 'users.view');
-
-    if (!isSelf && !canView) {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'Forbidden',
-      });
-    }
-
-    try {
-      const user = await profileService.getProfile(req.params.id);
-      return res.status(200).json({
-        status: 'success',
-        data: { user },
-      });
-    } catch (err) {
-      return res.status(404).json({
-        status: 'fail',
-        message: err.message,
-      });
-    }
-  })
+  asyncHandler(usersController.getUserById.bind(usersController))
 );
 
-/**
- * PATCH /api/users/:id
- * Update user profile by ID (requires users.manage permission or updating self)
- */
 router.patch(
   '/:id',
   authenticate,
-  asyncHandler(async (req, res) => {
-    const { firstName, lastName, birthdate, roleId } = req.body || {};
-
-    try {
-      let updatedUser;
-
-      // Handle personal info updates
-      if (firstName !== undefined || lastName !== undefined || birthdate !== undefined) {
-        updatedUser = await profileService.updateProfile(req.user, req.params.id, {
-          firstName,
-          lastName,
-          birthdate,
-        });
-      }
-
-      // Handle role updates (requires users.manage)
-      if (roleId !== undefined) {
-        if (!permissionService.can(req.user, 'users.manage')) {
-          return res.status(403).json({
-            status: 'fail',
-            message: 'Forbidden: You do not have permission to change user roles',
-          });
-        }
-        updatedUser = await managementService.updateUserRole(req.user, req.params.id, roleId);
-      }
-
-      if (!updatedUser) {
-        updatedUser = await profileService.getProfile(req.params.id);
-      }
-
-      return res.status(200).json({
-        status: 'success',
-        data: {
-          user: updatedUser,
-        },
-      });
-    } catch (err) {
-      const statusCode = err.message.startsWith('Forbidden') ? 403 : 400;
-      return res.status(statusCode).json({
-        status: 'fail',
-        message: err.message,
-      });
-    }
-  })
+  asyncHandler(usersController.updateUserProfile.bind(usersController))
 );
 
-/**
- * PATCH /api/users/:id/credentials
- * Update user credentials (username and/or password) as an Administrator
- */
 router.patch(
   '/:id/credentials',
   authenticate,
   requirePermission('users.manage'),
-  asyncHandler(async (req, res) => {
-    const { username, password } = req.body || {};
-
-    try {
-      const result = await managementService.updateCredentials(req.user, req.params.id, {
-        username,
-        password,
-      });
-
-      return res.status(200).json({
-        status: 'success',
-        data: result,
-      });
-    } catch (err) {
-      return res.status(400).json({
-        status: 'fail',
-        message: err.message,
-      });
-    }
-  })
+  asyncHandler(usersController.updateUserCredentials.bind(usersController))
 );
 
-/**
- * PATCH /api/users/:id/status
- * Deactivate/Activate or Block/Unblock a user account (Admin operation)
- */
 router.patch(
   '/:id/status',
   authenticate,
   requirePermission('users.manage'),
-  asyncHandler(async (req, res) => {
-    const { isActive, isBlocked } = req.body || {};
-
-    try {
-      const result = await managementService.setUserStatus(req.user, req.params.id, {
-        isActive,
-        isBlocked,
-      });
-
-      return res.status(200).json({
-        status: 'success',
-        data: {
-          user: result,
-        },
-      });
-    } catch (err) {
-      return res.status(400).json({
-        status: 'fail',
-        message: err.message,
-      });
-    }
-  })
+  asyncHandler(usersController.setUserStatus.bind(usersController))
 );
 
 module.exports = router;
