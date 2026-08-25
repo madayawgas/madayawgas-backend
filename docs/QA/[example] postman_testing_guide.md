@@ -8,11 +8,12 @@ This guide contains everything you need to test Login, Logout, Profile Managemen
 
 The database comes pre-seeded with accounts for testing different roles and permission levels:
 
-| Username | Password | Role | Permissions Summary |
-| :--- | :--- | :--- | :--- |
-| **`superadmin`** | `Superadmin123!` | **Super Admin** | Full access to all endpoints (`users.manage`, `users.view`, `sales.*`, `fleet.*`, `inventory.*`, `route.*`, `delivery.*`). |
-| **`sales_user`** | `SalesPass123!` | **Sales Person** | Limited access: Can create/update sales & deliveries (`sales.view_own`, `sales.create`, `delivery.view_own`). **Lacks `users.manage`, `users.view`, and `fleet.manage`.** |
-| **`fleet_user`** | `FleetPass123!` | **Fleet Manager** | Fleet and routes access (`fleet.view`, `fleet.manage`, `route.view`, `route.manage`). **Lacks `users.manage` and `users.view`.** |
+| Username | Password | Role | Phone | Permissions Overview |
+| :--- | :--- | :--- | :--- | :--- |
+| **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | **Full access**: Can manage all users, fleet, routes, sales, inventory, and deliveries. Cannot be blocked or deactivated. |
+| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | **Administrator access**: Can manage users, fleet, inventory, and view reports. |
+| **`fleet_user`** | `FleetPass123!` | **Fleet Manager** | `+639170000003` | **Fleet & routes access**: `fleet.*`, `route.*`, `dashboard.view`. Cannot manage user accounts (`403 Forbidden`). |
+| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | **Sales representative**: `sales.view_own`, `sales.create`, `delivery.view_own`. Cannot access admin or fleet management (`403 Forbidden`). |
 
 ---
 
