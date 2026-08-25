@@ -243,6 +243,14 @@ When adding a new domain feature (e.g. `fleet` or `sales`):
   ```bash
   npm run db:setup
   ```
+* **Run Reset (Drop, Recreate, Migrate & Seed Fresh Database)**:
+  ```bash
+  npm run db:reset
+  ```
+* **Run Seeds**:
+  ```bash
+  npm run db:seed
+  ```
 * **Default Seed Accounts**:
   * `superadmin` / `Superadmin123!` (Super Admin)
   * `sales_user` / `SalesPass123!` (Sales Person)

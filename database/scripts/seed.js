@@ -26,18 +26,25 @@ async function seed() {
     }
 
     console.log('\n✓ Database seeding completed successfully.');
+  } finally {
+    client.release();
+  }
+}
+
+async function main() {
+  try {
+    await seed();
   } catch (error) {
     console.error('\n✗ Database seeding failed:');
     console.error(error.message);
     process.exitCode = 1;
   } finally {
-    client.release();
     await pool.end();
   }
 }
 
 if (require.main === module) {
-  seed();
+  main();
 }
 
 module.exports = { seed };
