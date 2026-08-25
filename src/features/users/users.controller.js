@@ -193,13 +193,12 @@ class UsersController {
    * Creates a user account with auto-generated username (e.g. jdoe) and temporary password.
    */
   async createUser(req, res) {
-    const { firstName, lastName, username, phone, birthdate, roleId } = req.body || {};
+    const { firstName, lastName, phone, birthdate, roleId } = req.body || {};
 
     try {
       const result = await managementService.createUser(req.user, {
         firstName,
         lastName,
-        username,
         phone,
         birthdate,
         roleId,
@@ -299,16 +298,17 @@ class UsersController {
 
   /**
    * PATCH /api/users/:id/credentials
-   * Admin updates username or triggers temporary password reset.
+   * Admin updates username or triggers temporary password reset (requires adminPassword).
    */
   async updateUserCredentials(req, res) {
-    const { username, resetPassword, password } = req.body || {};
+    const { username, resetPassword, password, adminPassword } = req.body || {};
 
     try {
       const result = await managementService.updateCredentials(req.user, req.params.id, {
         username,
         resetPassword,
         password,
+        adminPassword,
       });
 
       return res.status(200).json({
@@ -316,7 +316,8 @@ class UsersController {
         data: result,
       });
     } catch (err) {
-      return res.status(400).json({
+      const statusCode = err.message.toLowerCase().includes('admin password') ? 401 : 400;
+      return res.status(statusCode).json({
         status: 'fail',
         message: err.message,
       });
@@ -325,14 +326,16 @@ class UsersController {
 
   /**
    * PATCH /api/users/:id/status
+   * Deactivates/Activates or Blocks/Unblocks user account (requires adminPassword).
    */
   async setUserStatus(req, res) {
-    const { isActive, isBlocked } = req.body || {};
+    const { isActive, isBlocked, adminPassword } = req.body || {};
 
     try {
       const result = await managementService.setUserStatus(req.user, req.params.id, {
         isActive,
         isBlocked,
+        adminPassword,
       });
 
       return res.status(200).json({
@@ -342,7 +345,8 @@ class UsersController {
         },
       });
     } catch (err) {
-      return res.status(400).json({
+      const statusCode = err.message.toLowerCase().includes('admin password') ? 401 : 400;
+      return res.status(statusCode).json({
         status: 'fail',
         message: err.message,
       });

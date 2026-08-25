@@ -139,7 +139,7 @@ test('User Administration & Management Tests', async (t) => {
     assert.equal(unauthorizedCreate.status, 403);
   });
 
-  await t.test('2. Update User Credentials / Reset Temporary Password by Administrator', async () => {
+  await t.test('2. Update User Credentials / Reset Temporary Password by Administrator with Password Confirmation', async () => {
     const adminLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -171,13 +171,35 @@ test('User Administration & Management Tests', async (t) => {
     });
     const userCookie = parseCookieHeader(userLogin);
 
-    // Admin resets target user's password (generates new temporary password)
+    // 1) Fails without adminPassword confirmation
+    const unconfirmedReset = await fetch(`${baseUrl}/api/users/${targetUserId}/credentials`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        resetPassword: true,
+      }),
+    });
+    assert.equal(unconfirmedReset.status, 401);
+
+    // 2) Fails with wrong adminPassword confirmation
+    const wrongPassReset = await fetch(`${baseUrl}/api/users/${targetUserId}/credentials`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        resetPassword: true,
+        adminPassword: 'WrongAdminPassword123!',
+      }),
+    });
+    assert.equal(wrongPassReset.status, 401);
+
+    // 3) Admin successfully resets target user's password with valid adminPassword
     const resetRes = await fetch(`${baseUrl}/api/users/${targetUserId}/credentials`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
       body: JSON.stringify({
         resetPassword: true,
         username: 'test_mgmt_cred_renamed',
+        adminPassword: 'TestPass123!',
       }),
     });
     assert.equal(resetRes.status, 200);
@@ -208,7 +230,7 @@ test('User Administration & Management Tests', async (t) => {
     assert.equal(newLogin.status, 200);
   });
 
-  await t.test('3. Deactivate / Block User Account and Super Admin Protection', async () => {
+  await t.test('3. Deactivate / Block User Account with Admin Password Confirmation and Super Admin Protection', async () => {
     const adminLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -239,11 +261,27 @@ test('User Administration & Management Tests', async (t) => {
     });
     const userCookie = parseCookieHeader(userLogin);
 
-    // 1) Admin deactivates target user (isActive = false)
-    const deactivateRes = await fetch(`${baseUrl}/api/users/${targetUserId}/status`, {
+    // 1) Rejects deactivation without adminPassword
+    const noPassDeactivate = await fetch(`${baseUrl}/api/users/${targetUserId}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
       body: JSON.stringify({ isActive: false }),
+    });
+    assert.equal(noPassDeactivate.status, 401);
+
+    // 2) Rejects deactivation with incorrect adminPassword
+    const badPassDeactivate = await fetch(`${baseUrl}/api/users/${targetUserId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ isActive: false, adminPassword: 'WrongPassword!' }),
+    });
+    assert.equal(badPassDeactivate.status, 401);
+
+    // 3) Admin successfully deactivates target user with valid adminPassword
+    const deactivateRes = await fetch(`${baseUrl}/api/users/${targetUserId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ isActive: false, adminPassword: 'TestPass123!' }),
     });
     assert.equal(deactivateRes.status, 200);
 
@@ -261,11 +299,11 @@ test('User Administration & Management Tests', async (t) => {
     });
     assert.equal(deactLogin.status, 401);
 
-    // 2) Admin reactivates and blocks user (isActive = true, isBlocked = true)
+    // 4) Admin reactivates and blocks user with valid adminPassword
     const blockRes = await fetch(`${baseUrl}/api/users/${targetUserId}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
-      body: JSON.stringify({ isActive: true, isBlocked: true }),
+      body: JSON.stringify({ isActive: true, isBlocked: true, adminPassword: 'TestPass123!' }),
     });
     assert.equal(blockRes.status, 200);
 
@@ -277,11 +315,11 @@ test('User Administration & Management Tests', async (t) => {
     });
     assert.equal(blockedLogin.status, 401);
 
-    // 3) Attempting to deactivate or block Super Admin must be rejected (400)
+    // 5) Attempting to deactivate or block Super Admin must be rejected (400)
     const superAdminBlock = await fetch(`${baseUrl}/api/users/${testUserId}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
-      body: JSON.stringify({ isBlocked: true }),
+      body: JSON.stringify({ isBlocked: true, adminPassword: 'TestPass123!' }),
     });
     assert.equal(superAdminBlock.status, 400);
     const errBody = await superAdminBlock.json();

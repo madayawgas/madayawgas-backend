@@ -413,7 +413,7 @@ Updates profile information for a target user. Admins can update roles; users ca
 
 ### 10. Update User Credentials / Reset Password (Admin Reset)
 
-Allows an administrator to update a user's `username` or trigger a password reset. Automatically generates a new temporary password and revokes all existing sessions.
+Allows an administrator to update a user's `username` or trigger a password reset. **Requires the administrator's password confirmation (`adminPassword`)**. Automatically generates a new temporary password and revokes all existing sessions.
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/:id/credentials`
@@ -425,12 +425,14 @@ Allows an administrator to update a user's `username` or trigger a password rese
 ```json
 {
   "resetPassword": true,
-  "username": "jcruz_updated"
+  "username": "jcruz_updated",
+  "adminPassword": "Superadmin123!"
 }
 ```
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
+| `adminPassword` | String | **Yes** | Logged-in administrator's password to confirm action |
 | `resetPassword` | Boolean | Optional | Set to `true` to auto-generate a new temporary password |
 | `username` | String | Optional | Updated unique username (min 3 chars) |
 
@@ -457,7 +459,7 @@ Allows an administrator to update a user's `username` or trigger a password rese
 
 ### 11. Deactivate / Activate or Block / Unblock User Account
 
-Updates a user account's active or blocked status. Revoking access (`isActive = false` or `isBlocked = true`) immediately invalidates all active sessions. Super Admin accounts cannot be deactivated or blocked.
+Updates a user account's active or blocked status. **Requires the administrator's password confirmation (`adminPassword`)**. Revoking access (`isActive = false` or `isBlocked = true`) immediately invalidates all active sessions. Super Admin accounts cannot be deactivated or blocked.
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/:id/status`
@@ -469,9 +471,17 @@ Updates a user account's active or blocked status. Revoking access (`isActive = 
 ```json
 {
   "isActive": false,
-  "isBlocked": true
+  "isBlocked": true,
+  "adminPassword": "Superadmin123!"
 }
 ```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `adminPassword` | String | **Yes** | Logged-in administrator's password to confirm action |
+| `isActive` | Boolean | Optional | Set user active state (`true` or `false`) |
+| `isBlocked` | Boolean | Optional | Set user blocked state (`true` or `false`) |
+
 
 #### Response: `200 OK` (Success)
 

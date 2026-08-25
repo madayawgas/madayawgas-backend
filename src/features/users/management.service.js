@@ -12,11 +12,30 @@ const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
  */
 class ManagementService {
   /**
+   * Helper to verify the acting admin's password before performing dangerous actions.
+   */
+  async verifyAdminPassword(actorUserId, adminPassword) {
+    if (!adminPassword || typeof adminPassword !== 'string' || adminPassword.trim().length === 0) {
+      throw new Error('Admin password confirmation is required for this action');
+    }
+
+    const actor = await usersRepository.findUserWithPasswordById(actorUserId);
+    if (!actor) {
+      throw new Error('Unauthorized');
+    }
+
+    const isValid = await bcrypt.compare(adminPassword, actor.password_hash);
+    if (!isValid) {
+      throw new Error('Invalid admin password confirmation');
+    }
+  }
+
+  /**
    * Registers/Creates a new user account (Admin operation).
    * Automatically generates the username (firstName[0] + lastName, e.g. jdoe)
    * and generates a cryptographically random temporary password.
    */
-  async createUser(actorUser, { firstName, lastName, username: explicitUsername, phone = null, birthdate = null, roleId }) {
+  async createUser(actorUser, { firstName, lastName, phone = null, birthdate = null, roleId }) {
     if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
       throw new Error('First name is required');
     }
@@ -35,21 +54,10 @@ class ManagementService {
       throw new Error('Invalid role ID');
     }
 
-    let finalUsername;
-
-    if (explicitUsername && typeof explicitUsername === 'string' && explicitUsername.trim().length >= 3) {
-      const trimmed = explicitUsername.trim();
-      const existing = await usersRepository.findUserByUsername(trimmed);
-      if (existing) {
-        throw new Error('Username is already in use');
-      }
-      finalUsername = trimmed;
-    } else {
-      // Auto-generate username from firstName and lastName (e.g. John Doe -> jdoe)
-      const baseUsername = generateBaseUsername(firstName, lastName);
-      const existingUsernames = await usersRepository.findUsernamesLike(`${baseUsername}%`);
-      finalUsername = resolveUniqueUsername(baseUsername, existingUsernames);
-    }
+    // Auto-generate username strictly from firstName and lastName (e.g. John Doe -> jdoe)
+    const baseUsername = generateBaseUsername(firstName, lastName);
+    const existingUsernames = await usersRepository.findUsernamesLike(`${baseUsername}%`);
+    const finalUsername = resolveUniqueUsername(baseUsername, existingUsernames);
 
     // Auto-generate randomized temporary password
     const temporaryPassword = generateTemporaryPassword();
@@ -167,10 +175,13 @@ class ManagementService {
 
   /**
    * Updates user credentials (username and/or triggers password reset) as an Administrator.
+   * Requires admin password confirmation.
    * If resetPassword is true (or password requested), generates a new temporary password,
    * sets must_change_password = true, and revokes all active sessions for the target user.
    */
-  async updateCredentials(actorUser, targetUserId, { username, resetPassword = false, password }) {
+  async updateCredentials(actorUser, targetUserId, { username, resetPassword = false, password, adminPassword }) {
+    await this.verifyAdminPassword(actorUser.id, adminPassword);
+
     const target = await usersRepository.findUserById(targetUserId);
     if (!target) {
       throw new Error('User not found');
@@ -216,7 +227,7 @@ class ManagementService {
       userId: actorUser.id,
       targetUserId,
       action: 'USER_CREDENTIALS_UPDATED',
-      description: `Admin updated credentials for user ${target.username}`,
+      description: `Admin confirmed and updated credentials for user ${target.username}`,
     });
 
     const response = {
@@ -240,9 +251,12 @@ class ManagementService {
 
   /**
    * Deactivates/Activates or Blocks/Unblocks a user account (Admin operation).
+   * Requires admin password confirmation.
    * Super Admin accounts cannot be deactivated or blocked.
    */
-  async setUserStatus(actorUser, targetUserId, { isActive, isBlocked }) {
+  async setUserStatus(actorUser, targetUserId, { isActive, isBlocked, adminPassword }) {
+    await this.verifyAdminPassword(actorUser.id, adminPassword);
+
     const target = await usersRepository.findUserById(targetUserId);
     if (!target) {
       throw new Error('User not found');
@@ -289,7 +303,7 @@ class ManagementService {
       userId: actorUser.id,
       targetUserId,
       action,
-      description: `Updated status for ${target.username}: active=${updated.is_active}, blocked=${updated.is_blocked}`,
+      description: `Admin confirmed and updated status for ${target.username}: active=${updated.is_active}, blocked=${updated.is_blocked}`,
     });
 
     return {
