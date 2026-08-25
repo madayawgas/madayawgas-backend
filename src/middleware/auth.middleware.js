@@ -34,6 +34,20 @@ const authenticate = async (req, res, next) => {
 
     req.user = authResult.user;
     req.session = authResult.session;
+
+    // Enforce mandatory password change if user is on temporary credentials
+    if (req.user.mustChangePassword) {
+      const fullPath = (req.baseUrl || '') + req.path;
+      const allowedFullPaths = ['/api/users/change-password', '/api/users/me', '/api/users/logout'];
+      if (!allowedFullPaths.includes(fullPath)) {
+        return res.status(403).json({
+          status: 'fail',
+          code: 'MUST_CHANGE_PASSWORD',
+          message: 'You must change your temporary password before accessing other system features',
+        });
+      }
+    }
+
     next();
   } catch (error) {
     next(error);

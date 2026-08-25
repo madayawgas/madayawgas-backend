@@ -120,15 +120,8 @@ class UsersController {
   async changePassword(req, res) {
     const { currentPassword, newPassword } = req.body || {};
 
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Current password and new password are required',
-      });
-    }
-
     try {
-      await authService.changePassword(req.user.id, currentPassword, newPassword);
+      await authService.changePassword(req.user, { currentPassword, newPassword });
 
       res.clearCookie(COOKIE_NAME, {
         httpOnly: true,
@@ -142,17 +135,10 @@ class UsersController {
         message: 'Password changed successfully. Please log in again.',
       });
     } catch (err) {
-      if (
-        err.message === 'Current password is incorrect' ||
-        err.message === 'New password must be at least 8 characters long' ||
-        err.message === 'User not found'
-      ) {
-        return res.status(400).json({
-          status: 'fail',
-          message: err.message,
-        });
-      }
-      throw err;
+      return res.status(400).json({
+        status: 'fail',
+        message: err.message,
+      });
     }
   }
 

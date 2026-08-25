@@ -132,11 +132,19 @@ Changes the authenticated user's password, sets `mustChangePassword = false`, an
 - **URL**: `/api/users/change-password`
 - **Authentication**: Required (`mg_sid` cookie)
 
-#### Request Body
-
+#### Request Body (First Login / `mustChangePassword: true`)
+When logging in for the first time with a temporary password, `currentPassword` is **not required**:
 ```json
 {
-  "currentPassword": "Mg#8xK9pL2!",
+  "newPassword": "NewSecurePassword456!"
+}
+```
+
+#### Request Body (Voluntary Profile Change / `mustChangePassword: false`)
+When an established user voluntarily changes their password:
+```json
+{
+  "currentPassword": "OldPassword123!",
   "newPassword": "NewSecurePassword456!"
 }
 ```

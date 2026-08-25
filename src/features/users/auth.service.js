@@ -158,26 +158,32 @@ class AuthService {
   }
 
   /**
-   * Changes current authenticated user's password, sets must_change_password to FALSE,
+   * Changes authenticated user's password, sets must_change_password to FALSE,
    * and revokes all active sessions.
+   * - If user is in first-login state (mustChangePassword = true), currentPassword is NOT required.
+   * - If user is performing a voluntary change (mustChangePassword = false), currentPassword IS required.
    */
-  async changePassword(userId, currentPassword, newPassword) {
-    if (!currentPassword || !newPassword) {
-      throw new Error('Current password and new password are required');
-    }
-
-    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+  async changePassword(actorUser, { currentPassword, newPassword }) {
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
       throw new Error('New password must be at least 8 characters long');
     }
 
+    const userId = actorUser.id;
     const user = await usersRepository.findUserWithPasswordById(userId);
     if (!user) {
       throw new Error('User not found');
     }
 
-    const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isCurrentValid) {
-      throw new Error('Current password is incorrect');
+    // Only require currentPassword verification if user is NOT in mandatory first-login state
+    if (!user.must_change_password) {
+      if (!currentPassword || typeof currentPassword !== 'string') {
+        throw new Error('Current password is required');
+      }
+
+      const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!isCurrentValid) {
+        throw new Error('Current password is incorrect');
+      }
     }
 
     const newPasswordHash = await bcrypt.hash(newPassword, 10);

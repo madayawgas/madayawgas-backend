@@ -191,15 +191,16 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     assert.equal(meRes.status, 401);
   });
 
-  await t.test('7. Password Change Flow (Self) - sets mustChangePassword to false', async () => {
+  await t.test('7. Password Change Flow (Self) - First-login (no currentPassword required) vs Voluntary, and route blocking', async () => {
     // Insert user with must_change_password = true
     const tempHash = await bcrypt.hash('TempPassword123!', 10);
     await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked, must_change_password)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE, TRUE)`,
-      ['test_auth_tempuser', tempHash, 'Temp', 'User', testRoleId]
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, TRUE)`,
+      ['test_auth_tempuser', tempHash, 'Temp', 'User', '+639170000099', testRoleId]
     );
 
+    // 1) Login with temporary credentials
     const loginRes = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -210,6 +211,15 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     assert.equal(loginBody.data.user.mustChangePassword, true);
     const cookieToken = parseCookieHeader(loginRes);
 
+    // 2) Protected route access should be blocked with 403 MUST_CHANGE_PASSWORD
+    const blockedRes = await fetch(`${baseUrl}/api/users/roles`, {
+      headers: { Cookie: `mg_sid=${cookieToken}` },
+    });
+    assert.equal(blockedRes.status, 403);
+    const blockedBody = await blockedRes.json();
+    assert.equal(blockedBody.code, 'MUST_CHANGE_PASSWORD');
+
+    // 3) First login password change succeeds with ONLY newPassword (no currentPassword required!)
     const changeRes = await fetch(`${baseUrl}/api/users/change-password`, {
       method: 'POST',
       headers: {
@@ -217,14 +227,12 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
         Cookie: `mg_sid=${cookieToken}`,
       },
       body: JSON.stringify({
-        currentPassword: 'TempPassword123!',
         newPassword: 'NewSecurePassword456!',
       }),
     });
-
     assert.equal(changeRes.status, 200);
 
-    // Old login fails
+    // 4) Old temporary password fails
     const oldLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -232,7 +240,7 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     });
     assert.equal(oldLogin.status, 401);
 
-    // New login succeeds and mustChangePassword is false
+    // 5) New permanent password succeeds and mustChangePassword is false
     const newLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -241,5 +249,49 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     assert.equal(newLogin.status, 200);
     const newLoginBody = await newLogin.json();
     assert.equal(newLoginBody.data.user.mustChangePassword, false);
+    const newCookieToken = parseCookieHeader(newLogin);
+
+    // 6) Now that user is established (mustChangePassword = false), voluntary password change REQUIRES currentPassword
+    const voluntaryNoCurrent = await fetch(`${baseUrl}/api/users/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${newCookieToken}`,
+      },
+      body: JSON.stringify({
+        newPassword: 'ThirdPassword789!',
+      }),
+    });
+    assert.equal(voluntaryNoCurrent.status, 400);
+    const errBody = await voluntaryNoCurrent.json();
+    assert.equal(errBody.message, 'Current password is required');
+
+    // 7) Voluntary change with wrong currentPassword fails
+    const voluntaryWrongCurrent = await fetch(`${baseUrl}/api/users/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${newCookieToken}`,
+      },
+      body: JSON.stringify({
+        currentPassword: 'WrongPassword!',
+        newPassword: 'ThirdPassword789!',
+      }),
+    });
+    assert.equal(voluntaryWrongCurrent.status, 400);
+
+    // 8) Voluntary change with correct currentPassword succeeds
+    const voluntarySuccess = await fetch(`${baseUrl}/api/users/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${newCookieToken}`,
+      },
+      body: JSON.stringify({
+        currentPassword: 'NewSecurePassword456!',
+        newPassword: 'ThirdPassword789!',
+      }),
+    });
+    assert.equal(voluntarySuccess.status, 200);
   });
 });
