@@ -98,17 +98,28 @@ router.get(
 
 ```javascript
 // Example: src/features/users/management.service.js
-async function createUser(actorUser, { username, password, firstName, lastName, roleId }) {
-  if (!username || username.trim().length < 3) {
-    throw new Error('Username must be at least 3 characters long');
-  }
-  const existing = await usersRepository.findUserByUsername(username);
-  if (existing) {
-    throw new Error('Username is already in use');
-  }
-  const passwordHash = await bcrypt.hash(password, 10);
-  return usersRepository.createUser({ ... });
+async function createUser(actorUser, { firstName, lastName, phone, birthdate, roleId }) {
+  const baseUsername = generateBaseUsername(firstName, lastName);
+  const existingUsernames = await usersRepository.findUsernamesLike(`${baseUsername}%`);
+  const finalUsername = resolveUniqueUsername(baseUsername, existingUsernames);
+
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+  const createdUser = await usersRepository.createUser({
+    username: finalUsername,
+    passwordHash,
+    firstName,
+    lastName,
+    phone,
+    birthdate,
+    roleId,
+    mustChangePassword: true,
+  });
+
+  return { user: createdUser, temporaryPassword };
 }
+
 ```
 
 ### Layer 3: Repository Layer (`*.repository.js`)

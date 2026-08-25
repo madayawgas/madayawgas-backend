@@ -43,10 +43,12 @@ CREATE TABLE "users" (
     "password_hash" TEXT NOT NULL,
     "first_name" VARCHAR(100) NOT NULL,
     "last_name" VARCHAR(100) NOT NULL,
+    "phone" VARCHAR(20),
     "birthdate" DATE,
     "role_id" UUID NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT TRUE,
     "is_blocked" BOOLEAN NOT NULL DEFAULT FALSE,
+    "must_change_password" BOOLEAN NOT NULL DEFAULT TRUE,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY ("id"),

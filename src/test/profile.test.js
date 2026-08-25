@@ -54,10 +54,10 @@ test('User Profile Operations Tests', async (t) => {
 
     const passwordHash = await bcrypt.hash('TestPass123!', 10);
     const userRes = await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
        RETURNING id`,
-      ['test_prof_superadmin', passwordHash, 'Test', 'Admin', testRoleId]
+      ['test_prof_superadmin', passwordHash, 'Test', 'Admin', '+639170000001', testRoleId]
     );
     testUserId = userRes.rows[0].id;
   });
@@ -66,10 +66,10 @@ test('User Profile Operations Tests', async (t) => {
     // Create regular user
     const userPasswordHash = await bcrypt.hash('UserPass123!', 10);
     const userRes = await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
        RETURNING id`,
-      ['test_prof_regularuser', userPasswordHash, 'Regular', 'User', salesPersonRoleId]
+      ['test_prof_regularuser', userPasswordHash, 'Regular', 'User', '+639170000004', salesPersonRoleId]
     );
     const regularUserId = userRes.rows[0].id;
 
@@ -88,6 +88,7 @@ test('User Profile Operations Tests', async (t) => {
     assert.equal(meRes.status, 200);
     const meData = await meRes.json();
     assert.equal(meData.data.user.username, 'test_prof_regularuser');
+    assert.equal(meData.data.user.phone, '+639170000004');
     assert.equal(meData.data.user.role, 'Sales Person');
 
     // 2) Update own profile personal info via /me
@@ -97,6 +98,7 @@ test('User Profile Operations Tests', async (t) => {
       body: JSON.stringify({
         firstName: 'UpdatedFirst',
         lastName: 'UpdatedLast',
+        phone: '+639179998888',
         birthdate: '1995-12-01',
       }),
     });
@@ -104,6 +106,7 @@ test('User Profile Operations Tests', async (t) => {
     const updateData = await updateRes.json();
     assert.equal(updateData.data.user.firstName, 'UpdatedFirst');
     assert.equal(updateData.data.user.lastName, 'UpdatedLast');
+    assert.equal(updateData.data.user.phone, '+639179998888');
   });
 
   await t.test('2. Role Modification & Profile Access Controls', async () => {
@@ -118,10 +121,10 @@ test('User Profile Operations Tests', async (t) => {
     // Create regular user
     const userPasswordHash = await bcrypt.hash('UserPass123!', 10);
     const userRes = await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
        RETURNING id`,
-      ['test_prof_targetuser', userPasswordHash, 'Target', 'User', salesPersonRoleId]
+      ['test_prof_targetuser', userPasswordHash, 'Target', 'User', '+639170000004', salesPersonRoleId]
     );
     const targetUserId = userRes.rows[0].id;
 

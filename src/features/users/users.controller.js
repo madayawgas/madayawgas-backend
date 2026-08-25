@@ -90,12 +90,13 @@ class UsersController {
    * PATCH /api/users/me
    */
   async updateMe(req, res) {
-    const { firstName, lastName, birthdate } = req.body || {};
+    const { firstName, lastName, phone, birthdate } = req.body || {};
 
     try {
       const updatedUser = await profileService.updateProfile(req.user, req.user.id, {
         firstName,
         lastName,
+        phone,
         birthdate,
       });
 
@@ -189,16 +190,17 @@ class UsersController {
 
   /**
    * POST /api/users
+   * Creates a user account with auto-generated username (e.g. jdoe) and temporary password.
    */
   async createUser(req, res) {
-    const { username, password, firstName, lastName, birthdate, roleId } = req.body || {};
+    const { firstName, lastName, username, phone, birthdate, roleId } = req.body || {};
 
     try {
-      const newUser = await managementService.createUser(req.user, {
-        username,
-        password,
+      const result = await managementService.createUser(req.user, {
         firstName,
         lastName,
+        username,
+        phone,
         birthdate,
         roleId,
       });
@@ -206,7 +208,8 @@ class UsersController {
       return res.status(201).json({
         status: 'success',
         data: {
-          user: newUser,
+          user: result.user,
+          temporaryPassword: result.temporaryPassword,
         },
       });
     } catch (err) {
@@ -249,16 +252,17 @@ class UsersController {
    * PATCH /api/users/:id
    */
   async updateUserProfile(req, res) {
-    const { firstName, lastName, birthdate, roleId } = req.body || {};
+    const { firstName, lastName, phone, birthdate, roleId } = req.body || {};
 
     try {
       let updatedUser;
 
       // Handle personal info updates
-      if (firstName !== undefined || lastName !== undefined || birthdate !== undefined) {
+      if (firstName !== undefined || lastName !== undefined || phone !== undefined || birthdate !== undefined) {
         updatedUser = await profileService.updateProfile(req.user, req.params.id, {
           firstName,
           lastName,
+          phone,
           birthdate,
         });
       }
@@ -295,13 +299,15 @@ class UsersController {
 
   /**
    * PATCH /api/users/:id/credentials
+   * Admin updates username or triggers temporary password reset.
    */
   async updateUserCredentials(req, res) {
-    const { username, password } = req.body || {};
+    const { username, resetPassword, password } = req.body || {};
 
     try {
       const result = await managementService.updateCredentials(req.user, req.params.id, {
         username,
+        resetPassword,
         password,
       });
 

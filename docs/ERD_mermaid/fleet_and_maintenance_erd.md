@@ -2,7 +2,7 @@
 ---
 config:
   layout: elk
-  
+  theme: neutral
 ---
 
 erDiagram
@@ -31,12 +31,12 @@ erDiagram
 
     MAINTENANCE_TYPES {
         int id PK
-        string type_name
+        string type_name UK
     }
 
     INCIDENT_TYPES {
         int id PK
-        string type_name
+        string type_name UK
     }
 
 
@@ -45,13 +45,11 @@ erDiagram
     %% ==========================================
 
     USERS {
-        int id PK
-        string name
     }
 
     TRUCKS {
         int id PK
-        string plate_number
+        string plate_number UK
         string model
         int year_model
         int current_odometer
@@ -117,7 +115,7 @@ erDiagram
         decimal labor_cost
         int downtime_days
         int odometer_at_service
-        string official_receipt_number
+        string official_receipt_number UK
     }
 
 

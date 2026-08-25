@@ -261,52 +261,91 @@ ON CONFLICT DO NOTHING;
 -- 7. INITIAL SUPER ADMIN ACCOUNT
 -- ============================================================
 
-INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
     'superadmin',
-    '$2b$10$qnCAHShST1Tah0wptITHd.NogCo5LgWodvppc1.zBHCXdBDPw3S/O',
+    '$2b$10$0axa4jTJYzHFEpL2wKKOq.HDDez0ahaSATrPZJIhdD2LM7M.w2yFy',
     'Super',
     'Admin',
+    '+639170000001',
     r.id,
     TRUE,
+    FALSE,
     FALSE
 FROM roles r
 WHERE r.name = 'Super Admin'
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
 
 
 -- ============================================================
--- 8. SAMPLE SALES PERSON ACCOUNT
+-- 8. SAMPLE ADMIN ACCOUNT
 -- ============================================================
 
-INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
-    'sales_user',
-    '$2b$10$O8AfEtFmtQ1uFpWUoi0v..gvs6GW6oxTCR8ktMP8YEaQbb9WC/NAm',
-    'Juan',
-    'Sales',
+    'admin_user',
+    '$2b$10$FzzQKJciH89gnOyNK12FuOZmZMIDa/0Ak/y42YK8J4SHoDKHugtoi',
+    'System',
+    'Admin',
+    '+639170000002',
     r.id,
     TRUE,
+    FALSE,
     FALSE
 FROM roles r
-WHERE r.name = 'Sales Person'
-ON CONFLICT (username) DO NOTHING;
+WHERE r.name = 'Admin'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
 
 
 -- ============================================================
 -- 9. SAMPLE FLEET MANAGER ACCOUNT
 -- ============================================================
 
-INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
     'fleet_user',
-    '$2b$10$bq7z2fNj0nWrrHSbDSlXJ.hdu8gs2dc.356FGdx20TPhHcJjVv8Pi',
+    '$2b$10$JGOSJIBM8.zjWXuPD8a/cugoMZRdw7Fpfwx./wVyaxStzwqTweZU.',
     'Carlos',
     'Fleet',
+    '+639170000003',
     r.id,
     TRUE,
+    FALSE,
     FALSE
 FROM roles r
 WHERE r.name = 'Fleet Manager'
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
+
+-- ============================================================
+-- 10. SAMPLE SALES PERSON ACCOUNT
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'sales_user',
+    '$2b$10$eGYcRPDQYEBlyxHUPkP6yeZexdeaguo/JoeJ.W2yinWo2f4BcF.I.',
+    'Juan',
+    'Sales',
+    '+639170000004',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Sales Person'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
 

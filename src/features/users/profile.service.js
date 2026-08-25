@@ -3,7 +3,7 @@ const permissionService = require('./permission.service');
 
 /**
  * Profile Service
- * Handles user profile retrieval and personal details updates (first name, last name, birthdate).
+ * Handles user profile retrieval and personal details updates (first name, last name, phone, birthdate).
  */
 class ProfileService {
   /**
@@ -26,21 +26,23 @@ class ProfileService {
       username: user.username,
       firstName: user.first_name,
       lastName: user.last_name,
+      phone: user.phone,
       birthdate: user.birthdate,
       role: user.role_name,
       roleId: user.role_id,
       isActive: user.is_active,
       isBlocked: user.is_blocked,
+      mustChangePassword: user.must_change_password,
       permissions,
       createdAt: user.created_at,
     };
   }
 
   /**
-   * Updates personal profile information (firstName, lastName, birthdate).
+   * Updates personal profile information (firstName, lastName, phone, birthdate).
    * Enforces self-update vs admin management authorization.
    */
-  async updateProfile(actorUser, targetUserId, { firstName, lastName, birthdate }) {
+  async updateProfile(actorUser, targetUserId, { firstName, lastName, phone, birthdate }) {
     if (!targetUserId) {
       throw new Error('Target user ID is required');
     }
@@ -73,6 +75,10 @@ class ProfileService {
       updatePayload.lastName = lastName.trim();
     }
 
+    if (phone !== undefined) {
+      updatePayload.phone = phone !== null && typeof phone === 'string' ? phone.trim() : null;
+    }
+
     if (birthdate !== undefined) {
       updatePayload.birthdate = birthdate;
     }
@@ -97,11 +103,13 @@ class ProfileService {
       username: updated.username,
       firstName: updated.first_name,
       lastName: updated.last_name,
+      phone: updated.phone,
       birthdate: updated.birthdate,
       role: updated.role_name,
       roleId: updated.role_id,
       isActive: updated.is_active,
       isBlocked: updated.is_blocked,
+      mustChangePassword: updated.must_change_password,
       createdAt: updated.created_at,
     };
   }

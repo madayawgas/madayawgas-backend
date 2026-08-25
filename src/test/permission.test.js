@@ -50,10 +50,11 @@ test('Permission & RBAC Authorization Tests', async (t) => {
 
     const passwordHash = await bcrypt.hash('TestPass123!', 10);
     await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)`,
-      ['test_perm_superadmin', passwordHash, 'Test', 'Admin', testRoleId]
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_perm_superadmin', passwordHash, 'Test', 'Admin', '+639170000001', testRoleId]
     );
+
   });
 
   await t.test('1. RBAC Route Protection - 401 Unauthorized vs 403 Forbidden vs 200 OK', async () => {
@@ -64,10 +65,11 @@ test('Permission & RBAC Authorization Tests', async (t) => {
     // Create user with Sales Person role (lacks 'users.manage' permission)
     const salesPasswordHash = await bcrypt.hash('SalesPass123!', 10);
     await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)`,
-      ['test_perm_sales', salesPasswordHash, 'Sales', 'User', salesPersonRoleId]
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_perm_sales', salesPasswordHash, 'Sales', 'User', '+639170000004', salesPersonRoleId]
     );
+
 
     // Login as Sales Person
     const salesLogin = await fetch(`${baseUrl}/api/users/login`, {

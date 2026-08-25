@@ -43,7 +43,7 @@ Authenticates user credentials and creates a server-side session.
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `username` | String | Yes | Unique system-generated username |
+| `username` | String | Yes | User username |
 | `password` | String | Yes | User password |
 
 #### Response: `200 OK` (Success)
@@ -59,11 +59,13 @@ Sets HTTP-Only `mg_sid` cookie.
       "username": "superadmin",
       "firstName": "Super",
       "lastName": "Admin",
+      "phone": "+639170000001",
       "birthdate": null,
       "role": "Super Admin",
       "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
       "isActive": true,
       "isBlocked": false,
+      "mustChangePassword": false,
       "permissions": [
         "dashboard.view",
         "fleet.view",
@@ -124,7 +126,7 @@ Clears `mg_sid` cookie (`Max-Age=0`).
 
 ### 3. Change Password (Self)
 
-Changes the authenticated user's password and revokes all active sessions for security.
+Changes the authenticated user's password, sets `mustChangePassword = false`, and revokes all active sessions for security.
 
 - **HTTP Method**: `POST`
 - **URL**: `/api/users/change-password`
@@ -134,7 +136,7 @@ Changes the authenticated user's password and revokes all active sessions for se
 
 ```json
 {
-  "currentPassword": "Superadmin123!",
+  "currentPassword": "Mg#8xK9pL2!",
   "newPassword": "NewSecurePassword456!"
 }
 ```
@@ -173,11 +175,13 @@ Fetches profile details and permissions of the currently logged-in user.
       "username": "superadmin",
       "firstName": "Super",
       "lastName": "Admin",
+      "phone": "+639170000001",
       "birthdate": null,
       "role": "Super Admin",
       "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
       "isActive": true,
       "isBlocked": false,
+      "mustChangePassword": false,
       "permissions": [...]
     }
   }
@@ -188,7 +192,7 @@ Fetches profile details and permissions of the currently logged-in user.
 
 ### 5. Update Current User Profile (`/me`)
 
-Updates personal profile information of the currently authenticated user (`firstName`, `lastName`, `birthdate`).
+Updates personal profile information of the currently authenticated user (`firstName`, `lastName`, `phone`, `birthdate`).
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/me`
@@ -200,6 +204,7 @@ Updates personal profile information of the currently authenticated user (`first
 {
   "firstName": "Juan",
   "lastName": "Dela Cruz",
+  "phone": "+639171234567",
   "birthdate": "1990-05-15"
 }
 ```
@@ -215,11 +220,13 @@ Updates personal profile information of the currently authenticated user (`first
       "username": "superadmin",
       "firstName": "Juan",
       "lastName": "Dela Cruz",
+      "phone": "+639171234567",
       "birthdate": "1990-05-15T00:00:00.000Z",
       "role": "Super Admin",
       "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
       "isActive": true,
-      "isBlocked": false
+      "isBlocked": false,
+      "mustChangePassword": false
     }
   }
 }
@@ -250,12 +257,14 @@ Returns a list of all user accounts.
         "username": "superadmin",
         "firstName": "Super",
         "lastName": "Admin",
+        "phone": "+639170000001",
         "birthdate": null,
         "role": "Super Admin",
         "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
         "isActive": true,
         "isBlocked": false,
-        "createdAt": "2026-08-15T08:37:47.789Z"
+        "mustChangePassword": false,
+        "createdAt": "2026-08-25T08:37:47.789Z"
       }
     ]
   }
@@ -266,7 +275,7 @@ Returns a list of all user accounts.
 
 ### 7. Register / Create User Account
 
-Creates a new user account with assigned role and credentials.
+Creates a new user account. **The system automatically generates the username (firstName[0] + lastName, e.g. jdoe) and temporary password.**
 
 - **HTTP Method**: `POST`
 - **URL**: `/api/users`
@@ -277,10 +286,9 @@ Creates a new user account with assigned role and credentials.
 
 ```json
 {
-  "username": "juan_sales",
-  "password": "Password123!",
   "firstName": "Juan",
-  "lastName": "Dela Cruz",
+  "lastName": "Cruz",
+  "phone": "+639171234567",
   "birthdate": "1995-10-20",
   "roleId": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84"
 }
@@ -288,10 +296,9 @@ Creates a new user account with assigned role and credentials.
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `username` | String | Yes | Unique username (min 3 characters) |
-| `password` | String | Yes | Account password (min 8 characters) |
 | `firstName` | String | Yes | User first name |
 | `lastName` | String | Yes | User last name |
+| `phone` | String | No | Contact phone number |
 | `birthdate` | Date/String | No | User birthdate (YYYY-MM-DD or null) |
 | `roleId` | UUID | Yes | Target role ID from roles table |
 
@@ -303,16 +310,19 @@ Creates a new user account with assigned role and credentials.
   "data": {
     "user": {
       "id": "c1f7a4e2-...",
-      "username": "juan_sales",
+      "username": "jcruz",
       "firstName": "Juan",
-      "lastName": "Dela Cruz",
+      "lastName": "Cruz",
+      "phone": "+639171234567",
       "birthdate": "1995-10-20",
       "role": "Sales Person",
       "roleId": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84",
       "isActive": true,
       "isBlocked": false,
-      "createdAt": "2026-08-16T11:55:00.000Z"
-    }
+      "mustChangePassword": true,
+      "createdAt": "2026-08-25T16:30:00.000Z"
+    },
+    "temporaryPassword": "Mg#8xK9pL2!"
   }
 }
 ```
@@ -336,24 +346,18 @@ Retrieves details for a specific user.
   "data": {
     "user": {
       "id": "c1f7a4e2-...",
-      "username": "juan_sales",
+      "username": "jcruz",
       "firstName": "Juan",
-      "lastName": "Dela Cruz",
+      "lastName": "Cruz",
+      "phone": "+639171234567",
       "birthdate": "1995-10-20",
       "role": "Sales Person",
       "roleId": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84",
       "isActive": true,
       "isBlocked": false,
-      "permissions": [
-        "dashboard.view",
-        "route.view_own",
-        "sales.view_own",
-        "sales.create",
-        "sales.update",
-        "delivery.view_own",
-        "delivery.update_own"
-      ],
-      "createdAt": "2026-08-16T11:55:00.000Z"
+      "mustChangePassword": true,
+      "permissions": [...],
+      "createdAt": "2026-08-25T16:30:00.000Z"
     }
   }
 }
@@ -375,7 +379,8 @@ Updates profile information for a target user. Admins can update roles; users ca
 ```json
 {
   "firstName": "Juanito",
-  "lastName": "Dela Cruz",
+  "lastName": "Cruz",
+  "phone": "+639179998877",
   "birthdate": "1995-10-20",
   "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b"
 }
@@ -389,14 +394,16 @@ Updates profile information for a target user. Admins can update roles; users ca
   "data": {
     "user": {
       "id": "c1f7a4e2-...",
-      "username": "juan_sales",
+      "username": "jcruz",
       "firstName": "Juanito",
-      "lastName": "Dela Cruz",
+      "lastName": "Cruz",
+      "phone": "+639179998877",
       "birthdate": "1995-10-20",
       "role": "Fleet Manager",
       "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
       "isActive": true,
-      "isBlocked": false
+      "isBlocked": false,
+      "mustChangePassword": true
     }
   }
 }
@@ -404,9 +411,9 @@ Updates profile information for a target user. Admins can update roles; users ca
 
 ---
 
-### 10. Update User Credentials (Admin Reset)
+### 10. Update User Credentials / Reset Password (Admin Reset)
 
-Allows an administrator to update a user's `username` or reset their `password`. Automatically revokes all existing sessions for the target user.
+Allows an administrator to update a user's `username` or trigger a password reset. Automatically generates a new temporary password and revokes all existing sessions.
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/:id/credentials`
@@ -417,15 +424,15 @@ Allows an administrator to update a user's `username` or reset their `password`.
 
 ```json
 {
-  "username": "juan_manager",
-  "password": "NewAdminAssignedPassword789!"
+  "resetPassword": true,
+  "username": "jcruz_updated"
 }
 ```
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
+| `resetPassword` | Boolean | Optional | Set to `true` to auto-generate a new temporary password |
 | `username` | String | Optional | Updated unique username (min 3 chars) |
-| `password` | String | Optional | Updated password (min 8 chars) |
 
 #### Response: `200 OK` (Success)
 
@@ -434,12 +441,14 @@ Allows an administrator to update a user's `username` or reset their `password`.
   "status": "success",
   "data": {
     "id": "c1f7a4e2-...",
-    "username": "juan_manager",
+    "username": "jcruz_updated",
     "firstName": "Juanito",
-    "lastName": "Dela Cruz",
+    "lastName": "Cruz",
     "role": "Fleet Manager",
     "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
-    "message": "User credentials updated successfully. Target user must log in again."
+    "mustChangePassword": true,
+    "temporaryPassword": "Mg#4aB7zX9!",
+    "message": "Temporary password generated. Target user must log in and change their password."
   }
 }
 ```
@@ -464,11 +473,6 @@ Updates a user account's active or blocked status. Revoking access (`isActive = 
 }
 ```
 
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `isActive` | Boolean | Optional | Set to `false` to deactivate, `true` to activate |
-| `isBlocked` | Boolean | Optional | Set to `true` to block, `false` to unblock |
-
 #### Response: `200 OK` (Success)
 
 ```json
@@ -477,12 +481,14 @@ Updates a user account's active or blocked status. Revoking access (`isActive = 
   "data": {
     "user": {
       "id": "c1f7a4e2-...",
-      "username": "juan_manager",
+      "username": "jcruz",
       "firstName": "Juanito",
-      "lastName": "Dela Cruz",
+      "lastName": "Cruz",
+      "phone": "+639179998877",
       "role": "Fleet Manager",
       "isActive": false,
-      "isBlocked": true
+      "isBlocked": true,
+      "mustChangePassword": true
     }
   }
 }
@@ -492,7 +498,7 @@ Updates a user account's active or blocked status. Revoking access (`isActive = 
 
 ### 12. Get System Roles List
 
-Retrieves available system roles for user creation / assignment.
+Retrieves available system roles.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/users/roles`
@@ -514,17 +520,3 @@ Retrieves available system roles for user creation / assignment.
   }
 }
 ```
-
----
-
-## Authorization & Response Status Codes
-
-| Status Code | Meaning | Cause |
-| :--- | :--- | :--- |
-| **`200 OK`** | Success | Request succeeded |
-| **`201 Created`** | Created | Resource successfully created |
-| **`400 Bad Request`** | Validation Error | Missing required fields, invalid format, duplicate username, or attempting to block Super Admin |
-| **`401 Unauthorized`** | Authentication Failure | Invalid credentials, missing session cookie, or expired session |
-| **`403 Forbidden`** | Permission Denied | Authenticated user lacks required RBAC permission or attempted unauthorized modification |
-| **`404 Not Found`** | Not Found | Target user or role does not exist |
-| **`500 Internal Server Error`** | Server Error | Uncaught server error |

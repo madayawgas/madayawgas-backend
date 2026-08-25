@@ -8,7 +8,8 @@ const { query } = require('../../../database/connection');
 class UsersRepository {
   async findUserByUsername(username) {
     const res = await query(
-      `SELECT u.id, u.username, u.password_hash, u.first_name, u.last_name, u.birthdate, u.role_id, u.is_active, u.is_blocked, u.created_at, r.name as role_name
+      `SELECT u.id, u.username, u.password_hash, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
+              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.username = $1`,
@@ -17,9 +18,18 @@ class UsersRepository {
     return res.rows[0] || null;
   }
 
+  async findUsernamesLike(basePattern) {
+    const res = await query(
+      `SELECT username FROM users WHERE username LIKE $1`,
+      [basePattern]
+    );
+    return res.rows.map((r) => r.username);
+  }
+
   async findUserById(id) {
     const res = await query(
-      `SELECT u.id, u.username, u.first_name, u.last_name, u.birthdate, u.role_id, u.is_active, u.is_blocked, u.created_at, r.name as role_name
+      `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
+              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
@@ -30,7 +40,8 @@ class UsersRepository {
 
   async findUserWithPasswordById(id) {
     const res = await query(
-      `SELECT u.id, u.username, u.password_hash, u.first_name, u.last_name, u.birthdate, u.role_id, u.is_active, u.is_blocked, u.created_at, r.name as role_name
+      `SELECT u.id, u.username, u.password_hash, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
+              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
@@ -41,7 +52,8 @@ class UsersRepository {
 
   async findAllUsers() {
     const res = await query(
-      `SELECT u.id, u.username, u.first_name, u.last_name, u.birthdate, u.role_id, u.is_active, u.is_blocked, u.created_at, r.name as role_name
+      `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
+              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        ORDER BY u.created_at DESC`
@@ -49,17 +61,17 @@ class UsersRepository {
     return res.rows;
   }
 
-  async createUser({ username, passwordHash, firstName, lastName, birthdate = null, roleId }) {
+  async createUser({ username, passwordHash, firstName, lastName, phone = null, birthdate = null, roleId, mustChangePassword = true }) {
     const res = await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, birthdate, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE)
-       RETURNING id, username, first_name, last_name, birthdate, role_id, is_active, is_blocked, created_at`,
-      [username, passwordHash, firstName, lastName, birthdate, roleId]
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE, $8)
+       RETURNING id, username, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password, created_at`,
+      [username, passwordHash, firstName, lastName, phone, birthdate, roleId, mustChangePassword]
     );
     return res.rows[0];
   }
 
-  async updateUserProfile(id, { firstName, lastName, birthdate, roleId }) {
+  async updateUserProfile(id, { firstName, lastName, phone, birthdate, roleId }) {
     const updates = [];
     const values = [];
     let idx = 1;
@@ -71,6 +83,10 @@ class UsersRepository {
     if (lastName !== undefined) {
       updates.push(`last_name = $${idx++}`);
       values.push(lastName);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${idx++}`);
+      values.push(phone);
     }
     if (birthdate !== undefined) {
       updates.push(`birthdate = $${idx++}`);
@@ -96,7 +112,7 @@ class UsersRepository {
     return this.findUserById(id);
   }
 
-  async updateUserCredentials(id, { username, passwordHash }) {
+  async updateUserCredentials(id, { username, passwordHash, mustChangePassword }) {
     const updates = [];
     const values = [];
     let idx = 1;
@@ -108,6 +124,10 @@ class UsersRepository {
     if (passwordHash !== undefined) {
       updates.push(`password_hash = $${idx++}`);
       values.push(passwordHash);
+    }
+    if (mustChangePassword !== undefined) {
+      updates.push(`must_change_password = $${idx++}`);
+      values.push(mustChangePassword);
     }
 
     if (updates.length === 0) {
@@ -203,7 +223,8 @@ class UsersRepository {
   async findSessionByTokenHash(tokenHash) {
     const res = await query(
       `SELECT s.id as session_id, s.user_id, s.token_hash, s.created_at, s.expires_at, s.revoked_at,
-              u.username, u.first_name, u.last_name, u.birthdate, u.role_id, u.is_active, u.is_blocked, r.name as role_name
+              u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id, u.is_active, u.is_blocked,
+              u.must_change_password, r.name as role_name
        FROM sessions s
        JOIN users u ON s.user_id = u.id
        JOIN roles r ON u.role_id = r.id
@@ -255,12 +276,12 @@ class UsersRepository {
     );
   }
 
-  async updatePasswordHash(userId, passwordHash) {
+  async updatePasswordHash(userId, passwordHash, mustChangePassword = false) {
     await query(
       `UPDATE users
-       SET password_hash = $1
-       WHERE id = $2`,
-      [passwordHash, userId]
+       SET password_hash = $1, must_change_password = $2
+       WHERE id = $3`,
+      [passwordHash, mustChangePassword, userId]
     );
   }
 }

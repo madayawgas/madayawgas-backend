@@ -13,6 +13,7 @@
     "test": "node --test src/test/*.test.js",
     "db:setup": "node database/scripts/setup.js",
     "db:migrate": "node database/scripts/migrate.js",
+    "db:seed": "node database/scripts/seed.js",
     "db:export": "node database/scripts/export-schema.js",
     "prepare": "husky"
   },

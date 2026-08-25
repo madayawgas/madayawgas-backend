@@ -49,9 +49,9 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     // Create test superadmin user
     const passwordHash = await bcrypt.hash('TestPass123!', 10);
     await query(
-      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked)
-       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)`,
-      ['test_auth_superadmin', passwordHash, 'Test', 'Admin', testRoleId]
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_auth_superadmin', passwordHash, 'Test', 'Admin', '+639170000001', testRoleId]
     );
   });
 
@@ -73,7 +73,9 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     assert.equal(body.status, 'success');
     assert.ok(body.data.user);
     assert.equal(body.data.user.username, 'test_auth_superadmin');
+    assert.equal(body.data.user.phone, '+639170000001');
     assert.equal(body.data.user.role, 'Super Admin');
+    assert.equal(body.data.user.mustChangePassword, false);
     assert.ok(Array.isArray(body.data.user.permissions));
     assert.equal(body.data.user.password, undefined);
     assert.equal(body.data.user.password_hash, undefined);
@@ -121,6 +123,7 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     const meBody = await meRes.json();
     assert.equal(meBody.status, 'success');
     assert.equal(meBody.data.user.username, 'test_auth_superadmin');
+    assert.equal(meBody.data.user.phone, '+639170000001');
   });
 
   await t.test('4. Session Expiration - Idle Timeout (8 hours)', async () => {
@@ -188,12 +191,23 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
     assert.equal(meRes.status, 401);
   });
 
-  await t.test('7. Password Change Flow (Self)', async () => {
+  await t.test('7. Password Change Flow (Self) - sets mustChangePassword to false', async () => {
+    // Insert user with must_change_password = true
+    const tempHash = await bcrypt.hash('TempPassword123!', 10);
+    await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, TRUE, FALSE, TRUE)`,
+      ['test_auth_tempuser', tempHash, 'Temp', 'User', testRoleId]
+    );
+
     const loginRes = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'test_auth_superadmin', password: 'TestPass123!' }),
+      body: JSON.stringify({ username: 'test_auth_tempuser', password: 'TempPassword123!' }),
     });
+    assert.equal(loginRes.status, 200);
+    const loginBody = await loginRes.json();
+    assert.equal(loginBody.data.user.mustChangePassword, true);
     const cookieToken = parseCookieHeader(loginRes);
 
     const changeRes = await fetch(`${baseUrl}/api/users/change-password`, {
@@ -203,25 +217,29 @@ test('Authentication & Session Lifecycle Tests', async (t) => {
         Cookie: `mg_sid=${cookieToken}`,
       },
       body: JSON.stringify({
-        currentPassword: 'TestPass123!',
+        currentPassword: 'TempPassword123!',
         newPassword: 'NewSecurePassword456!',
       }),
     });
 
     assert.equal(changeRes.status, 200);
 
+    // Old login fails
     const oldLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'test_auth_superadmin', password: 'TestPass123!' }),
+      body: JSON.stringify({ username: 'test_auth_tempuser', password: 'TempPassword123!' }),
     });
     assert.equal(oldLogin.status, 401);
 
+    // New login succeeds and mustChangePassword is false
     const newLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'test_auth_superadmin', password: 'NewSecurePassword456!' }),
+      body: JSON.stringify({ username: 'test_auth_tempuser', password: 'NewSecurePassword456!' }),
     });
     assert.equal(newLogin.status, 200);
+    const newLoginBody = await newLogin.json();
+    assert.equal(newLoginBody.data.user.mustChangePassword, false);
   });
 });

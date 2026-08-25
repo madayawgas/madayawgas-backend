@@ -2,39 +2,31 @@ const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const authService = require('./auth.service');
 const profileService = require('./profile.service');
+const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
+const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
 
 /**
  * Management Service
- * Handles user administration, account registration, credential updates,
- * status activation/deactivation, account blocking/unblocking, and role assignments.
+ * Handles user administration, automatic account creation with auto-generated username
+ * and temporary password, credential resets, account deactivation/blocking, and role assignments.
  */
 class ManagementService {
   /**
    * Registers/Creates a new user account (Admin operation).
+   * Automatically generates the username (firstName[0] + lastName, e.g. jdoe)
+   * and generates a cryptographically random temporary password.
    */
-  async createUser(actorUser, { username, password, firstName, lastName, birthdate = null, roleId }) {
-    if (!username || typeof username !== 'string' || username.trim().length < 3) {
-      throw new Error('Username must be at least 3 characters long');
+  async createUser(actorUser, { firstName, lastName, username: explicitUsername, phone = null, birthdate = null, roleId }) {
+    if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
+      throw new Error('First name is required');
     }
 
-    if (!password || typeof password !== 'string' || password.length < 8) {
-      throw new Error('Password must be at least 8 characters long');
-    }
-
-    if (!firstName || !lastName) {
-      throw new Error('First name and last name are required');
+    if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+      throw new Error('Last name is required');
     }
 
     if (!roleId) {
       throw new Error('Role ID is required');
-    }
-
-    const trimmedUsername = username.trim();
-
-    // Check username uniqueness
-    const existing = await usersRepository.findUserByUsername(trimmedUsername);
-    if (existing) {
-      throw new Error('Username is already in use');
     }
 
     // Validate role exists
@@ -43,15 +35,35 @@ class ManagementService {
       throw new Error('Invalid role ID');
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    let finalUsername;
+
+    if (explicitUsername && typeof explicitUsername === 'string' && explicitUsername.trim().length >= 3) {
+      const trimmed = explicitUsername.trim();
+      const existing = await usersRepository.findUserByUsername(trimmed);
+      if (existing) {
+        throw new Error('Username is already in use');
+      }
+      finalUsername = trimmed;
+    } else {
+      // Auto-generate username from firstName and lastName (e.g. John Doe -> jdoe)
+      const baseUsername = generateBaseUsername(firstName, lastName);
+      const existingUsernames = await usersRepository.findUsernamesLike(`${baseUsername}%`);
+      finalUsername = resolveUniqueUsername(baseUsername, existingUsernames);
+    }
+
+    // Auto-generate randomized temporary password
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
     const createdUser = await usersRepository.createUser({
-      username: trimmedUsername,
+      username: finalUsername,
       passwordHash,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
+      phone: phone !== null && typeof phone === 'string' ? phone.trim() : null,
       birthdate,
       roleId,
+      mustChangePassword: true,
     });
 
     if (actorUser) {
@@ -64,16 +76,21 @@ class ManagementService {
     }
 
     return {
-      id: createdUser.id,
-      username: createdUser.username,
-      firstName: createdUser.first_name,
-      lastName: createdUser.last_name,
-      birthdate: createdUser.birthdate,
-      role: role.name,
-      roleId: createdUser.role_id,
-      isActive: createdUser.is_active,
-      isBlocked: createdUser.is_blocked,
-      createdAt: createdUser.created_at,
+      user: {
+        id: createdUser.id,
+        username: createdUser.username,
+        firstName: createdUser.first_name,
+        lastName: createdUser.last_name,
+        phone: createdUser.phone,
+        birthdate: createdUser.birthdate,
+        role: role.name,
+        roleId: createdUser.role_id,
+        isActive: createdUser.is_active,
+        isBlocked: createdUser.is_blocked,
+        mustChangePassword: createdUser.must_change_password,
+        createdAt: createdUser.created_at,
+      },
+      temporaryPassword,
     };
   }
 
@@ -87,11 +104,13 @@ class ManagementService {
       username: u.username,
       firstName: u.first_name,
       lastName: u.last_name,
+      phone: u.phone,
       birthdate: u.birthdate,
       role: u.role_name,
       roleId: u.role_id,
       isActive: u.is_active,
       isBlocked: u.is_blocked,
+      mustChangePassword: u.must_change_password,
       createdAt: u.created_at,
     }));
   }
@@ -135,26 +154,30 @@ class ManagementService {
       username: updated.username,
       firstName: updated.first_name,
       lastName: updated.last_name,
+      phone: updated.phone,
       birthdate: updated.birthdate,
       role: updated.role_name,
       roleId: updated.role_id,
       isActive: updated.is_active,
       isBlocked: updated.is_blocked,
+      mustChangePassword: updated.must_change_password,
       createdAt: updated.created_at,
     };
   }
 
   /**
-   * Updates user credentials (username and/or password) as an Administrator.
-   * Revokes all active sessions for the target user.
+   * Updates user credentials (username and/or triggers password reset) as an Administrator.
+   * If resetPassword is true (or password requested), generates a new temporary password,
+   * sets must_change_password = true, and revokes all active sessions for the target user.
    */
-  async updateCredentials(actorUser, targetUserId, { username, password }) {
+  async updateCredentials(actorUser, targetUserId, { username, resetPassword = false, password }) {
     const target = await usersRepository.findUserById(targetUserId);
     if (!target) {
       throw new Error('User not found');
     }
 
     const updatePayload = {};
+    let generatedTemporaryPassword = null;
 
     if (username !== undefined) {
       if (typeof username !== 'string' || username.trim().length < 3) {
@@ -170,11 +193,14 @@ class ManagementService {
       }
     }
 
-    if (password !== undefined) {
-      if (typeof password !== 'string' || password.length < 8) {
-        throw new Error('Password must be at least 8 characters long');
-      }
-      updatePayload.passwordHash = await bcrypt.hash(password, 10);
+    if (resetPassword || password !== undefined) {
+      const tempPass = password && typeof password === 'string' && password.length >= 8
+        ? password
+        : generateTemporaryPassword();
+
+      generatedTemporaryPassword = tempPass;
+      updatePayload.passwordHash = await bcrypt.hash(tempPass, 10);
+      updatePayload.mustChangePassword = true;
     }
 
     if (Object.keys(updatePayload).length === 0) {
@@ -193,15 +219,23 @@ class ManagementService {
       description: `Admin updated credentials for user ${target.username}`,
     });
 
-    return {
+    const response = {
       id: updated.id,
       username: updated.username,
       firstName: updated.first_name,
       lastName: updated.last_name,
       role: updated.role_name,
       roleId: updated.role_id,
+      mustChangePassword: updated.must_change_password,
       message: 'User credentials updated successfully. Target user must log in again.',
     };
+
+    if (generatedTemporaryPassword) {
+      response.temporaryPassword = generatedTemporaryPassword;
+      response.message = 'Temporary password generated. Target user must log in and change their password.';
+    }
+
+    return response;
   }
 
   /**
@@ -263,9 +297,11 @@ class ManagementService {
       username: updated.username,
       firstName: updated.first_name,
       lastName: updated.last_name,
+      phone: updated.phone,
       role: updated.role_name,
       isActive: updated.is_active,
       isBlocked: updated.is_blocked,
+      mustChangePassword: updated.must_change_password,
     };
   }
 

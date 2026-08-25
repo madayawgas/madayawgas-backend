@@ -83,11 +83,13 @@ class AuthService {
         username: sessionData.username,
         firstName: sessionData.first_name,
         lastName: sessionData.last_name,
+        phone: sessionData.phone,
         birthdate: sessionData.birthdate,
         role: sessionData.role_name,
         roleId: sessionData.role_id,
         isActive: sessionData.is_active,
         isBlocked: sessionData.is_blocked,
+        mustChangePassword: sessionData.must_change_password,
         permissions,
       },
       session: {
@@ -126,11 +128,13 @@ class AuthService {
       username: user.username,
       firstName: user.first_name,
       lastName: user.last_name,
+      phone: user.phone,
       birthdate: user.birthdate,
       role: user.role_name,
       roleId: user.role_id,
       isActive: user.is_active,
       isBlocked: user.is_blocked,
+      mustChangePassword: user.must_change_password,
       permissions,
     };
 
@@ -154,7 +158,8 @@ class AuthService {
   }
 
   /**
-   * Changes current authenticated user's password and revokes all active sessions.
+   * Changes current authenticated user's password, sets must_change_password to FALSE,
+   * and revokes all active sessions.
    */
   async changePassword(userId, currentPassword, newPassword) {
     if (!currentPassword || !newPassword) {
@@ -176,12 +181,13 @@ class AuthService {
     }
 
     const newPasswordHash = await bcrypt.hash(newPassword, 10);
-    await usersRepository.updatePasswordHash(userId, newPasswordHash);
+    // Sets must_change_password = false
+    await usersRepository.updatePasswordHash(userId, newPasswordHash, false);
 
     // Invalidate all active sessions for security
     await this.revokeAllUserSessions(userId);
 
-    return { message: 'Password changed successfully' };
+    return { message: 'Password changed successfully. Please log in again.' };
   }
 
   /**
