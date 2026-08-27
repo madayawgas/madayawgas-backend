@@ -12,17 +12,17 @@ erDiagram
     %% ==========================================
 
     %% PostgreSQL ENUMS:
-    %% truck_status:
-    %%   ACTIVE, INACTIVE, UNDER_MAINTENANCE, RETIRED
+    %%   truck_status:
+    %%     ACTIVE, INACTIVE, UNDER_MAINTENANCE, RETIRED
 
-    %% maintenance_severity:
-    %%   LOW, MEDIUM, HIGH, CRITICAL
+    %%   maintenance_severity:
+    %%     LOW, MEDIUM, HIGH, CRITICAL
 
-    %% work_order_status: 
-    %%   PENDING, APPROVED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+    %%   work_order_status:
+    %%     PENDING, APPROVED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
 
-    %% inspection_result:
-    %%   PASSED, FAILED, NEEDS_ATTENTION
+    %%   inspection_result:
+    %%     PASSED, FAILED, NEEDS_ATTENTION
 
 
     %% ==========================================
@@ -49,6 +49,7 @@ erDiagram
 
     TRUCKS {
         int id PK
+        int driver_id FK "Nullable, UK"
         string plate_number UK
         string model
         int year_model
@@ -123,22 +124,28 @@ erDiagram
     %% RELATIONSHIPS
     %% ==========================================
 
+    %% Current driver assignment
+    USERS ||--o| TRUCKS : "assigned to"
+
+    %% Lookup / classification relationships
     MAINTENANCE_TYPES ||--o{ WORK_ORDERS : "classifies"
     MAINTENANCE_TYPES ||--o{ MAINTENANCE_LOGS : "classifies"
-
     INCIDENT_TYPES ||--o{ INCIDENT_REPORTS : "categorizes"
 
+    %% User actions
     USERS ||--o{ VEHICLE_INSPECTIONS : "conducts"
     USERS ||--o{ INCIDENT_REPORTS : "reports"
     USERS ||--o{ WORK_ORDERS : "creates"
     USERS ||--o{ APPROVAL_REQUESTS : "decides"
 
+    %% Truck relationships
     TRUCKS ||--o{ VEHICLE_INSPECTIONS : "undergoes"
     TRUCKS ||--o{ INCIDENT_REPORTS : "involved_in"
     TRUCKS ||--o{ WORK_ORDERS : "sent_for"
 
+    %% Maintenance workflow
     VEHICLE_INSPECTIONS ||--o| WORK_ORDERS : "triggers"
     INCIDENT_REPORTS ||--o| WORK_ORDERS : "triggers"
-
     WORK_ORDERS ||--o| APPROVAL_REQUESTS : "requires"
     WORK_ORDERS ||--o| MAINTENANCE_LOGS : "finalized_as"
+```

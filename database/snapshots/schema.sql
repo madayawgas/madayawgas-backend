@@ -235,6 +235,7 @@ CREATE TABLE public.sessions (
 
 CREATE TABLE public.trucks (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    driver_id uuid,
     plate_number character varying(20) NOT NULL,
     model character varying(100) NOT NULL,
     year_model integer NOT NULL,
@@ -355,6 +356,13 @@ ALTER TABLE ONLY public.permissions
 
 ALTER TABLE ONLY public.roles
     ADD CONSTRAINT "UQ_roles_name" UNIQUE (name);
+
+--
+-- Name: trucks UQ_trucks_driver_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.trucks
+    ADD CONSTRAINT "UQ_trucks_driver_id" UNIQUE (driver_id);
 
 --
 -- Name: trucks UQ_trucks_plate_number; Type: CONSTRAINT; Schema: public; Owner: -
@@ -525,6 +533,12 @@ CREATE INDEX "IX_maintenance_logs_maintenance_type_id" ON public.maintenance_log
 CREATE INDEX "IX_maintenance_logs_work_order_id" ON public.maintenance_logs USING btree (work_order_id);
 
 --
+-- Name: IX_trucks_driver_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_trucks_driver_id" ON public.trucks USING btree (driver_id);
+
+--
 -- Name: IX_vehicle_inspections_inspector_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -643,6 +657,13 @@ ALTER TABLE ONLY public.role_permissions
 
 ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT "FK_sessions_user_id" FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+--
+-- Name: trucks FK_trucks_driver_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.trucks
+    ADD CONSTRAINT "FK_trucks_driver_id" FOREIGN KEY (driver_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 --
 -- Name: users FK_users_role_id; Type: FK CONSTRAINT; Schema: public; Owner: -
