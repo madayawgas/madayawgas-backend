@@ -43,14 +43,33 @@ ON CONFLICT (type_name) DO NOTHING;
 -- 3. TRUCKS (FLEET VEHICLES)
 -- ============================================================
 
-INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
-VALUES
-    ('ABC-1001', 'Isuzu Elf N-Series', 2022, 45000, 40000, 'ACTIVE'),
-    ('ABC-1002', 'Fuso Canter FE71', 2021, 62500, 60000, 'ACTIVE'),
-    ('ABC-1003', 'Hino 300 Series', 2023, 28000, 25000, 'UNDER_MAINTENANCE'),
-    ('ABC-1004', 'Isuzu Forward', 2020, 115000, 110000, 'ACTIVE'),
-    ('ABC-1005', 'Hyundai HD78 GT', 2019, 148000, 140000, 'INACTIVE')
+INSERT INTO trucks (plate_number, driver_id, model, year_model, current_odometer, last_pm_odometer, status)
+SELECT
+    'ABC-1001',
+    u.id,
+    'Isuzu Elf N-Series',
+    2022,
+    45000,
+    40000,
+    'ACTIVE'::truck_status
+FROM users u
+WHERE u.username = 'sales_user'
 ON CONFLICT (plate_number) DO UPDATE SET
+    driver_id = EXCLUDED.driver_id,
+    model = EXCLUDED.model,
+    year_model = EXCLUDED.year_model,
+    current_odometer = EXCLUDED.current_odometer,
+    last_pm_odometer = EXCLUDED.last_pm_odometer,
+    status = EXCLUDED.status;
+
+INSERT INTO trucks (plate_number, driver_id, model, year_model, current_odometer, last_pm_odometer, status)
+VALUES
+    ('ABC-1002', NULL, 'Fuso Canter FE71', 2021, 62500, 60000, 'ACTIVE'),
+    ('ABC-1003', NULL, 'Hino 300 Series', 2023, 28000, 25000, 'UNDER_MAINTENANCE'),
+    ('ABC-1004', NULL, 'Isuzu Forward', 2020, 115000, 110000, 'ACTIVE'),
+    ('ABC-1005', NULL, 'Hyundai HD78 GT', 2019, 148000, 140000, 'INACTIVE')
+ON CONFLICT (plate_number) DO UPDATE SET
+    driver_id = EXCLUDED.driver_id,
     model = EXCLUDED.model,
     year_model = EXCLUDED.year_model,
     current_odometer = EXCLUDED.current_odometer,

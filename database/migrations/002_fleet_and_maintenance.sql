@@ -82,6 +82,7 @@ CREATE TABLE "incident_types" (
 
 CREATE TABLE "trucks" (
     "id" UUID DEFAULT gen_random_uuid(),
+    "driver_id" UUID,
     "plate_number" VARCHAR(20) NOT NULL,
     "model" VARCHAR(100) NOT NULL,
     "year_model" INT NOT NULL,
@@ -91,9 +92,15 @@ CREATE TABLE "trucks" (
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY ("id"),
+    CONSTRAINT "UQ_trucks_driver_id" UNIQUE ("driver_id"),
     CONSTRAINT "UQ_trucks_plate_number" UNIQUE ("plate_number"),
     CONSTRAINT "CHK_trucks_current_odometer" CHECK ("current_odometer" >= 0),
-    CONSTRAINT "CHK_trucks_last_pm_odometer" CHECK ("last_pm_odometer" >= 0)
+    CONSTRAINT "CHK_trucks_last_pm_odometer" CHECK ("last_pm_odometer" >= 0),
+
+    CONSTRAINT "FK_trucks_driver_id"
+        FOREIGN KEY ("driver_id")
+        REFERENCES "users"("id")
+        ON DELETE SET NULL
 );
 
 
@@ -283,6 +290,8 @@ CREATE TABLE "maintenance_logs" (
 -- ============================================================
 -- 9. PERFORMANCE INDEXES
 -- ============================================================
+
+CREATE INDEX "IX_trucks_driver_id" ON "trucks" ("driver_id");
 
 CREATE INDEX "IX_vehicle_inspections_truck_id" ON "vehicle_inspections" ("truck_id");
 CREATE INDEX "IX_vehicle_inspections_inspector_id" ON "vehicle_inspections" ("inspector_id");
