@@ -351,4 +351,80 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(Array.isArray(rolesData.data.roles));
     assert.ok(rolesData.data.roles.some((r) => r.name === 'Super Admin'));
   });
+
+  await t.test('5. Change User Role (Admin Operation: PATCH /api/users/:id/role)', async () => {
+    const adminLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_mgmt_superadmin', password: 'TestPass123!' }),
+    });
+    const adminCookie = parseCookieHeader(adminLogin);
+
+    const fleetRoleRes = await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`);
+    const fleetRoleId = fleetRoleRes.rows[0].id;
+
+    // 1) Create a user with Sales Person role
+    const userPassHash = await bcrypt.hash('TargetPass123!', 10);
+    const userRes = await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
+       RETURNING id`,
+      ['test_mgmt_target_role', userPassHash, 'Role', 'Target', '+639170000088', salesPersonRoleId]
+    );
+    const targetUserId = userRes.rows[0].id;
+
+    // Log in as target user to establish active session
+    const targetLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_mgmt_target_role', password: 'TargetPass123!' }),
+    });
+    assert.equal(targetLogin.status, 200);
+    const targetCookie = parseCookieHeader(targetLogin);
+
+    // 2) Non-admin cannot change roles (403 Forbidden)
+    const unauthorizedRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${targetCookie}` },
+      body: JSON.stringify({ roleId: fleetRoleId }),
+    });
+    assert.equal(unauthorizedRoleChange.status, 403);
+
+    // 3) Admin changes user's role to Fleet Manager
+    const adminRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ roleId: fleetRoleId }),
+    });
+    assert.equal(adminRoleChange.status, 200);
+    const roleChangeBody = await adminRoleChange.json();
+    assert.equal(roleChangeBody.status, 'success');
+    assert.equal(roleChangeBody.data.user.role, 'Fleet Manager');
+    assert.ok(Array.isArray(roleChangeBody.data.user.permissions));
+    assert.ok(roleChangeBody.data.user.permissions.includes('fleet.view'));
+
+    // 4) Target user's active session is invalidated immediately
+    const checkTargetSession = await fetch(`${baseUrl}/api/users/me`, {
+      headers: { Cookie: `mg_sid=${targetCookie}` },
+    });
+    assert.equal(checkTargetSession.status, 401);
+
+    // 5) Invalid role ID returns 400 Bad Request
+    const invalidRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ roleId: '00000000-0000-0000-0000-000000000000' }),
+    });
+    assert.equal(invalidRoleChange.status, 400);
+
+    // 6) Primary superadmin role cannot be changed
+    const superAdminRoleChange = await fetch(`${baseUrl}/api/users/${testUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ roleId: salesPersonRoleId }),
+    });
+    assert.equal(superAdminRoleChange.status, 400);
+    const superAdminErr = await superAdminRoleChange.json();
+    assert.equal(superAdminErr.message, 'Cannot change the role of a Super Admin account');
+  });
 });

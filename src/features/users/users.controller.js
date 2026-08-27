@@ -283,6 +283,38 @@ class UsersController {
   }
 
   /**
+   * PATCH /api/users/:id/role
+   * Admin updates a user's role and assigns new permissions.
+   */
+  async updateUserRole(req, res) {
+    const { roleId } = req.body || {};
+
+    if (!roleId) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Role ID is required',
+      });
+    }
+
+    try {
+      const updatedUser = await managementService.updateUserRole(req.user, req.params.id, roleId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'User role updated successfully',
+        data: {
+          user: updatedUser,
+        },
+      });
+    } catch (err) {
+      return res.status(400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
    * PATCH /api/users/:id/credentials
    * Admin updates username or triggers temporary password reset (requires adminPassword).
    */

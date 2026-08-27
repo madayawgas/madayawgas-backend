@@ -132,12 +132,16 @@ class ManagementService {
 
   /**
    * Updates user role as an Administrator.
-   * Revokes all active sessions for the target user.
+   * Revokes all active sessions for the target user so updated permissions apply immediately.
    */
   async updateUserRole(actorUser, targetUserId, roleId) {
     const target = await usersRepository.findUserById(targetUserId);
     if (!target) {
       throw new Error('User not found');
+    }
+
+    if (target.username === 'superadmin' || target.role_name === 'Super Admin') {
+      throw new Error('Cannot change the role of a Super Admin account');
     }
 
     const role = await usersRepository.findRoleById(roleId);
@@ -157,6 +161,8 @@ class ManagementService {
       description: `Updated role for user ${target.username} to ${role.name}`,
     });
 
+    const permissions = await usersRepository.getPermissionsByRoleId(updated.role_id);
+
     return {
       id: updated.id,
       username: updated.username,
@@ -169,6 +175,7 @@ class ManagementService {
       isActive: updated.is_active,
       isBlocked: updated.is_blocked,
       mustChangePassword: updated.must_change_password,
+      permissions,
       createdAt: updated.created_at,
     };
   }

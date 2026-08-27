@@ -64,6 +64,13 @@ router.patch(
 );
 
 router.patch(
+  '/:id/role',
+  authenticate,
+  requirePermission('users.manage'),
+  asyncHandler(usersController.updateUserRole.bind(usersController))
+);
+
+router.patch(
   '/:id/credentials',
   authenticate,
   requirePermission('users.manage'),

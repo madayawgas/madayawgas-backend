@@ -137,6 +137,29 @@ When an employee leaves the company or is suspended:
 
 ---
 
+### Flow 6: Changing an Employee's Role (User Administration)
+
+When an employee is promoted, transferred, or needs their system responsibilities updated:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin
+    participant System as MadayawGas System
+    actor Employee
+
+    Admin->>System: Selects Employee -> Chooses New Role (e.g. "Fleet Manager")
+    Note over System: 1. Validates target user & new role<br/>2. Updates role in database<br/>3. Immediately revokes all active sessions of employee<br/>4. Writes audit log (USER_ROLE_UPDATED)
+    System-->>Admin: 200 OK (Returns updated user profile & new permissions)
+    Note over Employee,System: Employee's next request requires logging in again to activate new permissions
+```
+
+#### Key Rules:
+- **Instant Security**: When an Admin updates a user's role, the target user's active session is immediately revoked so they cannot perform outdated permissions.
+- **Super Admin Protection**: The primary Super Admin account cannot have its role changed or demoted.
+
+---
+
 ## 3. System Roles & Permissions Matrix
 
 The MadayawGas system uses **Role-Based Access Control (RBAC)**. Here is what each role is permitted to do:
