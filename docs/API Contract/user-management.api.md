@@ -419,7 +419,64 @@ Updates profile information for a target user. Admins can update roles; users ca
 
 ---
 
-### 10. Update User Credentials / Reset Password (Admin Reset)
+### 10. Change User Role (Admin)
+
+Updates a user's system role and reconfigures their permissions. Revokes all active sessions for the user so updated permissions apply immediately.
+
+- **HTTP Method**: `PATCH`
+- **URL**: `/api/users/:id/role`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission**: `users.manage`
+
+#### Request Body
+
+```json
+{
+  "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `roleId` | UUID | **Yes** | Valid Role UUID to assign to the user |
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "User role updated successfully",
+  "data": {
+    "user": {
+      "id": "c1f7a4e2-...",
+      "username": "jcruz",
+      "firstName": "Juan",
+      "lastName": "Cruz",
+      "phone": "+639171234567",
+      "birthdate": "1995-10-20",
+      "role": "Fleet Manager",
+      "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
+      "isActive": true,
+      "isBlocked": false,
+      "mustChangePassword": false,
+      "permissions": [
+        "dashboard.view",
+        "fleet.view",
+        "fleet.manage",
+        "route.view",
+        "route.manage",
+        "delivery.view",
+        "delivery.update"
+      ],
+      "createdAt": "2026-08-25T16:30:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+### 11. Update User Credentials / Reset Password (Admin Reset)
 
 Allows an administrator to update a user's `username` or trigger a password reset. **Requires the administrator's password confirmation (`adminPassword`)**. Automatically generates a new temporary password and revokes all existing sessions.
 
@@ -465,7 +522,7 @@ Allows an administrator to update a user's `username` or trigger a password rese
 
 ---
 
-### 11. Deactivate / Activate or Block / Unblock User Account
+### 12. Deactivate / Activate or Block / Unblock User Account
 
 Updates a user account's active or blocked status. **Requires the administrator's password confirmation (`adminPassword`)**. Revoking access (`isActive = false` or `isBlocked = true`) immediately invalidates all active sessions. Super Admin accounts cannot be deactivated or blocked.
 

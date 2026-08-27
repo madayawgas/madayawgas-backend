@@ -172,8 +172,13 @@ madayawgas-backend/
      * `src/features/fleet/trucks/`: Vehicle CRUD, registration options, deactivation, and single-driver assignment.
      * `src/features/fleet/availability/`: Overview aggregate metrics, available vehicle filtering, and operational condition state transitions.
      * `src/features/fleet/fleet.routes.js`: Route registration guarded with `fleet.view` and `fleet.manage`.
-   * Created integration test suite in `src/test/fleet.test.js` covering RBAC, overview, registration, updates, status transitions, deactivation, and driver assignment constraints (29 total project tests passing).
+   * Created integration test suite in `src/test/fleet.test.js` covering RBAC, overview, registration, updates, status transitions, deactivation, and driver assignment constraints.
    * Created formal API contract `docs/API Contract/fleet-and-maintenance.api.md`.
+8. **User Administration: Change User Role (`PATCH /api/users/:id/role`)**:
+   * Implemented dedicated route `PATCH /api/users/:id/role` guarded with `users.manage` permission.
+   * Service automatically updates user's role, fetches updated permissions array, logs audit trail (`USER_ROLE_UPDATED`), and immediately invalidates active sessions so new permissions take effect immediately.
+   * Enforced safety guard preventing role modification on the primary Super Admin account.
+   * Added comprehensive integration test suite in `src/test/management.test.js` (31 total project tests passing with 100% success).
 
 ---
 
