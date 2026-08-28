@@ -1,4 +1,5 @@
 const productsRepository = require('./products.repository');
+const { historyService, EVENTS } = require('../../history');
 
 const ALLOWED_CONTAINER_TYPES = ['CYLINDER', 'CANISTER'];
 
@@ -117,7 +118,16 @@ class ProductsService {
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     });
 
-    return formatProduct(createdRow);
+    const result = formatProduct(createdRow);
+
+    await historyService.log(EVENTS.PRODUCT_CREATED, {
+      actorUser,
+      targetId: result.id,
+      payload: { name: result.name, category: result.category },
+      metadata: { containerType: result.containerType, netWeightKg: result.netWeightKg },
+    });
+
+    return result;
   }
 
   /**
@@ -198,7 +208,14 @@ class ProductsService {
     }
 
     const updatedRow = await productsRepository.updateProduct(id, updateFields);
-    return formatProduct(updatedRow);
+    const updated = formatProduct(updatedRow);
+
+    await historyService.log(EVENTS.PRODUCT_UPDATED, {
+      targetId: id,
+      payload: { name: updated.name },
+    });
+
+    return updated;
   }
 
   /**
@@ -217,7 +234,14 @@ class ProductsService {
     }
 
     const deactivatedRow = await productsRepository.deactivateProduct(id);
-    return formatProduct(deactivatedRow);
+    const deactivated = formatProduct(deactivatedRow);
+
+    await historyService.log(EVENTS.PRODUCT_DEACTIVATED, {
+      targetId: id,
+      payload: { name: deactivated.name },
+    });
+
+    return deactivated;
   }
 }
 

@@ -1,4 +1,5 @@
 const trucksRepository = require('./trucks.repository');
+const { historyService, EVENTS } = require('../../history');
 
 /**
  * Maps database row to camelCase DTO with soft-bounded driver details and availability.
@@ -153,8 +154,16 @@ class TrucksService {
       driverId: finalDriverId,
     });
 
+    const result = await this.getTruckById(createdRow.id);
+
+    await historyService.log(EVENTS.TRUCK_REGISTERED, {
+      actorUser,
+      targetId: result.id,
+      payload: { plateNumber: result.plateNumber, model: result.model },
+    });
+
     // Return with full joined details
-    return this.getTruckById(createdRow.id);
+    return result;
   }
 
   /**
@@ -219,7 +228,14 @@ class TrucksService {
     }
 
     await trucksRepository.updateTruck(id, updates);
-    return this.getTruckById(id);
+    const updated = await this.getTruckById(id);
+
+    await historyService.log(EVENTS.TRUCK_UPDATED, {
+      targetId: id,
+      payload: { plateNumber: updated.plateNumber },
+    });
+
+    return updated;
   }
 
   /**
@@ -236,7 +252,14 @@ class TrucksService {
     }
 
     await trucksRepository.deactivateTruck(id);
-    return this.getTruckById(id);
+    const deactivated = await this.getTruckById(id);
+
+    await historyService.log(EVENTS.TRUCK_DEACTIVATED, {
+      targetId: id,
+      payload: { plateNumber: deactivated.plateNumber },
+    });
+
+    return deactivated;
   }
 
   /**
@@ -255,7 +278,14 @@ class TrucksService {
     // Unassignment case
     if (driverId === null || driverId === undefined || driverId === '') {
       await trucksRepository.assignDriver(truckId, null);
-      return this.getTruckById(truckId);
+      const unassigned = await this.getTruckById(truckId);
+
+      await historyService.log(EVENTS.TRUCK_DRIVER_UNASSIGNED, {
+        targetId: truckId,
+        payload: { plateNumber: unassigned.plateNumber },
+      });
+
+      return unassigned;
     }
 
     // Assignment case: verify vehicle is not inactive or retired
@@ -279,7 +309,17 @@ class TrucksService {
     }
 
     await trucksRepository.assignDriver(truckId, driverId);
-    return this.getTruckById(truckId);
+    const assigned = await this.getTruckById(truckId);
+
+    await historyService.log(EVENTS.TRUCK_DRIVER_ASSIGNED, {
+      targetId: truckId,
+      payload: {
+        plateNumber: assigned.plateNumber,
+        driverName: `${driver.first_name} ${driver.last_name}`,
+      },
+    });
+
+    return assigned;
   }
 
   /**
@@ -319,6 +359,12 @@ class TrucksService {
     const lastPmOdometer = Number(existingTruck.last_pm_odometer);
     const distanceRecorded = newOdometer - previousOdometer;
     const distanceSinceLastPm = newOdometer - lastPmOdometer;
+
+    await historyService.log(EVENTS.TRUCK_ODOMETER_RECORDED, {
+      actorUser,
+      targetId: truckId,
+      payload: { plateNumber: updatedTruck.plateNumber, odometer: newOdometer },
+    });
 
     return {
       truck: updatedTruck,

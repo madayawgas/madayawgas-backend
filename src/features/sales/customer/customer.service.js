@@ -1,4 +1,5 @@
 const customerRepository = require('./customer.repository');
+const { historyService, EVENTS } = require('../../history');
 
 const ALLOWED_CUSTOMER_TYPES = ['RETAIL', 'COMMERCIAL', 'WHOLESALE'];
 
@@ -110,7 +111,16 @@ class CustomerService {
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     });
 
-    return formatCustomer(createdRow);
+    const result = formatCustomer(createdRow);
+
+    await historyService.log(EVENTS.CUSTOMER_CREATED, {
+      actorUser,
+      targetId: result.id,
+      payload: { name: result.name, customerType: result.customerType },
+      metadata: { customerType: result.customerType, contactNumber: result.contactNumber },
+    });
+
+    return result;
   }
 
   /**
@@ -186,7 +196,14 @@ class CustomerService {
     }
 
     const updatedRow = await customerRepository.updateCustomer(id, updateFields);
-    return formatCustomer(updatedRow);
+    const updated = formatCustomer(updatedRow);
+
+    await historyService.log(EVENTS.CUSTOMER_UPDATED, {
+      targetId: id,
+      payload: { name: updated.name },
+    });
+
+    return updated;
   }
 
   /**
@@ -205,7 +222,14 @@ class CustomerService {
     }
 
     const deactivatedRow = await customerRepository.deactivateCustomer(id);
-    return formatCustomer(deactivatedRow);
+    const deactivated = formatCustomer(deactivatedRow);
+
+    await historyService.log(EVENTS.CUSTOMER_DEACTIVATED, {
+      targetId: id,
+      payload: { name: deactivated.name },
+    });
+
+    return deactivated;
   }
 }
 

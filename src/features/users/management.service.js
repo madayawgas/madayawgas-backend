@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const authService = require('./auth.service');
 const profileService = require('./profile.service');
+const { historyService, EVENTS } = require('../history');
 const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
 
@@ -83,6 +84,13 @@ class ManagementService {
       });
     }
 
+    await historyService.log(EVENTS.USER_CREATED, {
+      actorUser,
+      targetId: createdUser.id,
+      payload: { name: `${createdUser.first_name} ${createdUser.last_name}`, role: role.name },
+      metadata: { username: createdUser.username, role: role.name },
+    });
+
     return {
       user: {
         id: createdUser.id,
@@ -161,6 +169,13 @@ class ManagementService {
       description: `Updated role for user ${target.username} to ${role.name}`,
     });
 
+    await historyService.log(EVENTS.USER_ROLE_UPDATED, {
+      actorUser,
+      targetId: targetUserId,
+      payload: { username: target.username, role: role.name },
+      metadata: { previousRole: target.role_name, newRole: role.name },
+    });
+
     const permissions = await usersRepository.getPermissionsByRoleId(updated.role_id);
 
     return {
@@ -237,6 +252,16 @@ class ManagementService {
       description: `Admin confirmed and updated credentials for user ${target.username}`,
     });
 
+    const eventKey = generatedTemporaryPassword
+      ? EVENTS.USER_CREDENTIALS_RESET
+      : EVENTS.USER_USERNAME_UPDATED;
+
+    await historyService.log(eventKey, {
+      actorUser,
+      targetId: targetUserId,
+      payload: { username: target.username },
+    });
+
     const response = {
       id: updated.id,
       username: updated.username,
@@ -311,6 +336,22 @@ class ManagementService {
       targetUserId,
       action,
       description: `Admin confirmed and updated status for ${target.username}: active=${updated.is_active}, blocked=${updated.is_blocked}`,
+    });
+
+    const eventKey =
+      updatePayload.isActive === false
+        ? EVENTS.USER_DEACTIVATED
+        : updatePayload.isBlocked === true
+        ? EVENTS.USER_BLOCKED
+        : updatePayload.isBlocked === false
+        ? EVENTS.USER_UNBLOCKED
+        : EVENTS.USER_ACTIVATED;
+
+    await historyService.log(eventKey, {
+      actorUser,
+      targetId: targetUserId,
+      payload: { username: target.username },
+      metadata: { isActive: updated.is_active, isBlocked: updated.is_blocked },
     });
 
     return {
