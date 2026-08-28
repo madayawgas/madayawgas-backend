@@ -1,4 +1,5 @@
 const trucksRepository = require('./trucks.repository');
+const { historyService } = require('../../history');
 
 /**
  * Maps database row to camelCase DTO with soft-bounded driver details and availability.
@@ -153,8 +154,20 @@ class TrucksService {
       driverId: finalDriverId,
     });
 
+    const result = await this.getTruckById(createdRow.id);
+
+    await historyService.logEvent({
+      actorUser,
+      actionType: 'Created',
+      module: 'Fleet Management',
+      action: 'TRUCK_CREATED',
+      details: `Registered new fleet truck '${result.plateNumber}' (${result.model})`,
+      targetId: result.id,
+      targetType: 'truck',
+    });
+
     // Return with full joined details
-    return this.getTruckById(createdRow.id);
+    return result;
   }
 
   /**
@@ -219,7 +232,18 @@ class TrucksService {
     }
 
     await trucksRepository.updateTruck(id, updates);
-    return this.getTruckById(id);
+    const updated = await this.getTruckById(id);
+
+    await historyService.logEvent({
+      actionType: 'Updated',
+      module: 'Fleet Management',
+      action: 'TRUCK_UPDATED',
+      details: `Updated fleet truck details for '${updated.plateNumber}'`,
+      targetId: id,
+      targetType: 'truck',
+    });
+
+    return updated;
   }
 
   /**
@@ -236,7 +260,18 @@ class TrucksService {
     }
 
     await trucksRepository.deactivateTruck(id);
-    return this.getTruckById(id);
+    const deactivated = await this.getTruckById(id);
+
+    await historyService.logEvent({
+      actionType: 'Deactivated',
+      module: 'Fleet Management',
+      action: 'TRUCK_DEACTIVATED',
+      details: `Deactivated fleet truck '${deactivated.plateNumber}' and unassigned driver`,
+      targetId: id,
+      targetType: 'truck',
+    });
+
+    return deactivated;
   }
 
   /**
@@ -255,7 +290,18 @@ class TrucksService {
     // Unassignment case
     if (driverId === null || driverId === undefined || driverId === '') {
       await trucksRepository.assignDriver(truckId, null);
-      return this.getTruckById(truckId);
+      const unassigned = await this.getTruckById(truckId);
+
+      await historyService.logEvent({
+        actionType: 'Updated',
+        module: 'Fleet Management',
+        action: 'TRUCK_DRIVER_UNASSIGNED',
+        details: `Unassigned driver from truck '${unassigned.plateNumber}'`,
+        targetId: truckId,
+        targetType: 'truck',
+      });
+
+      return unassigned;
     }
 
     // Assignment case: verify vehicle is not inactive or retired
@@ -279,7 +325,18 @@ class TrucksService {
     }
 
     await trucksRepository.assignDriver(truckId, driverId);
-    return this.getTruckById(truckId);
+    const assigned = await this.getTruckById(truckId);
+
+    await historyService.logEvent({
+      actionType: 'Assigned',
+      module: 'Fleet Management',
+      action: 'TRUCK_DRIVER_ASSIGNED',
+      details: `Assigned driver '${driver.first_name} ${driver.last_name}' to truck '${assigned.plateNumber}'`,
+      targetId: truckId,
+      targetType: 'truck',
+    });
+
+    return assigned;
   }
 
   /**
@@ -319,6 +376,16 @@ class TrucksService {
     const lastPmOdometer = Number(existingTruck.last_pm_odometer);
     const distanceRecorded = newOdometer - previousOdometer;
     const distanceSinceLastPm = newOdometer - lastPmOdometer;
+
+    await historyService.logEvent({
+      actorUser,
+      actionType: 'Updated',
+      module: 'Fleet Management',
+      action: 'TRUCK_ODOMETER_RECORDED',
+      details: `Recorded odometer update for truck '${updatedTruck.plateNumber}' (${newOdometer} km)`,
+      targetId: truckId,
+      targetType: 'truck',
+    });
 
     return {
       truck: updatedTruck,

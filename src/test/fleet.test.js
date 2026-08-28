@@ -40,6 +40,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
 
   beforeEach(async () => {
     // 1. Clean test records with isolation prefix test_fleet_ and TEST-FLT-
+    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%') OR details LIKE '%TEST-FLT-%' OR details LIKE '%TEST-DUP-%'`);
     await query(`DELETE FROM trucks WHERE plate_number LIKE 'TEST-FLT-%' OR plate_number LIKE 'TEST-DUP-%'`);
     await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%')`);

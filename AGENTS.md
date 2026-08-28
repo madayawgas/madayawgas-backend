@@ -43,7 +43,8 @@ madayawgas-backend/
 │   │   ├── 001_initial-setup.sql            # RBAC, users, sessions, audit_logs schema
 │   │   ├── 002_fleet_and_maintenance.sql    # Vehicles, maintenance, dispatch schema
 │   │   ├── 003_products.sql                 # Inventory products schema
-│   │   └── 004_customers.sql                # Sales customers schema
+│   │   ├── 004_customers.sql                # Sales customers schema
+│   │   └── 005_history_logs.sql             # System event history logs schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -51,13 +52,15 @@ madayawgas-backend/
 │   │   ├── reset.js                         # Complete database reset script
 │   │   └── export-schema.js                 # Schema export script
 │   └── seeds/
-│       ├── user_management_seed.sql         # Roles, permissions, role_permissions, seed users
-│       ├── fleet_and_maintenance_seed.sql   # Seed vehicles and maintenance logs
-│       ├── inventory_products_seed.sql      # Seed product items
-│       └── sales_customers_seed.sql         # Seed customer profiles
+│       ├── 001_user_management_seed.sql     # Roles, permissions, role_permissions, seed users
+│       ├── 002_fleet_and_maintenance_seed.sql # Seed vehicles and maintenance logs
+│       ├── 003_inventory_products_seed.sql  # Seed product items
+│       ├── 004_sales_customers_seed.sql     # Seed customer profiles
+│       └── 005_history_logs_seed.sql        # Seed system event historical logs
 ├── docs/
 │   ├── API Contract/
 │   │   ├── fleet-and-maintenance.api.md     # Fleet and maintenance endpoints contract
+│   │   ├── history-log.api.md               # System event history log endpoints contract
 │   │   ├── inventory-products.api.md        # Inventory products endpoints contract
 │   │   ├── sales-customer.api.md            # Sales customer profile endpoints contract
 │   │   └── user-management.api.md           # Formal HTTP API contract and schemas
@@ -91,6 +94,12 @@ madayawgas-backend/
 │   │   │   ├── trucks/                      # Vehicle CRUD and driver assignments
 │   │   │   ├── fleet.routes.js              # Express fleet route definitions
 │   │   │   └── index.js                     # Fleet barrel export
+│   │   ├── history/                         # System Event History Log Feature
+│   │   │   ├── history.repository.js        # History logs data access & queries
+│   │   │   ├── history.service.js           # History DTO formatting & event logging
+│   │   │   ├── history.controller.js        # History logs HTTP controller
+│   │   │   ├── history.routes.js            # Express history route definitions
+│   │   │   └── index.js                     # History barrel export
 │   │   ├── inventory/                       # Inventory Subsystem
 │   │   │   ├── products/                    # Item/Product CRUD (Repository, Service, Controller)
 │   │   │   ├── inventory.routes.js          # Express inventory route definitions
@@ -107,6 +116,7 @@ madayawgas-backend/
 │   │   ├── auth.test.js                     # Authentication & session tests (prefix: test_auth_)
 │   │   ├── customer.test.js                 # Sales customer CRUD tests (prefix: test_cust_)
 │   │   ├── fleet.test.js                    # Fleet subsystem tests (prefix: test_fleet_)
+│   │   ├── history.test.js                  # System event history log tests (prefix: test_hist_)
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
 │   │   ├── permission.test.js               # RBAC & permission tests (prefix: test_perm_)
@@ -212,8 +222,17 @@ madayawgas-backend/
     * Implemented 3-Layer Architecture for Customer Profile management (`customer.repository.js`, `customer.service.js`, `customer.controller.js`, `sales.routes.js`).
     * Created migration `004_customers.sql` (`id`, `name`, `address`, `contact_number`, `customer_type_enum`, `is_active`, timestamps) with `BEFORE UPDATE` trigger and performance indexes.
     * Enforced RBAC route protections (`sales.view` / `sales.view_own` for overview/detail viewing, `sales.create` for registration, `sales.update` for profile updates and soft-deactivation).
-    * Implemented comprehensive test suite in `src/test/customer.test.js` covering all 5 user stories, enum constraints (`RETAIL`, `COMMERCIAL`, `WHOLESALE`), text search, and soft-deactivation filtering (44 total project tests passing with 100% success).
+    * Implemented comprehensive test suite in `src/test/customer.test.js` covering all 5 user stories, enum constraints (`RETAIL`, `COMMERCIAL`, `WHOLESALE`), text search, and soft-deactivation filtering.
     * Created formal API contract `docs/API Contract/sales-customer.api.md` and Mermaid ERD `docs/ERD_mermaid/sales_and_delivery_erd.md`.
+11. **System Event History Log Subsystem (`src/features/history/`)**:
+    * Implemented 3-Layer Architecture for System Event History Logs (`history.repository.js`, `history.service.js`, `history.controller.js`, `history.routes.js`).
+    * Created migration `005_history_logs.sql` (`id`, `user_id`, `user_name`, `user_role`, `action_type`, `module`, `action`, `details`, `target_id`, `target_type`, `metadata`, `created_at`) with performance indexes.
+    * Added `history.view` permission assigned to `Super Admin` and `Admin`.
+    * Formatted DTOs matching exact frontend expectations (`id`, `date`, `time`, `userName`, `userRole`, `actionType`, `module`, `details`, `action`, `targetId`, `targetType`, `metadata`, `createdAt`).
+    * Integrated real-time automatic event logging across User Management, Fleet Trucks & Availability, Inventory Products, and Sales Customers.
+    * Created seed file `005_history_logs_seed.sql` generating authentic historical logs referencing the seeded accounts, vehicles, products, and customers; standardized all seed filenames with numeric prefixes (`001_...` to `005_...`).
+    * Implemented comprehensive test suite in `src/test/history.test.js` covering RBAC, schema matching frontend mock, module filtering, search query filtering, live cross-subsystem event creation, and single log retrieval (51 total project tests passing with 100% success).
+    * Created formal API contract `docs/API Contract/history-log.api.md`.
 
 ---
 

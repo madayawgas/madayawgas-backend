@@ -19,3 +19,4 @@
 | delivery.update_own | Update delivery information assigned to the current user.    |
 | users.view          | View user accounts.                                          |
 | users.manage        | Create, update, deactivate, block, and manage user accounts. |
+| history.view        | View system event history logs.                              |

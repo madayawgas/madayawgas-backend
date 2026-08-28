@@ -1,4 +1,5 @@
 const productsRepository = require('./products.repository');
+const { historyService } = require('../../history');
 
 const ALLOWED_CONTAINER_TYPES = ['CYLINDER', 'CANISTER'];
 
@@ -117,7 +118,20 @@ class ProductsService {
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     });
 
-    return formatProduct(createdRow);
+    const result = formatProduct(createdRow);
+
+    await historyService.logEvent({
+      actorUser,
+      actionType: 'Created',
+      module: 'Inventory Management',
+      action: 'PRODUCT_CREATED',
+      details: `Created new inventory product '${result.name}' (${result.category})`,
+      targetId: result.id,
+      targetType: 'product',
+      metadata: { containerType: result.containerType, netWeightKg: result.netWeightKg },
+    });
+
+    return result;
   }
 
   /**
@@ -198,7 +212,18 @@ class ProductsService {
     }
 
     const updatedRow = await productsRepository.updateProduct(id, updateFields);
-    return formatProduct(updatedRow);
+    const updated = formatProduct(updatedRow);
+
+    await historyService.logEvent({
+      actionType: 'Updated',
+      module: 'Inventory Management',
+      action: 'PRODUCT_UPDATED',
+      details: `Updated inventory product '${updated.name}'`,
+      targetId: id,
+      targetType: 'product',
+    });
+
+    return updated;
   }
 
   /**
@@ -217,7 +242,18 @@ class ProductsService {
     }
 
     const deactivatedRow = await productsRepository.deactivateProduct(id);
-    return formatProduct(deactivatedRow);
+    const deactivated = formatProduct(deactivatedRow);
+
+    await historyService.logEvent({
+      actionType: 'Deactivated',
+      module: 'Inventory Management',
+      action: 'PRODUCT_DEACTIVATED',
+      details: `Deactivated inventory product '${deactivated.name}'`,
+      targetId: id,
+      targetType: 'product',
+    });
+
+    return deactivated;
   }
 }
 

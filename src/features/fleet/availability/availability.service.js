@@ -1,5 +1,6 @@
 const availabilityRepository = require('./availability.repository');
 const trucksRepository = require('../trucks/trucks.repository');
+const { historyService } = require('../../history');
 
 /**
  * Availability Service
@@ -135,8 +136,20 @@ class AvailabilityService {
 
     await availabilityRepository.updateTruckStatus(truckId, cleanStatus, finalDriverId);
 
+    const updated = await this.getTruckStatus(truckId);
+
+    await historyService.logEvent({
+      actionType: isDecommissioned ? 'Deactivated' : 'Updated',
+      module: 'Fleet Management',
+      action: 'TRUCK_STATUS_UPDATED',
+      details: `Changed status for truck '${updated.plateNumber}' to '${cleanStatus}'`,
+      targetId: truckId,
+      targetType: 'truck',
+      metadata: { status: cleanStatus, driverId: finalDriverId },
+    });
+
     // Return the fresh full status representation
-    return this.getTruckStatus(truckId);
+    return updated;
   }
 }
 

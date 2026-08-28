@@ -39,6 +39,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
 
   beforeEach(async () => {
     // 1. Clean test records with isolation prefix test_cust_ and TEST-CUST-
+    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_cust_%') OR details LIKE '%TEST-CUST-%'`);
     await query(`DELETE FROM customers WHERE name LIKE 'TEST-CUST-%'`);
     await query(
       `DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_cust_%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_cust_%')`

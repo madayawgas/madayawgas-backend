@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const authService = require('./auth.service');
 const profileService = require('./profile.service');
+const { historyService } = require('../history');
 const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
 
@@ -83,6 +84,18 @@ class ManagementService {
       });
     }
 
+    await historyService.logEvent({
+      actorUser,
+      userId: actorUser?.id,
+      actionType: 'Created',
+      module: 'User Management',
+      action: 'USER_CREATED',
+      details: `Created new user account for '${createdUser.first_name} ${createdUser.last_name}'`,
+      targetId: createdUser.id,
+      targetType: 'user',
+      metadata: { username: createdUser.username, role: role.name },
+    });
+
     return {
       user: {
         id: createdUser.id,
@@ -161,6 +174,18 @@ class ManagementService {
       description: `Updated role for user ${target.username} to ${role.name}`,
     });
 
+    await historyService.logEvent({
+      actorUser,
+      userId: actorUser.id,
+      actionType: 'Updated',
+      module: 'User Management',
+      action: 'USER_ROLE_UPDATED',
+      details: `Updated role for user '${target.username}' to '${role.name}'`,
+      targetId: targetUserId,
+      targetType: 'user',
+      metadata: { previousRole: target.role_name, newRole: role.name },
+    });
+
     const permissions = await usersRepository.getPermissionsByRoleId(updated.role_id);
 
     return {
@@ -237,6 +262,19 @@ class ManagementService {
       description: `Admin confirmed and updated credentials for user ${target.username}`,
     });
 
+    await historyService.logEvent({
+      actorUser,
+      userId: actorUser.id,
+      actionType: 'Updated',
+      module: 'User Management',
+      action: 'USER_CREDENTIALS_UPDATED',
+      details: generatedTemporaryPassword
+        ? `Admin reset temporary password for user '${target.username}'`
+        : `Admin updated username for user '${target.username}'`,
+      targetId: targetUserId,
+      targetType: 'user',
+    });
+
     const response = {
       id: updated.id,
       username: updated.username,
@@ -311,6 +349,25 @@ class ManagementService {
       targetUserId,
       action,
       description: `Admin confirmed and updated status for ${target.username}: active=${updated.is_active}, blocked=${updated.is_blocked}`,
+    });
+
+    const histActionType = updatePayload.isActive === false || updatePayload.isBlocked === true ? 'Deactivated' : 'Updated';
+    const histDetails = updatePayload.isActive === false
+      ? `Deactivated account access for '${target.username}'`
+      : updatePayload.isBlocked === true
+      ? `Blocked account access for '${target.username}'`
+      : `Activated account access for '${target.username}'`;
+
+    await historyService.logEvent({
+      actorUser,
+      userId: actorUser.id,
+      actionType: histActionType,
+      module: 'User Management',
+      action,
+      details: histDetails,
+      targetId: targetUserId,
+      targetType: 'user',
+      metadata: { isActive: updated.is_active, isBlocked: updated.is_blocked },
     });
 
     return {

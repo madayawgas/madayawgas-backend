@@ -1,4 +1,5 @@
 const customerRepository = require('./customer.repository');
+const { historyService } = require('../../history');
 
 const ALLOWED_CUSTOMER_TYPES = ['RETAIL', 'COMMERCIAL', 'WHOLESALE'];
 
@@ -110,7 +111,20 @@ class CustomerService {
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     });
 
-    return formatCustomer(createdRow);
+    const result = formatCustomer(createdRow);
+
+    await historyService.logEvent({
+      actorUser,
+      actionType: 'Created',
+      module: 'Sales & Delivery',
+      action: 'CUSTOMER_CREATED',
+      details: `Registered new customer profile '${result.name}' (${result.customerType})`,
+      targetId: result.id,
+      targetType: 'customer',
+      metadata: { customerType: result.customerType, contactNumber: result.contactNumber },
+    });
+
+    return result;
   }
 
   /**
@@ -186,7 +200,18 @@ class CustomerService {
     }
 
     const updatedRow = await customerRepository.updateCustomer(id, updateFields);
-    return formatCustomer(updatedRow);
+    const updated = formatCustomer(updatedRow);
+
+    await historyService.logEvent({
+      actionType: 'Updated',
+      module: 'Sales & Delivery',
+      action: 'CUSTOMER_UPDATED',
+      details: `Updated customer profile for '${updated.name}'`,
+      targetId: id,
+      targetType: 'customer',
+    });
+
+    return updated;
   }
 
   /**
@@ -205,7 +230,18 @@ class CustomerService {
     }
 
     const deactivatedRow = await customerRepository.deactivateCustomer(id);
-    return formatCustomer(deactivatedRow);
+    const deactivated = formatCustomer(deactivatedRow);
+
+    await historyService.logEvent({
+      actionType: 'Deactivated',
+      module: 'Sales & Delivery',
+      action: 'CUSTOMER_DEACTIVATED',
+      details: `Deactivated customer profile for '${deactivated.name}'`,
+      targetId: id,
+      targetType: 'customer',
+    });
+
+    return deactivated;
   }
 }
 

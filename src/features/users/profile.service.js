@@ -1,5 +1,6 @@
 const usersRepository = require('./users.repository');
 const permissionService = require('./permission.service');
+const { historyService } = require('../history');
 
 /**
  * Profile Service
@@ -97,6 +98,19 @@ class ProfileService {
         description: `Updated profile for user ${target.username}`,
       });
     }
+
+    await historyService.logEvent({
+      actorUser,
+      userId: actorUser?.id,
+      actionType: 'Updated',
+      module: 'User Management',
+      action: 'USER_PROFILE_UPDATED',
+      details: isSelf
+        ? `Updated personal profile details`
+        : `Updated profile details for '${target.username}'`,
+      targetId: targetUserId,
+      targetType: 'user',
+    });
 
     return {
       id: updated.id,

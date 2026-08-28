@@ -39,6 +39,7 @@ test('User Profile Operations Tests', async (t) => {
 
   beforeEach(async () => {
     // Clean test_prof sessions & users
+    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_prof_%')`);
     await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_prof_%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_prof_%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_prof_%')`);
     await query(`DELETE FROM users WHERE username LIKE 'test_prof_%'`);

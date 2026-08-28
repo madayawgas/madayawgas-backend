@@ -38,6 +38,7 @@ test('Permission & RBAC Authorization Tests', async (t) => {
 
   beforeEach(async () => {
     // Clean test_perm sessions & users
+    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_perm_%')`);
     await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_perm_%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_perm_%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_perm_%')`);
     await query(`DELETE FROM users WHERE username LIKE 'test_perm_%'`);

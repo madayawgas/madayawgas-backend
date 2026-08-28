@@ -39,6 +39,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
   beforeEach(async () => {
     // 1. Clean test records with isolation prefix test_inv_ and TEST-PROD-
+    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_inv_%') OR details LIKE '%TEST-PROD-%'`);
     await query(`DELETE FROM products WHERE name LIKE 'TEST-PROD-%'`);
     await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_inv_%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_inv_%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_inv_%')`);
