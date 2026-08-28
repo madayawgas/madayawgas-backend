@@ -63,6 +63,7 @@ class AvailabilityService {
           }
         : null,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
     }));
 
     return {

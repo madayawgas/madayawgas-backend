@@ -185,6 +185,7 @@ madayawgas-backend/
      * `src/features/fleet/fleet.routes.js`: Route registration guarded with `fleet.view` and `fleet.manage`.
    * Created integration test suite in `src/test/fleet.test.js` covering RBAC, overview, registration, updates, status transitions, deactivation, and driver assignment constraints.
    * Created formal API contract `docs/API Contract/fleet-and-maintenance.api.md`.
+   * Enhanced `trucks` table with `created_at` and `updated_at` timestamps backed by PostgreSQL `BEFORE UPDATE` trigger function (`trigger_update_trucks_updated_at`), synced ERD and API contract.
 8. **User Administration: Change User Role (`PATCH /api/users/:id/role`)**:
    * Implemented dedicated route `PATCH /api/users/:id/role` guarded with `users.manage` permission.
    * Service automatically updates user's role, fetches updated permissions array, logs audit trail (`USER_ROLE_UPDATED`), and immediately invalidates active sessions so new permissions take effect immediately.
