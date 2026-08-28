@@ -171,11 +171,25 @@ madayawgas-backend/
   - `auth.test.js` uses prefix `test_auth_`
   - `customer.test.js` uses prefix `test_cust_`
   - `fleet.test.js` uses prefix `test_fleet_`
+  - `history.test.js` uses prefix `test_hist_`
   - `inventory.test.js` uses prefix `test_inv_`
   - `management.test.js` uses prefix `test_mgmt_`
   - `permission.test.js` uses prefix `test_perm_`
   - `profile.test.js` uses prefix `test_prof_`
 * Each test file cleans its own prefixed records in `beforeEach()`.
+
+### F. Centralized Event History Logging & Template Resolver
+* **Single Source of Truth (`src/features/history/history.events.js`)**: All system events, standard module names, action types (`Created`, `Updated`, `Deactivated`, `Assigned`), target entity classifications, and detail message string templates are registered in a centralized dictionary (`EVENT_DEFINITIONS`, `EVENTS`).
+* **Clean Caller Interface**: Domain services never hardcode detail message strings or module names. They invoke:
+  ```javascript
+  await historyService.log(EVENTS.PRODUCT_CREATED, {
+    actorUser,
+    targetId: result.id,
+    payload: { name: result.name, category: result.category },
+    metadata: { ... },
+  });
+  ```
+* **Template Resolver Engine (`resolveEvent`)**: Resolves module, actionType, and renders dynamic detail templates with safe fallbacks.
 
 ---
 
@@ -228,10 +242,11 @@ madayawgas-backend/
     * Implemented 3-Layer Architecture for System Event History Logs (`history.repository.js`, `history.service.js`, `history.controller.js`, `history.routes.js`).
     * Created migration `005_history_logs.sql` (`id`, `user_id`, `user_name`, `user_role`, `action_type`, `module`, `action`, `details`, `target_id`, `target_type`, `metadata`, `created_at`) with performance indexes.
     * Added `history.view` permission assigned to `Super Admin` and `Admin`.
+    * Built Centralized Event Definitions Registry & Template Resolver (`src/features/history/history.events.js`, `EVENTS`, `resolveEvent`) removing hardcoded message strings from domain services and standardizing vocabulary across modules.
+    * Refactored all domain services (`management.service.js`, `profile.service.js`, `trucks.service.js`, `availability.service.js`, `products.service.js`, `customer.service.js`) to use `historyService.log(EVENTS.KEY, ...)`.
     * Formatted DTOs matching exact frontend expectations (`id`, `date`, `time`, `userName`, `userRole`, `actionType`, `module`, `details`, `action`, `targetId`, `targetType`, `metadata`, `createdAt`).
-    * Integrated real-time automatic event logging across User Management, Fleet Trucks & Availability, Inventory Products, and Sales Customers.
     * Created seed file `005_history_logs_seed.sql` generating authentic historical logs referencing the seeded accounts, vehicles, products, and customers; standardized all seed filenames with numeric prefixes (`001_...` to `005_...`).
-    * Implemented comprehensive test suite in `src/test/history.test.js` covering RBAC, schema matching frontend mock, module filtering, search query filtering, live cross-subsystem event creation, and single log retrieval (51 total project tests passing with 100% success).
+    * Implemented comprehensive test suite in `src/test/history.test.js` covering RBAC, schema matching frontend mock, module filtering, search query filtering, live cross-subsystem event creation, single log retrieval, and template resolver functionality (52 total project tests passing with 100% success).
     * Created formal API contract `docs/API Contract/history-log.api.md`.
 
 ---

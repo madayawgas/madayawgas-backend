@@ -1,5 +1,5 @@
 const trucksRepository = require('./trucks.repository');
-const { historyService } = require('../../history');
+const { historyService, EVENTS } = require('../../history');
 
 /**
  * Maps database row to camelCase DTO with soft-bounded driver details and availability.
@@ -156,14 +156,10 @@ class TrucksService {
 
     const result = await this.getTruckById(createdRow.id);
 
-    await historyService.logEvent({
+    await historyService.log(EVENTS.TRUCK_REGISTERED, {
       actorUser,
-      actionType: 'Created',
-      module: 'Fleet Management',
-      action: 'TRUCK_CREATED',
-      details: `Registered new fleet truck '${result.plateNumber}' (${result.model})`,
       targetId: result.id,
-      targetType: 'truck',
+      payload: { plateNumber: result.plateNumber, model: result.model },
     });
 
     // Return with full joined details
@@ -234,13 +230,9 @@ class TrucksService {
     await trucksRepository.updateTruck(id, updates);
     const updated = await this.getTruckById(id);
 
-    await historyService.logEvent({
-      actionType: 'Updated',
-      module: 'Fleet Management',
-      action: 'TRUCK_UPDATED',
-      details: `Updated fleet truck details for '${updated.plateNumber}'`,
+    await historyService.log(EVENTS.TRUCK_UPDATED, {
       targetId: id,
-      targetType: 'truck',
+      payload: { plateNumber: updated.plateNumber },
     });
 
     return updated;
@@ -262,13 +254,9 @@ class TrucksService {
     await trucksRepository.deactivateTruck(id);
     const deactivated = await this.getTruckById(id);
 
-    await historyService.logEvent({
-      actionType: 'Deactivated',
-      module: 'Fleet Management',
-      action: 'TRUCK_DEACTIVATED',
-      details: `Deactivated fleet truck '${deactivated.plateNumber}' and unassigned driver`,
+    await historyService.log(EVENTS.TRUCK_DEACTIVATED, {
       targetId: id,
-      targetType: 'truck',
+      payload: { plateNumber: deactivated.plateNumber },
     });
 
     return deactivated;
@@ -292,13 +280,9 @@ class TrucksService {
       await trucksRepository.assignDriver(truckId, null);
       const unassigned = await this.getTruckById(truckId);
 
-      await historyService.logEvent({
-        actionType: 'Updated',
-        module: 'Fleet Management',
-        action: 'TRUCK_DRIVER_UNASSIGNED',
-        details: `Unassigned driver from truck '${unassigned.plateNumber}'`,
+      await historyService.log(EVENTS.TRUCK_DRIVER_UNASSIGNED, {
         targetId: truckId,
-        targetType: 'truck',
+        payload: { plateNumber: unassigned.plateNumber },
       });
 
       return unassigned;
@@ -327,13 +311,12 @@ class TrucksService {
     await trucksRepository.assignDriver(truckId, driverId);
     const assigned = await this.getTruckById(truckId);
 
-    await historyService.logEvent({
-      actionType: 'Assigned',
-      module: 'Fleet Management',
-      action: 'TRUCK_DRIVER_ASSIGNED',
-      details: `Assigned driver '${driver.first_name} ${driver.last_name}' to truck '${assigned.plateNumber}'`,
+    await historyService.log(EVENTS.TRUCK_DRIVER_ASSIGNED, {
       targetId: truckId,
-      targetType: 'truck',
+      payload: {
+        plateNumber: assigned.plateNumber,
+        driverName: `${driver.first_name} ${driver.last_name}`,
+      },
     });
 
     return assigned;
@@ -377,14 +360,10 @@ class TrucksService {
     const distanceRecorded = newOdometer - previousOdometer;
     const distanceSinceLastPm = newOdometer - lastPmOdometer;
 
-    await historyService.logEvent({
+    await historyService.log(EVENTS.TRUCK_ODOMETER_RECORDED, {
       actorUser,
-      actionType: 'Updated',
-      module: 'Fleet Management',
-      action: 'TRUCK_ODOMETER_RECORDED',
-      details: `Recorded odometer update for truck '${updatedTruck.plateNumber}' (${newOdometer} km)`,
       targetId: truckId,
-      targetType: 'truck',
+      payload: { plateNumber: updatedTruck.plateNumber, odometer: newOdometer },
     });
 
     return {

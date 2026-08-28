@@ -1,5 +1,5 @@
 const customerRepository = require('./customer.repository');
-const { historyService } = require('../../history');
+const { historyService, EVENTS } = require('../../history');
 
 const ALLOWED_CUSTOMER_TYPES = ['RETAIL', 'COMMERCIAL', 'WHOLESALE'];
 
@@ -113,14 +113,10 @@ class CustomerService {
 
     const result = formatCustomer(createdRow);
 
-    await historyService.logEvent({
+    await historyService.log(EVENTS.CUSTOMER_CREATED, {
       actorUser,
-      actionType: 'Created',
-      module: 'Sales & Delivery',
-      action: 'CUSTOMER_CREATED',
-      details: `Registered new customer profile '${result.name}' (${result.customerType})`,
       targetId: result.id,
-      targetType: 'customer',
+      payload: { name: result.name, customerType: result.customerType },
       metadata: { customerType: result.customerType, contactNumber: result.contactNumber },
     });
 
@@ -202,13 +198,9 @@ class CustomerService {
     const updatedRow = await customerRepository.updateCustomer(id, updateFields);
     const updated = formatCustomer(updatedRow);
 
-    await historyService.logEvent({
-      actionType: 'Updated',
-      module: 'Sales & Delivery',
-      action: 'CUSTOMER_UPDATED',
-      details: `Updated customer profile for '${updated.name}'`,
+    await historyService.log(EVENTS.CUSTOMER_UPDATED, {
       targetId: id,
-      targetType: 'customer',
+      payload: { name: updated.name },
     });
 
     return updated;
@@ -232,13 +224,9 @@ class CustomerService {
     const deactivatedRow = await customerRepository.deactivateCustomer(id);
     const deactivated = formatCustomer(deactivatedRow);
 
-    await historyService.logEvent({
-      actionType: 'Deactivated',
-      module: 'Sales & Delivery',
-      action: 'CUSTOMER_DEACTIVATED',
-      details: `Deactivated customer profile for '${deactivated.name}'`,
+    await historyService.log(EVENTS.CUSTOMER_DEACTIVATED, {
       targetId: id,
-      targetType: 'customer',
+      payload: { name: deactivated.name },
     });
 
     return deactivated;

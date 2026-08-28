@@ -396,4 +396,53 @@ test('System Event History Log Subsystem Tests', async (t) => {
     assert.equal(notFoundRes.statusCode, 404);
     assert.equal(notFoundRes.body.status, 'fail');
   });
+
+  await t.test('7. Centralized Template Resolver & Event Registry Functionality', async () => {
+    const { EVENTS, resolveEvent, historyService } = require('../features/history');
+
+    // A. Verify standard template resolution
+    const userCreatedResolved = resolveEvent(EVENTS.USER_CREATED, {
+      name: 'Maria Santos',
+      role: 'Sales Person',
+    });
+    assert.equal(userCreatedResolved.module, 'User Management');
+    assert.equal(userCreatedResolved.actionType, 'Created');
+    assert.equal(userCreatedResolved.details, "Created new user account for 'Maria Santos' (Sales Person)");
+
+    // B. Verify dynamic actionType evaluation (e.g. TRUCK_STATUS_UPDATED)
+    const truckMaint = resolveEvent(EVENTS.TRUCK_STATUS_UPDATED, {
+      plateNumber: 'XYZ-1234',
+      status: 'UNDER_MAINTENANCE',
+    });
+    assert.equal(truckMaint.actionType, 'Updated');
+    assert.equal(truckMaint.details, "Changed status for truck 'XYZ-1234' to 'UNDER_MAINTENANCE'");
+
+    const truckRetired = resolveEvent(EVENTS.TRUCK_STATUS_UPDATED, {
+      plateNumber: 'XYZ-1234',
+      status: 'RETIRED',
+    });
+    assert.equal(truckRetired.actionType, 'Deactivated');
+
+    // C. Verify graceful fallback for unlisted / custom events
+    const customResolved = resolveEvent('CUSTOM_DISPATCH_EVENT', { sample: 123 }, {
+      module: 'Route Dispatch',
+      details: 'Custom dispatch event triggered',
+    });
+    assert.equal(customResolved.action, 'CUSTOM_DISPATCH_EVENT');
+    assert.equal(customResolved.module, 'Route Dispatch');
+    assert.equal(customResolved.details, 'Custom dispatch event triggered');
+
+    // D. Verify historyService.log executes successfully with template resolver
+    const logged = await historyService.log(EVENTS.PRODUCT_CREATED, {
+      userName: `${PREFIX}Admin User`,
+      userRole: 'Admin',
+      targetId: '00000000-0000-0000-0000-000000000001',
+      payload: { name: `${PREFIX}Test Tank 11kg`, category: 'LPG Cylinder' },
+      metadata: { test: true },
+    });
+    assert.ok(logged);
+    assert.equal(logged.module, 'Inventory Management');
+    assert.equal(logged.actionType, 'Created');
+    assert.equal(logged.details, `Created new inventory product '${PREFIX}Test Tank 11kg' (LPG Cylinder)`);
+  });
 });

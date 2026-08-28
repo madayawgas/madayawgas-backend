@@ -2,7 +2,7 @@ const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const authService = require('./auth.service');
 const profileService = require('./profile.service');
-const { historyService } = require('../history');
+const { historyService, EVENTS } = require('../history');
 const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
 
@@ -84,15 +84,10 @@ class ManagementService {
       });
     }
 
-    await historyService.logEvent({
+    await historyService.log(EVENTS.USER_CREATED, {
       actorUser,
-      userId: actorUser?.id,
-      actionType: 'Created',
-      module: 'User Management',
-      action: 'USER_CREATED',
-      details: `Created new user account for '${createdUser.first_name} ${createdUser.last_name}'`,
       targetId: createdUser.id,
-      targetType: 'user',
+      payload: { name: `${createdUser.first_name} ${createdUser.last_name}`, role: role.name },
       metadata: { username: createdUser.username, role: role.name },
     });
 
@@ -174,15 +169,10 @@ class ManagementService {
       description: `Updated role for user ${target.username} to ${role.name}`,
     });
 
-    await historyService.logEvent({
+    await historyService.log(EVENTS.USER_ROLE_UPDATED, {
       actorUser,
-      userId: actorUser.id,
-      actionType: 'Updated',
-      module: 'User Management',
-      action: 'USER_ROLE_UPDATED',
-      details: `Updated role for user '${target.username}' to '${role.name}'`,
       targetId: targetUserId,
-      targetType: 'user',
+      payload: { username: target.username, role: role.name },
       metadata: { previousRole: target.role_name, newRole: role.name },
     });
 
@@ -262,17 +252,14 @@ class ManagementService {
       description: `Admin confirmed and updated credentials for user ${target.username}`,
     });
 
-    await historyService.logEvent({
+    const eventKey = generatedTemporaryPassword
+      ? EVENTS.USER_CREDENTIALS_RESET
+      : EVENTS.USER_USERNAME_UPDATED;
+
+    await historyService.log(eventKey, {
       actorUser,
-      userId: actorUser.id,
-      actionType: 'Updated',
-      module: 'User Management',
-      action: 'USER_CREDENTIALS_UPDATED',
-      details: generatedTemporaryPassword
-        ? `Admin reset temporary password for user '${target.username}'`
-        : `Admin updated username for user '${target.username}'`,
       targetId: targetUserId,
-      targetType: 'user',
+      payload: { username: target.username },
     });
 
     const response = {
@@ -351,22 +338,19 @@ class ManagementService {
       description: `Admin confirmed and updated status for ${target.username}: active=${updated.is_active}, blocked=${updated.is_blocked}`,
     });
 
-    const histActionType = updatePayload.isActive === false || updatePayload.isBlocked === true ? 'Deactivated' : 'Updated';
-    const histDetails = updatePayload.isActive === false
-      ? `Deactivated account access for '${target.username}'`
-      : updatePayload.isBlocked === true
-      ? `Blocked account access for '${target.username}'`
-      : `Activated account access for '${target.username}'`;
+    const eventKey =
+      updatePayload.isActive === false
+        ? EVENTS.USER_DEACTIVATED
+        : updatePayload.isBlocked === true
+        ? EVENTS.USER_BLOCKED
+        : updatePayload.isBlocked === false
+        ? EVENTS.USER_UNBLOCKED
+        : EVENTS.USER_ACTIVATED;
 
-    await historyService.logEvent({
+    await historyService.log(eventKey, {
       actorUser,
-      userId: actorUser.id,
-      actionType: histActionType,
-      module: 'User Management',
-      action,
-      details: histDetails,
       targetId: targetUserId,
-      targetType: 'user',
+      payload: { username: target.username },
       metadata: { isActive: updated.is_active, isBlocked: updated.is_blocked },
     });
 

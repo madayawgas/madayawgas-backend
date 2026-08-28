@@ -1,4 +1,5 @@
 const historyRepository = require('./history.repository');
+const { resolveEvent } = require('./history.events');
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -60,6 +61,48 @@ function formatLogItem(row) {
  * Business logic and operational logging coordinator for system events.
  */
 class HistoryService {
+  /**
+   * Primary logging API using the Centralized Event Registry & Template Resolver.
+   * @param {string} eventKey - Identifier from EVENTS (e.g. EVENTS.PRODUCT_CREATED)
+   * @param {Object} options - { actorUser, targetId, payload, metadata, userId, userName, userRole, createdAt }
+   */
+  async log(eventKey, {
+    actorUser = null,
+    targetId = null,
+    payload = {},
+    metadata = {},
+    userId = null,
+    userName = null,
+    userRole = null,
+    createdAt = null,
+    actionType = null,
+    module = null,
+    details = null,
+    targetType = null,
+  } = {}) {
+    const resolved = resolveEvent(eventKey, payload, {
+      actionType,
+      module,
+      details,
+      targetType,
+    });
+
+    return this.logEvent({
+      actorUser,
+      userId,
+      userName,
+      userRole,
+      actionType: resolved.actionType,
+      module: resolved.module,
+      action: resolved.action,
+      details: resolved.details,
+      targetId,
+      targetType: resolved.targetType,
+      metadata,
+      createdAt,
+    });
+  }
+
   /**
    * Records a system event into the history log table.
    * Can accept either an actorUser session object or explicit user details.

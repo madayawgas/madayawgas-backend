@@ -1,5 +1,5 @@
 const productsRepository = require('./products.repository');
-const { historyService } = require('../../history');
+const { historyService, EVENTS } = require('../../history');
 
 const ALLOWED_CONTAINER_TYPES = ['CYLINDER', 'CANISTER'];
 
@@ -120,14 +120,10 @@ class ProductsService {
 
     const result = formatProduct(createdRow);
 
-    await historyService.logEvent({
+    await historyService.log(EVENTS.PRODUCT_CREATED, {
       actorUser,
-      actionType: 'Created',
-      module: 'Inventory Management',
-      action: 'PRODUCT_CREATED',
-      details: `Created new inventory product '${result.name}' (${result.category})`,
       targetId: result.id,
-      targetType: 'product',
+      payload: { name: result.name, category: result.category },
       metadata: { containerType: result.containerType, netWeightKg: result.netWeightKg },
     });
 
@@ -214,13 +210,9 @@ class ProductsService {
     const updatedRow = await productsRepository.updateProduct(id, updateFields);
     const updated = formatProduct(updatedRow);
 
-    await historyService.logEvent({
-      actionType: 'Updated',
-      module: 'Inventory Management',
-      action: 'PRODUCT_UPDATED',
-      details: `Updated inventory product '${updated.name}'`,
+    await historyService.log(EVENTS.PRODUCT_UPDATED, {
       targetId: id,
-      targetType: 'product',
+      payload: { name: updated.name },
     });
 
     return updated;
@@ -244,13 +236,9 @@ class ProductsService {
     const deactivatedRow = await productsRepository.deactivateProduct(id);
     const deactivated = formatProduct(deactivatedRow);
 
-    await historyService.logEvent({
-      actionType: 'Deactivated',
-      module: 'Inventory Management',
-      action: 'PRODUCT_DEACTIVATED',
-      details: `Deactivated inventory product '${deactivated.name}'`,
+    await historyService.log(EVENTS.PRODUCT_DEACTIVATED, {
       targetId: id,
-      targetType: 'product',
+      payload: { name: deactivated.name },
     });
 
     return deactivated;
