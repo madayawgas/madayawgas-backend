@@ -90,6 +90,7 @@ CREATE TABLE "trucks" (
     "last_pm_odometer" INT NOT NULL DEFAULT 0,
     "status" truck_status NOT NULL DEFAULT 'ACTIVE',
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY ("id"),
     CONSTRAINT "UQ_trucks_driver_id" UNIQUE ("driver_id"),
@@ -102,6 +103,21 @@ CREATE TABLE "trucks" (
         REFERENCES "users"("id")
         ON DELETE SET NULL
 );
+
+-- Trigger function to automatically update updated_at timestamp on trucks
+CREATE OR REPLACE FUNCTION update_trucks_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_update_trucks_updated_at ON "trucks";
+CREATE TRIGGER trigger_update_trucks_updated_at
+    BEFORE UPDATE ON "trucks"
+    FOR EACH ROW
+    EXECUTE FUNCTION update_trucks_updated_at_column();
 
 
 -- ============================================================

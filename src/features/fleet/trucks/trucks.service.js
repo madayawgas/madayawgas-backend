@@ -18,6 +18,7 @@ function formatTruck(row) {
     isAvailable: row.status === 'ACTIVE',
     driverId: row.driver_id || null,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 
   if (row.driver_id && row.driver_first_name !== undefined) {

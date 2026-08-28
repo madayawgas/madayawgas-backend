@@ -210,6 +210,8 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(createJson.data.truck.status, 'ACTIVE');
     assert.equal(createJson.data.truck.isAvailable, true);
     assert.equal(createJson.data.truck.driver, null);
+    assert.ok(createJson.data.truck.createdAt);
+    assert.ok(createJson.data.truck.updatedAt);
 
     // 2) Duplicate plate number -> 409 Conflict
     const dupRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
@@ -344,6 +346,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const updateJson = await updateRes.json();
     assert.equal(updateJson.data.truck.model, 'Updated Model Pro');
     assert.equal(updateJson.data.truck.currentOdometer, 12500);
+    assert.ok(updateJson.data.truck.updatedAt);
 
     // 2) Update with duplicate plate number -> 409 Conflict
     await query(`INSERT INTO trucks (plate_number, model, year_model) VALUES ('TEST-DUP-999', 'Existing', 2021)`);
@@ -606,6 +609,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const recordJson = await recordRes.json();
     assert.equal(recordJson.status, 'success');
     assert.equal(recordJson.data.truck.currentOdometer, 12500);
+    assert.ok(recordJson.data.truck.updatedAt);
     assert.equal(recordJson.data.mileageSummary.previousOdometer, 10000);
     assert.equal(recordJson.data.mileageSummary.distanceRecorded, 2500);
     assert.equal(recordJson.data.mileageSummary.distanceSinceLastPm, 4500);

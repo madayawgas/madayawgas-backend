@@ -53,6 +53,7 @@ class AvailabilityRepository {
         t.status,
         t.driver_id,
         t.created_at,
+        t.updated_at,
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name,
         u.phone AS driver_phone,

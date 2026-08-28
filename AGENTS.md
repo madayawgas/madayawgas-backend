@@ -41,7 +41,9 @@ madayawgas-backend/
 │   ├── connection.js                        # pg.Pool database connection & query helper
 │   ├── migrations/
 │   │   ├── 001_initial-setup.sql            # RBAC, users, sessions, audit_logs schema
-│   │   └── 002_fleet_and_maintenance.sql    # Vehicles, maintenance, dispatch schema
+│   │   ├── 002_fleet_and_maintenance.sql    # Vehicles, maintenance, dispatch schema
+│   │   ├── 003_products.sql                 # Inventory products schema
+│   │   └── 004_customers.sql                # Sales customers schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -50,12 +52,18 @@ madayawgas-backend/
 │   │   └── export-schema.js                 # Schema export script
 │   └── seeds/
 │       ├── user_management_seed.sql         # Roles, permissions, role_permissions, seed users
-│       └── fleet_and_maintenance_seed.sql   # Seed vehicles and maintenance logs
+│       ├── fleet_and_maintenance_seed.sql   # Seed vehicles and maintenance logs
+│       ├── inventory_products_seed.sql      # Seed product items
+│       └── sales_customers_seed.sql         # Seed customer profiles
 ├── docs/
 │   ├── API Contract/
+│   │   ├── fleet-and-maintenance.api.md     # Fleet and maintenance endpoints contract
+│   │   ├── inventory-products.api.md        # Inventory products endpoints contract
+│   │   ├── sales-customer.api.md            # Sales customer profile endpoints contract
 │   │   └── user-management.api.md           # Formal HTTP API contract and schemas
 │   ├── ERD_mermaid/
-│   │   └── fleet_and_maintenance_erd.md     # Fleet ERD diagram
+│   │   ├── fleet_and_maintenance_erd.md     # Fleet ERD diagram
+│   │   └── sales_and_delivery_erd.md        # Sales and delivery ERD diagram
 │   ├── QA/
 │   │   ├── (1)_qa-testing-guide.md          # General QA testing guide & principles
 │   │   ├── (2)_seed-credentials.md          # Seed accounts, roles, and test credentials
@@ -88,13 +96,16 @@ madayawgas-backend/
 │   │   │   ├── inventory.routes.js          # Express inventory route definitions
 │   │   │   └── index.js                     # Inventory barrel export
 │   │   └── sales/
-│   │       └── index.js                     # Sales feature placeholder (to be implemented)
+│   │       ├── customer/                    # Customer CRUD (Repository, Service, Controller)
+│   │       ├── sales.routes.js              # Express sales route definitions
+│   │       └── index.js                     # Sales barrel export
 │   ├── middleware/
 │   │   ├── auth.middleware.js               # authenticate, requirePermission, mustChangePassword guard
 │   │   ├── cookie.middleware.js             # Zero-dependency HTTP cookie parser
 │   │   └── error.middleware.js              # Centralized global error handler
 │   ├── test/                                # Modular domain test suites (node:test)
 │   │   ├── auth.test.js                     # Authentication & session tests (prefix: test_auth_)
+│   │   ├── customer.test.js                 # Sales customer CRUD tests (prefix: test_cust_)
 │   │   ├── fleet.test.js                    # Fleet subsystem tests (prefix: test_fleet_)
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
@@ -148,6 +159,7 @@ madayawgas-backend/
 * Node.js test runner (`node --test src/test/*.test.js`) runs test files in parallel worker processes.
 * To prevent database race conditions and duplicate key collisions:
   - `auth.test.js` uses prefix `test_auth_`
+  - `customer.test.js` uses prefix `test_cust_`
   - `fleet.test.js` uses prefix `test_fleet_`
   - `inventory.test.js` uses prefix `test_inv_`
   - `management.test.js` uses prefix `test_mgmt_`
@@ -163,9 +175,8 @@ madayawgas-backend/
    * Split monolithic user service into dedicated domain services: `auth.service.js`, `profile.service.js`, `management.service.js`, and `permission.service.js`.
    * Maintained facade `users.service.js` for backward compatibility.
 2. **Modular Test Suite**:
-   * Divided tests into 4 dedicated files in `src/test/`.
+   * Divided tests into dedicated files in `src/test/`.
    * Replaced test credentials with unique isolation prefixes.
-   * All 19 integration tests pass with 100% success.
 3. **Automated Credentials & Contact Fields**:
    * Built `src/utils/usernameGenerator.js` (formula + collision resolution).
    * Built `src/utils/passwordGenerator.js` (secure 8-char random temporary password).
@@ -185,17 +196,24 @@ madayawgas-backend/
      * `src/features/fleet/fleet.routes.js`: Route registration guarded with `fleet.view` and `fleet.manage`.
    * Created integration test suite in `src/test/fleet.test.js` covering RBAC, overview, registration, updates, status transitions, deactivation, and driver assignment constraints.
    * Created formal API contract `docs/API Contract/fleet-and-maintenance.api.md`.
+   * Enhanced `trucks` table with `created_at` and `updated_at` timestamps backed by PostgreSQL `BEFORE UPDATE` trigger function (`trigger_update_trucks_updated_at`), synced ERD and API contract.
 8. **User Administration: Change User Role (`PATCH /api/users/:id/role`)**:
    * Implemented dedicated route `PATCH /api/users/:id/role` guarded with `users.manage` permission.
    * Service automatically updates user's role, fetches updated permissions array, logs audit trail (`USER_ROLE_UPDATED`), and immediately invalidates active sessions so new permissions take effect immediately.
    * Enforced safety guard preventing role modification on the primary Super Admin account.
-   * Added comprehensive integration test suite in `src/test/management.test.js` (31 total project tests passing with 100% success).
+   * Added comprehensive integration test suite in `src/test/management.test.js`.
 9. **Inventory Subsystem: Item Profile / Product CRUD (`src/features/inventory/`)**:
    * Implemented 3-Layer Architecture for Item Profile management (`products.repository.js`, `products.service.js`, `products.controller.js`, `inventory.routes.js`).
    * Maintained exact schema fields from `003_products.sql` (`id`, `name`, `category`, `container_type`, `net_weight_kg`, `is_active`, timestamps).
    * Enforced RBAC route protections (`inventory.view` for listing/detail viewing, `inventory.manage` for creation, updates, and soft-deactivation).
-   * Implemented comprehensive test suite in `src/test/inventory.test.js` covering all 4 user stories, validations, container type enforcement (`CYLINDER`, `CANISTER`), weight validation, and soft-deactivation filtering (37 total project tests passing with 100% success).
+   * Implemented comprehensive test suite in `src/test/inventory.test.js` covering all 4 user stories, validations, container type enforcement (`CYLINDER`, `CANISTER`), weight validation, and soft-deactivation filtering.
    * Created formal API contract `docs/API Contract/inventory-products.api.md`.
+10. **Sales & Delivery Subsystem: Customer Profile CRUD (`src/features/sales/customer/`)**:
+    * Implemented 3-Layer Architecture for Customer Profile management (`customer.repository.js`, `customer.service.js`, `customer.controller.js`, `sales.routes.js`).
+    * Created migration `004_customers.sql` (`id`, `name`, `address`, `contact_number`, `customer_type_enum`, `is_active`, timestamps) with `BEFORE UPDATE` trigger and performance indexes.
+    * Enforced RBAC route protections (`sales.view` / `sales.view_own` for overview/detail viewing, `sales.create` for registration, `sales.update` for profile updates and soft-deactivation).
+    * Implemented comprehensive test suite in `src/test/customer.test.js` covering all 5 user stories, enum constraints (`RETAIL`, `COMMERCIAL`, `WHOLESALE`), text search, and soft-deactivation filtering (44 total project tests passing with 100% success).
+    * Created formal API contract `docs/API Contract/sales-customer.api.md` and Mermaid ERD `docs/ERD_mermaid/sales_and_delivery_erd.md`.
 
 ---
 
@@ -208,7 +226,7 @@ The database seed provides permanent accounts for all 4 roles (`must_change_pass
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access. Cannot be deactivated or blocked. |
 | **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access: user management, fleet, inventory. |
 | **`fleet_user`** | `FleetPass123!` | **Fleet Manager** | `+639170000003` | Fleet & routes management (`fleet.*`, `route.*`). |
-| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Sales representative (`sales.view_own`, `sales.create`, `delivery.view_own`). |
+| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Sales representative (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`). |
 
 ---
 
@@ -216,8 +234,8 @@ The database seed provides permanent accounts for all 4 roles (`must_change_pass
 
 1. **Maintenance Logs & Work Orders Module (`src/features/fleet/maintenance/`)**:
    - Vehicle inspections, incident reporting, work orders, repair approvals, and maintenance logs when requested.
-2. **Sales & Orders Feature Implementation (`src/features/sales/`)**:
-   - Build 3-layer architecture for Sales, Orders, and Customers with ownership scoping (`sales.view_own` vs `sales.view`).
+2. **Sales & Orders Feature Implementation (`src/features/sales/orders/`)**:
+   - Build 3-layer architecture for Orders and Sales Transactions with ownership scoping (`sales.view_own` vs `sales.view`).
 3. **Inventory & Cylinder Tracking Module**:
    - Track LPG tank types (11kg, 22kg, 50kg), filled vs empty inventory, and refill logs.
 4. **Optional In-App Password Reset Queue**:

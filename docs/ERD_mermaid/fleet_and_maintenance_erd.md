@@ -56,6 +56,8 @@ erDiagram
         int current_odometer
         int last_pm_odometer
         enum status
+        datetime created_at
+        datetime updated_at
     }
 
     VEHICLE_INSPECTIONS {

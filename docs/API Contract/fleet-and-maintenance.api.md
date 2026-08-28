@@ -107,7 +107,8 @@ Retrieves list and counts of operational vehicles (`status = 'ACTIVE'`) ready fo
           "phone": "+639170000004",
           "username": "sales_user"
         },
-        "createdAt": "2026-08-20T10:00:00.000Z"
+        "createdAt": "2026-08-20T10:00:00.000Z",
+        "updatedAt": "2026-08-20T10:00:00.000Z"
       },
       {
         "id": "33333333-4444-5555-6666-777777777777",
@@ -121,7 +122,8 @@ Retrieves list and counts of operational vehicles (`status = 'ACTIVE'`) ready fo
         "isAvailable": true,
         "driverId": null,
         "driver": null,
-        "createdAt": "2026-08-20T10:00:00.000Z"
+        "createdAt": "2026-08-20T10:00:00.000Z",
+        "updatedAt": "2026-08-20T10:00:00.000Z"
       }
     ]
   }
@@ -167,6 +169,7 @@ Retrieves a list of fleet vehicles with optional search and filtering.
         "isAvailable": true,
         "driverId": "22222222-3333-4444-5555-666666666666",
         "createdAt": "2026-08-20T10:00:00.000Z",
+        "updatedAt": "2026-08-20T10:00:00.000Z",
         "driver": {
           "id": "22222222-3333-4444-5555-666666666666",
           "firstName": "Juan",
@@ -215,6 +218,7 @@ Retrieves detailed information for a specific vehicle.
       "isAvailable": true,
       "driverId": "22222222-3333-4444-5555-666666666666",
       "createdAt": "2026-08-20T10:00:00.000Z",
+      "updatedAt": "2026-08-20T10:00:00.000Z",
       "driver": {
         "id": "22222222-3333-4444-5555-666666666666",
         "firstName": "Juan",
@@ -280,7 +284,8 @@ Registers a new vehicle in the fleet with an optional initial soft-bounded defau
       "isAvailable": true,
       "driverId": null,
       "driver": null,
-      "createdAt": "2026-08-27T21:40:00.000Z"
+      "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T21:40:00.000Z"
     }
   }
 }
@@ -327,7 +332,8 @@ Updates vehicle specifications and odometer readings.
       "isAvailable": true,
       "driverId": null,
       "driver": null,
-      "createdAt": "2026-08-27T21:40:00.000Z"
+      "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T22:15:00.000Z"
     }
   }
 }
@@ -440,7 +446,8 @@ Deactivates a vehicle asset (`status = 'INACTIVE'`) and releases its driver assi
       "isAvailable": false,
       "driverId": null,
       "driver": null,
-      "createdAt": "2026-08-27T21:40:00.000Z"
+      "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T22:30:00.000Z"
     }
   }
 }
@@ -484,6 +491,7 @@ Assigns or transfers an active eligible driver to a vehicle as their soft-bounde
       "isAvailable": true,
       "driverId": "22222222-3333-4444-5555-666666666666",
       "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T22:45:00.000Z",
       "driver": {
         "id": "22222222-3333-4444-5555-666666666666",
         "firstName": "Juan",
@@ -581,6 +589,7 @@ Records a new vehicle mileage reading (odometer), calculates the distance travel
       "isAvailable": true,
       "driverId": "22222222-3333-4444-5555-666666666666",
       "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T23:00:00.000Z",
       "driver": {
         "id": "22222222-3333-4444-5555-666666666666",
         "firstName": "Juan",

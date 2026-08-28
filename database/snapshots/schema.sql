@@ -21,6 +21,15 @@ SET row_security = off;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
 --
+-- Name: container_type_enum; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.container_type_enum AS ENUM (
+    'CYLINDER',
+    'CANISTER'
+);
+
+--
 -- Name: inspection_result; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -64,6 +73,32 @@ CREATE TYPE public.work_order_status AS ENUM (
     'COMPLETED',
     'CANCELLED'
 );
+
+--
+-- Name: update_products_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.update_products_updated_at_column() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+--
+-- Name: update_trucks_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.update_trucks_updated_at_column() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
 
 SET default_tablespace = '';
 
@@ -169,6 +204,22 @@ CREATE TABLE public.permissions (
 );
 
 --
+-- Name: products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.products (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    category character varying(100) NOT NULL,
+    container_type public.container_type_enum NOT NULL,
+    net_weight_kg numeric(6,3) NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT "CHK_products_net_weight_kg" CHECK ((net_weight_kg > (0)::numeric))
+);
+
+--
 -- Name: role_permissions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -243,6 +294,7 @@ CREATE TABLE public.trucks (
     last_pm_odometer integer DEFAULT 0 NOT NULL,
     status public.truck_status DEFAULT 'ACTIVE'::public.truck_status NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT "CHK_trucks_current_odometer" CHECK ((current_odometer >= 0)),
     CONSTRAINT "CHK_trucks_last_pm_odometer" CHECK ((last_pm_odometer >= 0))
 );
@@ -351,6 +403,13 @@ ALTER TABLE ONLY public.permissions
     ADD CONSTRAINT "UQ_permissions_name" UNIQUE (name);
 
 --
+-- Name: products UQ_products_name; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT "UQ_products_name" UNIQUE (name);
+
+--
 -- Name: roles UQ_roles_name; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -426,6 +485,13 @@ ALTER TABLE ONLY public.maintenance_types
 
 ALTER TABLE ONLY public.permissions
     ADD CONSTRAINT permissions_pkey PRIMARY KEY (id);
+
+--
+-- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
 
 --
 -- Name: role_permissions role_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -573,6 +639,18 @@ CREATE INDEX "IX_work_orders_status" ON public.work_orders USING btree (status);
 --
 
 CREATE INDEX "IX_work_orders_truck_id" ON public.work_orders USING btree (truck_id);
+
+--
+-- Name: products trigger_update_products_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trigger_update_products_updated_at BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION public.update_products_updated_at_column();
+
+--
+-- Name: trucks trigger_update_trucks_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trigger_update_trucks_updated_at BEFORE UPDATE ON public.trucks FOR EACH ROW EXECUTE FUNCTION public.update_trucks_updated_at_column();
 
 --
 -- Name: approval_requests FK_approval_requests_decider_id; Type: FK CONSTRAINT; Schema: public; Owner: -
