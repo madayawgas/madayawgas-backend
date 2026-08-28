@@ -310,6 +310,25 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     const zeroWeightJson = await zeroWeightRes.json();
     assert.equal(zeroWeightJson.status, 'fail');
     assert.match(zeroWeightJson.message, /Net weight.*must be a positive number/i);
+
+    // G. Duplicate Name Conflict -> 409 Conflict
+    const dupRes = await fetch(`${baseUrl}/api/inventory/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-PROD- 11kg Household Cylinder',
+        category: 'Duplicate LPG',
+        containerType: 'CYLINDER',
+        netWeightKg: 11.0,
+      }),
+    });
+    assert.equal(dupRes.status, 409);
+    const dupJson = await dupRes.json();
+    assert.equal(dupJson.status, 'fail');
+    assert.match(dupJson.message, /already exists/i);
   });
 
   // ============================================================

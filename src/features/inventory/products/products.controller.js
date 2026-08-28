@@ -60,7 +60,8 @@ class ProductsController {
         data: { product },
       });
     } catch (err) {
-      return res.status(400).json({
+      const isConflict = err.message.includes('already exists');
+      return res.status(isConflict ? 409 : 400).json({
         status: 'fail',
         message: err.message,
       });
@@ -79,8 +80,14 @@ class ProductsController {
         data: { product },
       });
     } catch (err) {
-      const isNotFound = err.message === 'Product not found';
-      return res.status(isNotFound ? 404 : 400).json({
+      if (err.message === 'Product not found') {
+        return res.status(404).json({
+          status: 'fail',
+          message: err.message,
+        });
+      }
+      const isConflict = err.message.includes('already exists');
+      return res.status(isConflict ? 409 : 400).json({
         status: 'fail',
         message: err.message,
       });

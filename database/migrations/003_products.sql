@@ -9,28 +9,32 @@ DO $$ BEGIN
     END IF;
 END $$;
 
-CREATE TABLE IF NOT EXISTS products (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    container_type container_type_enum NOT NULL, -- Enum values: CYLINDER, CANISTER
-    net_weight_kg NUMERIC(6, 3) NOT NULL CHECK (net_weight_kg > 0),
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS "products" (
+    "id" UUID DEFAULT gen_random_uuid(),
+    "name" VARCHAR(255) NOT NULL,
+    "category" VARCHAR(100) NOT NULL,
+    "container_type" container_type_enum NOT NULL,
+    "net_weight_kg" NUMERIC(6, 3) NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT TRUE,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY ("id"),
+    CONSTRAINT "UQ_products_name" UNIQUE ("name"),
+    CONSTRAINT "CHK_products_net_weight_kg" CHECK ("net_weight_kg" > 0)
 );
 
 -- Trigger function to automatically update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+CREATE OR REPLACE FUNCTION update_products_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW.updated_at = NOW();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_update_products_updated_at ON products;
+DROP TRIGGER IF EXISTS trigger_update_products_updated_at ON "products";
 CREATE TRIGGER trigger_update_products_updated_at
-    BEFORE UPDATE ON products
+    BEFORE UPDATE ON "products"
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    EXECUTE FUNCTION update_products_updated_at_column();

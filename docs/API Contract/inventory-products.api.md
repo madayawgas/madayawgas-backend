@@ -34,8 +34,8 @@ MadayawGas distributes three standard product lines:
 
 | Column | Type | Nullable | Constraints & Defaults | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `id` | `UUID` | No | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique product identifier |
-| `name` | `VARCHAR(255)` | No | Non-empty | Product item name |
+| `id` | `UUID` | No | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique product identifier (automatically generated) |
+| `name` | `VARCHAR(255)` | No | `UNIQUE`, Non-empty | Unique product item name |
 | `category` | `VARCHAR(100)` | No | Non-empty | Product classification / category |
 | `container_type` | `container_type_enum` | No | `'CYLINDER'` \| `'CANISTER'` | Container type category |
 | `net_weight_kg` | `NUMERIC(6, 3)` | No | `CHECK (net_weight_kg > 0)` | Net gas capacity in kilograms |
@@ -76,7 +76,7 @@ Content-Type: application/json
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `name` | String | Yes | Name of the product item (1-255 characters) |
+| `name` | String | Yes | Unique name of the product item (1-255 characters) |
 | `category` | String | Yes | Product category (1-100 characters) |
 | `containerType` | String | Yes | Container type (`CYLINDER` or `CANISTER`) |
 | `netWeightKg` | Number | Yes | Positive numeric weight in kg (`> 0`, max `999.999`) |
@@ -89,7 +89,7 @@ Content-Type: application/json
   "status": "success",
   "data": {
     "product": {
-      "id": "33333333-3333-3333-3333-000000000001",
+      "id": "e9b21f37-142c-4f76-96f3-a3d8b02e7b91",
       "name": "Butane Canister 250g",
       "category": "Canister",
       "containerType": "CANISTER",
@@ -113,6 +113,13 @@ Content-Type: application/json
   ```
 - **`401 Unauthorized`**: Missing or invalid session cookie (`mg_sid`).
 - **`403 Forbidden`**: Insufficient permissions (requires `inventory.manage`).
+- **`409 Conflict`**: Product with the specified name already exists.
+  ```json
+  {
+    "status": "fail",
+    "message": "Product with name 'Butane Canister 250g' already exists"
+  }
+  ```
 
 ---
 
@@ -144,7 +151,7 @@ Retrieves a list of product items with optional filtering by status, container t
     "count": 3,
     "products": [
       {
-        "id": "33333333-3333-3333-3333-000000000001",
+        "id": "e9b21f37-142c-4f76-96f3-a3d8b02e7b91",
         "name": "Butane Canister 250g",
         "category": "Canister",
         "containerType": "CANISTER",
@@ -154,7 +161,7 @@ Retrieves a list of product items with optional filtering by status, container t
         "updatedAt": "2026-08-28T12:20:00.000Z"
       },
       {
-        "id": "33333333-3333-3333-3333-000000000002",
+        "id": "27d6365b-bfb0-4ca7-b286-63d1bcfa2520",
         "name": "11kg LPG Cylinder",
         "category": "LPG Cylinder",
         "containerType": "CYLINDER",
@@ -164,7 +171,7 @@ Retrieves a list of product items with optional filtering by status, container t
         "updatedAt": "2026-08-28T12:20:00.000Z"
       },
       {
-        "id": "33333333-3333-3333-3333-000000000003",
+        "id": "84fc2e10-c4a1-4328-98e3-509f6e6f1f44",
         "name": "22kg LPG Cylinder",
         "category": "LPG Cylinder",
         "containerType": "CYLINDER",
@@ -202,7 +209,7 @@ Retrieves the complete profile information of a single product item by UUID.
   "status": "success",
   "data": {
     "product": {
-      "id": "33333333-3333-3333-3333-000000000001",
+      "id": "e9b21f37-142c-4f76-96f3-a3d8b02e7b91",
       "name": "Butane Canister 250g",
       "category": "Canister",
       "containerType": "CANISTER",
@@ -246,7 +253,7 @@ Content-Type: application/json
 
 ```json
 {
-  "name": "11kg Premium LPG Cylinder",
+  "name": "11kg Standard Blue LPG Cylinder",
   "category": "LPG Cylinder",
   "containerType": "CYLINDER",
   "netWeightKg": 11.000,
@@ -256,7 +263,7 @@ Content-Type: application/json
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `name` | String | No | Updated product name (non-empty, max 255 chars) |
+| `name` | String | No | Updated unique product name (non-empty, max 255 chars) |
 | `category` | String | No | Updated category (non-empty, max 100 chars) |
 | `containerType` | String | No | Updated container type (`CYLINDER` or `CANISTER`) |
 | `netWeightKg` | Number | No | Updated net weight (> 0, max 999.999) |
@@ -269,8 +276,8 @@ Content-Type: application/json
   "status": "success",
   "data": {
     "product": {
-      "id": "33333333-3333-3333-3333-000000000002",
-      "name": "11kg Premium LPG Cylinder",
+      "id": "27d6365b-bfb0-4ca7-b286-63d1bcfa2520",
+      "name": "11kg Standard Blue LPG Cylinder",
       "category": "LPG Cylinder",
       "containerType": "CYLINDER",
       "netWeightKg": 11,
@@ -286,6 +293,7 @@ Content-Type: application/json
 
 - **`400 Bad Request`**: Validation error on supplied values.
 - **`404 Not Found`**: Product ID not found.
+- **`409 Conflict`**: New product name is already in use by another item.
 
 ---
 
@@ -312,7 +320,7 @@ Deactivates a product item so it is no longer treated as active (`is_active = fa
   "message": "Product successfully deactivated",
   "data": {
     "product": {
-      "id": "33333333-3333-3333-3333-000000000003",
+      "id": "84fc2e10-c4a1-4328-98e3-509f6e6f1f44",
       "name": "22kg LPG Cylinder",
       "category": "LPG Cylinder",
       "containerType": "CYLINDER",

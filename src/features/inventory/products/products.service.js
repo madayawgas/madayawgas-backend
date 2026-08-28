@@ -76,6 +76,12 @@ class ProductsService {
       throw new Error('Product name cannot exceed 255 characters');
     }
 
+    // Check duplicate name
+    const existing = await productsRepository.findProductByName(cleanName);
+    if (existing) {
+      throw new Error(`Product with name '${cleanName}' already exists`);
+    }
+
     // 2. Validate category
     if (!category || typeof category !== 'string' || category.trim().length === 0) {
       throw new Error('Category is required');
@@ -140,6 +146,10 @@ class ProductsService {
       const cleanName = data.name.trim();
       if (cleanName.length > 255) {
         throw new Error('Product name cannot exceed 255 characters');
+      }
+      const existingWithName = await productsRepository.findProductByName(cleanName);
+      if (existingWithName && existingWithName.id !== id) {
+        throw new Error(`Product with name '${cleanName}' already exists`);
       }
       updateFields.name = cleanName;
     }
