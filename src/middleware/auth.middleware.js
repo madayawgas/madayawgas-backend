@@ -56,8 +56,9 @@ const authenticate = async (req, res, next) => {
 
 /**
  * RBAC Permission Authorization Middleware
- * Uses permissionService.can to enforce route-level permissions.
- * Returns 403 Forbidden if user lacks the required permission.
+ * Uses permissionService.can / canAny to enforce route-level permissions.
+ * Accepts a single permission string or an array of permissions.
+ * Returns 403 Forbidden if user lacks the required permission(s).
  */
 const requirePermission = (permission) => {
   return (req, res, next) => {
@@ -68,7 +69,11 @@ const requirePermission = (permission) => {
       });
     }
 
-    if (!permissionService.can(req.user, permission)) {
+    const hasPermission = Array.isArray(permission)
+      ? permissionService.canAny(req.user, permission)
+      : permissionService.can(req.user, permission);
+
+    if (!hasPermission) {
       return res.status(403).json({
         status: 'fail',
         message: 'Forbidden',
