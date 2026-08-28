@@ -79,7 +79,14 @@ madayawgas-backend/
 │   │   │   ├── management.service.js        # User creation, credentials, deactivation, roles
 │   │   │   └── permission.service.js        # RBAC helpers (can, canAll, canAny, isScopedToOwn)
 │   │   ├── fleet/
-│   │   │   └── index.js                     # Fleet feature placeholder (to be implemented)
+│   │   │   ├── availability/                # Availability metrics and status transitions
+│   │   │   ├── trucks/                      # Vehicle CRUD and driver assignments
+│   │   │   ├── fleet.routes.js              # Express fleet route definitions
+│   │   │   └── index.js                     # Fleet barrel export
+│   │   ├── inventory/                       # Inventory Subsystem
+│   │   │   ├── products/                    # Item/Product CRUD (Repository, Service, Controller)
+│   │   │   ├── inventory.routes.js          # Express inventory route definitions
+│   │   │   └── index.js                     # Inventory barrel export
 │   │   └── sales/
 │   │       └── index.js                     # Sales feature placeholder (to be implemented)
 │   ├── middleware/
@@ -88,6 +95,8 @@ madayawgas-backend/
 │   │   └── error.middleware.js              # Centralized global error handler
 │   ├── test/                                # Modular domain test suites (node:test)
 │   │   ├── auth.test.js                     # Authentication & session tests (prefix: test_auth_)
+│   │   ├── fleet.test.js                    # Fleet subsystem tests (prefix: test_fleet_)
+│   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
 │   │   ├── permission.test.js               # RBAC & permission tests (prefix: test_perm_)
 │   │   └── profile.test.js                  # Profile tests (prefix: test_prof_)
@@ -139,6 +148,8 @@ madayawgas-backend/
 * Node.js test runner (`node --test src/test/*.test.js`) runs test files in parallel worker processes.
 * To prevent database race conditions and duplicate key collisions:
   - `auth.test.js` uses prefix `test_auth_`
+  - `fleet.test.js` uses prefix `test_fleet_`
+  - `inventory.test.js` uses prefix `test_inv_`
   - `management.test.js` uses prefix `test_mgmt_`
   - `permission.test.js` uses prefix `test_perm_`
   - `profile.test.js` uses prefix `test_prof_`
@@ -179,6 +190,12 @@ madayawgas-backend/
    * Service automatically updates user's role, fetches updated permissions array, logs audit trail (`USER_ROLE_UPDATED`), and immediately invalidates active sessions so new permissions take effect immediately.
    * Enforced safety guard preventing role modification on the primary Super Admin account.
    * Added comprehensive integration test suite in `src/test/management.test.js` (31 total project tests passing with 100% success).
+9. **Inventory Subsystem: Item Profile / Product CRUD (`src/features/inventory/`)**:
+   * Implemented 3-Layer Architecture for Item Profile management (`products.repository.js`, `products.service.js`, `products.controller.js`, `inventory.routes.js`).
+   * Maintained exact schema fields from `003_products.sql` (`id`, `name`, `category`, `container_type`, `net_weight_kg`, `is_active`, timestamps).
+   * Enforced RBAC route protections (`inventory.view` for listing/detail viewing, `inventory.manage` for creation, updates, and soft-deactivation).
+   * Implemented comprehensive test suite in `src/test/inventory.test.js` covering all 4 user stories, validations, container type enforcement (`CYLINDER`, `CANISTER`), weight validation, and soft-deactivation filtering (37 total project tests passing with 100% success).
+   * Created formal API contract `docs/API Contract/inventory-products.api.md`.
 
 ---
 
