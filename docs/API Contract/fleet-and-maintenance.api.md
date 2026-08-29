@@ -426,6 +426,19 @@ Deactivates a vehicle asset (`status = 'INACTIVE'`) and releases its driver assi
 - **URL**: `/api/fleet/trucks/:id/deactivate`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.manage`
+- **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` in body or `x-confirm-password` header)
+
+#### Request Body
+
+```json
+{
+  "confirmPassword": "YourCurrentPassword123!"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `confirmPassword` | String | Yes | Acting manager/admin's current account password |
 
 #### Response: `200 OK` (Success)
 

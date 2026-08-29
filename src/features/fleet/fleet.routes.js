@@ -3,7 +3,7 @@ const router = express.Router();
 
 const trucksController = require('./trucks/trucks.controller');
 const availabilityController = require('./availability/availability.controller');
-const { authenticate, requirePermission } = require('../../middleware/auth.middleware');
+const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
 
 // ============================================================
@@ -117,6 +117,7 @@ router.patch(
   '/trucks/:id/deactivate',
   authenticate,
   requirePermission('fleet.manage'),
+  requirePasswordConfirmation,
   asyncHandler(trucksController.deactivateTruck.bind(trucksController))
 );
 

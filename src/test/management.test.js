@@ -387,15 +387,35 @@ test('User Administration & Management Tests', async (t) => {
     const unauthorizedRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${targetCookie}` },
-      body: JSON.stringify({ roleId: fleetRoleId }),
+      body: JSON.stringify({ roleId: fleetRoleId, confirmPassword: 'TargetPass123!' }),
     });
     assert.equal(unauthorizedRoleChange.status, 403);
 
-    // 3) Admin changes user's role to Fleet Manager
-    const adminRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
+    // 3) Admin role change rejected without password confirmation
+    const noPassRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
       body: JSON.stringify({ roleId: fleetRoleId }),
+    });
+    assert.equal(noPassRoleChange.status, 401);
+    const noPassJson = await noPassRoleChange.json();
+    assert.equal(noPassJson.code, 'PASSWORD_CONFIRMATION_REQUIRED');
+
+    // 4) Admin role change rejected with wrong password confirmation
+    const wrongPassRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ roleId: fleetRoleId, confirmPassword: 'WrongPassword!' }),
+    });
+    assert.equal(wrongPassRoleChange.status, 401);
+    const wrongPassJson = await wrongPassRoleChange.json();
+    assert.equal(wrongPassJson.code, 'INVALID_CONFIRMATION_PASSWORD');
+
+    // 5) Admin successfully changes user's role to Fleet Manager with valid confirmation password
+    const adminRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ roleId: fleetRoleId, confirmPassword: 'TestPass123!' }),
     });
     assert.equal(adminRoleChange.status, 200);
     const roleChangeBody = await adminRoleChange.json();
@@ -404,25 +424,25 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(Array.isArray(roleChangeBody.data.user.permissions));
     assert.ok(roleChangeBody.data.user.permissions.includes('fleet.view'));
 
-    // 4) Target user's active session is invalidated immediately
+    // 6) Target user's active session is invalidated immediately
     const checkTargetSession = await fetch(`${baseUrl}/api/users/me`, {
       headers: { Cookie: `mg_sid=${targetCookie}` },
     });
     assert.equal(checkTargetSession.status, 401);
 
-    // 5) Invalid role ID returns 400 Bad Request
+    // 7) Invalid role ID returns 400 Bad Request
     const invalidRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
-      body: JSON.stringify({ roleId: '00000000-0000-0000-0000-000000000000' }),
+      body: JSON.stringify({ roleId: '00000000-0000-0000-0000-000000000000', confirmPassword: 'TestPass123!' }),
     });
     assert.equal(invalidRoleChange.status, 400);
 
-    // 6) Primary superadmin role cannot be changed
+    // 8) Primary superadmin role cannot be changed
     const superAdminRoleChange = await fetch(`${baseUrl}/api/users/${testUserId}/role`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
-      body: JSON.stringify({ roleId: salesPersonRoleId }),
+      body: JSON.stringify({ roleId: salesPersonRoleId, confirmPassword: 'TestPass123!' }),
     });
     assert.equal(superAdminRoleChange.status, 400);
     const superAdminErr = await superAdminRoleChange.json();

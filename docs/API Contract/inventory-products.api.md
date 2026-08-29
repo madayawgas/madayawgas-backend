@@ -305,12 +305,25 @@ Deactivates a product item so it is no longer treated as active (`is_active = fa
 - **URL**: `/api/inventory/products/:id/deactivate`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `inventory.manage`
+- **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` in body or `x-confirm-password` header)
 
 #### URL Parameters
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | Yes | Unique identifier of the product |
+
+#### Request Body
+
+```json
+{
+  "confirmPassword": "YourCurrentPassword123!"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `confirmPassword` | String | Yes | Acting manager/admin's current account password |
 
 #### Response: `200 OK` (Success)
 

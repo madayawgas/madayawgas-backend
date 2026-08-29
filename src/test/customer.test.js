@@ -506,10 +506,30 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     const createdCust = (await createRes.json()).data.customer;
     assert.equal(createdCust.isActive, true);
 
-    // 2. Deactivate customer
-    const deactRes = await fetch(`${baseUrl}/api/sales/customers/${createdCust.id}/deactivate`, {
+    // 2. Rejection without password confirmation
+    const noPassDeact = await fetch(`${baseUrl}/api/sales/customers/${createdCust.id}/deactivate`, {
       method: 'PATCH',
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
+    });
+    assert.equal(noPassDeact.status, 401);
+    const noPassJson = await noPassDeact.json();
+    assert.equal(noPassJson.code, 'PASSWORD_CONFIRMATION_REQUIRED');
+
+    // 3. Rejection with incorrect password confirmation
+    const wrongPassDeact = await fetch(`${baseUrl}/api/sales/customers/${createdCust.id}/deactivate`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({ confirmPassword: 'WrongPassword123!' }),
+    });
+    assert.equal(wrongPassDeact.status, 401);
+    const wrongPassJson = await wrongPassDeact.json();
+    assert.equal(wrongPassJson.code, 'INVALID_CONFIRMATION_PASSWORD');
+
+    // 4. Successfully deactivate customer with valid password
+    const deactRes = await fetch(`${baseUrl}/api/sales/customers/${createdCust.id}/deactivate`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({ confirmPassword: 'CustPass123!' }),
     });
     assert.equal(deactRes.status, 200);
     const deactJson = await deactRes.json();
@@ -518,14 +538,14 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     assert.equal(deactJson.data.customer.id, createdCust.id);
     assert.equal(deactJson.data.customer.isActive, false);
 
-    // 3. Verify single GET shows isActive = false
+    // 5. Verify single GET shows isActive = false
     const getRes = await fetch(`${baseUrl}/api/sales/customers/${createdCust.id}`, {
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
     });
     const getJson = await getRes.json();
     assert.equal(getJson.data.customer.isActive, false);
 
-    // 4. Verify isActive=true filter excludes the deactivated customer
+    // 6. Verify isActive=true filter excludes the deactivated customer
     const activeFilterRes = await fetch(`${baseUrl}/api/sales/customers?isActive=true`, {
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
     });
@@ -533,7 +553,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     const activeMatch = activeJson.data.customers.find((c) => c.id === createdCust.id);
     assert.equal(activeMatch, undefined);
 
-    // 5. Verify isActive=false filter includes the deactivated customer
+    // 7. Verify isActive=false filter includes the deactivated customer
     const inactiveFilterRes = await fetch(`${baseUrl}/api/sales/customers?isActive=false`, {
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
     });
@@ -542,10 +562,11 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     assert.ok(inactiveMatch);
     assert.equal(inactiveMatch.isActive, false);
 
-    // 6. Deactivating non-existent customer -> 404
+    // 8. Deactivating non-existent customer with valid password -> 404
     const notFoundDeact = await fetch(`${baseUrl}/api/sales/customers/00000000-0000-0000-0000-000000000000/deactivate`, {
       method: 'PATCH',
-      headers: { Cookie: `mg_sid=${salesPersonCookie}` },
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({ confirmPassword: 'CustPass123!' }),
     });
     assert.equal(notFoundDeact.status, 404);
     const notFoundJson = await notFoundDeact.json();

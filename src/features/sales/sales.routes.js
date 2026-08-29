@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const customerController = require('./customer/customer.controller');
-const { authenticate, requirePermission } = require('../../middleware/auth.middleware');
+const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
 
 // ============================================================
@@ -43,6 +43,7 @@ router.patch(
   '/customers/:id/deactivate',
   authenticate,
   requirePermission('sales.update'),
+  requirePasswordConfirmation,
   asyncHandler(customerController.deactivateCustomer.bind(customerController))
 );
 

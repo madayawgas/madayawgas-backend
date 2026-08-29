@@ -500,10 +500,30 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     const createdProduct = (await createRes.json()).data.product;
     assert.equal(createdProduct.isActive, true);
 
-    // 2. Deactivate item
-    const deactRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}/deactivate`, {
+    // 2. Rejection without password confirmation
+    const noPassDeact = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}/deactivate`, {
       method: 'PATCH',
       headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(noPassDeact.status, 401);
+    const noPassJson = await noPassDeact.json();
+    assert.equal(noPassJson.code, 'PASSWORD_CONFIRMATION_REQUIRED');
+
+    // 3. Rejection with incorrect confirmation password
+    const wrongPassDeact = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}/deactivate`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ confirmPassword: 'WrongPassword123!' }),
+    });
+    assert.equal(wrongPassDeact.status, 401);
+    const wrongPassJson = await wrongPassDeact.json();
+    assert.equal(wrongPassJson.code, 'INVALID_CONFIRMATION_PASSWORD');
+
+    // 4. Successfully deactivate item with valid password
+    const deactRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}/deactivate`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ confirmPassword: 'InvPass123!' }),
     });
     assert.equal(deactRes.status, 200);
     const deactJson = await deactRes.json();
@@ -512,14 +532,14 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     assert.equal(deactJson.data.product.id, createdProduct.id);
     assert.equal(deactJson.data.product.isActive, false);
 
-    // 3. Verify single get shows isActive = false
+    // 5. Verify single get shows isActive = false
     const getRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
     const getJson = await getRes.json();
     assert.equal(getJson.data.product.isActive, false);
 
-    // 4. Verify isActive=true filter excludes the deactivated product
+    // 6. Verify isActive=true filter excludes the deactivated product
     const activeFilterRes = await fetch(`${baseUrl}/api/inventory/products?isActive=true`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
@@ -527,7 +547,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     const activeMatch = activeJson.data.products.find((p) => p.id === createdProduct.id);
     assert.equal(activeMatch, undefined);
 
-    // 5. Verify isActive=false filter includes the deactivated product
+    // 7. Verify isActive=false filter includes the deactivated product
     const inactiveFilterRes = await fetch(`${baseUrl}/api/inventory/products?isActive=false`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
@@ -536,10 +556,11 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     assert.ok(inactiveMatch);
     assert.equal(inactiveMatch.isActive, false);
 
-    // 6. Deactivating non-existent product -> 404
+    // 8. Deactivating non-existent product with valid password -> 404
     const notFoundDeact = await fetch(`${baseUrl}/api/inventory/products/00000000-0000-0000-0000-000000000000/deactivate`, {
       method: 'PATCH',
-      headers: { Cookie: `mg_sid=${adminCookie}` },
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ confirmPassword: 'InvPass123!' }),
     });
     assert.equal(notFoundDeact.status, 404);
     const notFoundJson = await notFoundDeact.json();

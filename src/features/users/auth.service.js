@@ -203,6 +203,22 @@ class AuthService {
     if (!userId) return;
     await usersRepository.revokeAllUserSessions(userId);
   }
+
+  /**
+   * Verifies a user's password against their stored hash in the database.
+   */
+  async verifyPassword(userId, rawPassword) {
+    if (!userId || !rawPassword || typeof rawPassword !== 'string' || rawPassword.trim().length === 0) {
+      return false;
+    }
+
+    const user = await usersRepository.findUserWithPasswordById(userId);
+    if (!user || !user.password_hash) {
+      return false;
+    }
+
+    return bcrypt.compare(rawPassword, user.password_hash);
+  }
 }
 
 module.exports = new AuthService();

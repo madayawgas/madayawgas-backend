@@ -84,7 +84,52 @@ const requirePermission = (permission) => {
   };
 };
 
+/**
+ * Dangerous Operations Password Confirmation Middleware
+ * Verifies the acting user's current password for high-impact/destructive actions.
+ * Accepts password from req.body.confirmPassword, req.body.adminPassword, req.body.password,
+ * or the 'x-confirm-password' header.
+ */
+const requirePasswordConfirmation = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Unauthorized',
+      });
+    }
+
+    const rawPassword =
+      req.body?.confirmPassword ||
+      req.body?.adminPassword ||
+      req.body?.password ||
+      req.headers['x-confirm-password'];
+
+    if (!rawPassword || typeof rawPassword !== 'string' || rawPassword.trim().length === 0) {
+      return res.status(401).json({
+        status: 'fail',
+        code: 'PASSWORD_CONFIRMATION_REQUIRED',
+        message: 'Password confirmation is required for this dangerous action',
+      });
+    }
+
+    const isValid = await authService.verifyPassword(req.user.id, rawPassword);
+    if (!isValid) {
+      return res.status(401).json({
+        status: 'fail',
+        code: 'INVALID_CONFIRMATION_PASSWORD',
+        message: 'Invalid confirmation password',
+      });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   authenticate,
   requirePermission,
+  requirePasswordConfirmation,
 };

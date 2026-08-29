@@ -158,12 +158,17 @@ madayawgas-backend/
   * On first login, submitting `POST /api/users/change-password` requires **only `newPassword`** (no redundant `currentPassword` entry).
   * Voluntary password changes by established users (`mustChangePassword === false`) require valid `currentPassword` verification.
 
-### D. Dangerous Operations Protection (Admin Password Confirmation)
-* Destructive operations require the acting administrator to supply their own password (`adminPassword`) in the request body:
-  * `PATCH /api/users/:id/status` (deactivation, activation, blocking, unblocking).
-  * `PATCH /api/users/:id/credentials` (admin resetting temporary password or changing username).
-* Missing or incorrect `adminPassword` immediately rejects with `401 Unauthorized` without modifying any data.
-* **Super Admin Protection**: The Super Admin account cannot be deactivated or blocked (`400 Bad Request`).
+### D. Dangerous Operations Protection (Password Confirmation Middleware)
+* High-impact and destructive actions are protected by the unified `requirePasswordConfirmation` Express middleware (`src/middleware/auth.middleware.js`):
+  * **Users**: `PATCH /api/users/:id/status`, `PATCH /api/users/:id/credentials`, `PATCH /api/users/:id/role`.
+  * **Fleet**: `PATCH /api/fleet/trucks/:id/deactivate`.
+  * **Inventory**: `PATCH /api/inventory/products/:id/deactivate`.
+  * **Sales**: `PATCH /api/sales/customers/:id/deactivate`.
+* **Flexible Multi-Channel Extraction**: Extracts password from `req.body.confirmPassword`, `req.body.adminPassword`, `req.body.password`, or header `x-confirm-password`.
+* **Standardized Rejection Codes**:
+  - Missing password: `401 Unauthorized` with `code: 'PASSWORD_CONFIRMATION_REQUIRED'`.
+  - Wrong password: `401 Unauthorized` with `code: 'INVALID_CONFIRMATION_PASSWORD'`.
+* **Super Admin Protection**: The primary Super Admin account cannot be deactivated, blocked, or have its role changed (`400 Bad Request`).
 
 ### E. Test Concurrency & Isolation
 * Node.js test runner (`node --test src/test/*.test.js`) runs test files in parallel worker processes.
@@ -248,6 +253,16 @@ madayawgas-backend/
     * Created seed file `005_history_logs_seed.sql` generating authentic historical logs referencing the seeded accounts, vehicles, products, and customers; standardized all seed filenames with numeric prefixes (`001_...` to `005_...`).
     * Implemented comprehensive test suite in `src/test/history.test.js` covering RBAC, schema matching frontend mock, module filtering, search query filtering, live cross-subsystem event creation, single log retrieval, and template resolver functionality (52 total project tests passing with 100% success).
     * Created formal API contract `docs/API Contract/history-log.api.md`.
+12. **Dangerous Operations Password Confirmation Guard (`requirePasswordConfirmation`)**:
+    * Created composable Express route middleware `requirePasswordConfirmation` in `src/middleware/auth.middleware.js` powered by `authService.verifyPassword`.
+    * Applied guard across all high-impact destructive routes:
+      - Users: `PATCH /api/users/:id/status`, `PATCH /api/users/:id/credentials`, `PATCH /api/users/:id/role`.
+      - Fleet: `PATCH /api/fleet/trucks/:id/deactivate`.
+      - Inventory: `PATCH /api/inventory/products/:id/deactivate`.
+      - Sales: `PATCH /api/sales/customers/:id/deactivate`.
+    * Supports multi-channel password extraction (`req.body.confirmPassword`, `req.body.adminPassword`, `req.body.password`, `req.headers['x-confirm-password']`).
+    * Rejects with standard `401 Unauthorized` (`PASSWORD_CONFIRMATION_REQUIRED` or `INVALID_CONFIRMATION_PASSWORD`) before executing any domain service or database logic.
+    * Updated all 8 test suites and confirmed 100% test pass rate across all 52 project tests.
 
 ---
 

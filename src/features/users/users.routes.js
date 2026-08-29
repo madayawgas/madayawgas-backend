@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const usersController = require('./users.controller');
-const { authenticate, requirePermission } = require('../../middleware/auth.middleware');
+const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
 
 // ==========================================
@@ -67,6 +67,7 @@ router.patch(
   '/:id/role',
   authenticate,
   requirePermission('users.manage'),
+  requirePasswordConfirmation,
   asyncHandler(usersController.updateUserRole.bind(usersController))
 );
 
@@ -74,6 +75,7 @@ router.patch(
   '/:id/credentials',
   authenticate,
   requirePermission('users.manage'),
+  requirePasswordConfirmation,
   asyncHandler(usersController.updateUserCredentials.bind(usersController))
 );
 
@@ -81,6 +83,7 @@ router.patch(
   '/:id/status',
   authenticate,
   requirePermission('users.manage'),
+  requirePasswordConfirmation,
   asyncHandler(usersController.setUserStatus.bind(usersController))
 );
 

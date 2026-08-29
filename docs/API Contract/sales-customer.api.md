@@ -286,12 +286,25 @@ Soft-deactivates a customer profile (`is_active = false`) so they are not treate
 - **URL**: `/api/sales/customers/:id/deactivate`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `sales.update`
+- **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` in body or `x-confirm-password` header)
 
 #### URL Parameters
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | Yes | Unique identifier of the customer |
+
+#### Request Body
+
+```json
+{
+  "confirmPassword": "YourCurrentPassword123!"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `confirmPassword` | String | Yes | Acting representative/admin's current account password |
 
 #### Response: `200 OK` (Success)
 

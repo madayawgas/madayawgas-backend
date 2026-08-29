@@ -427,18 +427,21 @@ Updates a user's system role and reconfigures their permissions. Revokes all act
 - **URL**: `/api/users/:id/role`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission**: `users.manage`
+- **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` / `adminPassword` in body or `x-confirm-password` header)
 
 #### Request Body
 
 ```json
 {
-  "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b"
+  "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
+  "confirmPassword": "AdminPassword123!"
 }
 ```
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `roleId` | UUID | **Yes** | Valid Role UUID to assign to the user |
+| `confirmPassword` | String | **Yes** | Acting administrator's current account password |
 
 #### Response: `200 OK` (Success)
 

@@ -442,13 +442,39 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     });
     const truckId = (await regRes.json()).data.truck.id;
 
-    // Deactivate
+    // 1) Rejects deactivation without password confirmation
+    const noPassDeact = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/deactivate`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+    });
+    assert.equal(noPassDeact.status, 401);
+    const noPassJson = await noPassDeact.json();
+    assert.equal(noPassJson.code, 'PASSWORD_CONFIRMATION_REQUIRED');
+
+    // 2) Rejects deactivation with incorrect password
+    const wrongPassDeact = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/deactivate`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({ confirmPassword: 'WrongPassword123!' }),
+    });
+    assert.equal(wrongPassDeact.status, 401);
+    const wrongPassJson = await wrongPassDeact.json();
+    assert.equal(wrongPassJson.code, 'INVALID_CONFIRMATION_PASSWORD');
+
+    // 3) Successfully deactivates with valid confirmPassword
     const deactRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/deactivate`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${fleetManagerCookie}`,
       },
+      body: JSON.stringify({ confirmPassword: 'FleetPass123!' }),
     });
     assert.equal(deactRes.status, 200);
     const deactJson = await deactRes.json();
