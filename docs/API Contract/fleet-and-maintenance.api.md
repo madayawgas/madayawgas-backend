@@ -420,6 +420,9 @@ Updates the operational condition of a vehicle (`ACTIVE`, `INACTIVE`, `UNDER_MAI
 
 ### 9. Deactivate Vehicle
 
+> [!CAUTION]
+> **Dangerous Operation**: Deactivating a vehicle immediately marks it as `INACTIVE`, unassigns any assigned driver, and excludes it from the available dispatch fleet. Requires password confirmation.
+
 Deactivates a vehicle asset (`status = 'INACTIVE'`) and releases its driver assignment.
 
 - **HTTP Method**: `PATCH`

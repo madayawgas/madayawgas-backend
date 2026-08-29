@@ -421,6 +421,9 @@ Updates profile information for a target user. Admins can update roles; users ca
 
 ### 10. Change User Role (Admin)
 
+> [!CAUTION]
+> **Dangerous Operation**: Modifying user roles alters system access permissions and immediately revokes all active sessions for the target user. Requires administrator password confirmation.
+
 Updates a user's system role and reconfigures their permissions. Revokes all active sessions for the user so updated permissions apply immediately.
 
 - **HTTP Method**: `PATCH`
@@ -481,12 +484,16 @@ Updates a user's system role and reconfigures their permissions. Revokes all act
 
 ### 11. Update User Credentials / Reset Password (Admin Reset)
 
-Allows an administrator to update a user's `username` or trigger a password reset. **Requires the administrator's password confirmation (`adminPassword`)**. Automatically generates a new temporary password and revokes all existing sessions.
+> [!CAUTION]
+> **Dangerous Operation**: Resetting credentials generates a new temporary password and immediately invalidates all active sessions for the target user. Requires administrator password confirmation.
+
+Allows an administrator to update a user's `username` or trigger a password reset. **Requires the administrator's password confirmation (`adminPassword` or `confirmPassword`)**. Automatically generates a new temporary password and revokes all existing sessions.
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/:id/credentials`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission**: `users.manage`
+- **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` / `adminPassword` in body or `x-confirm-password` header)
 
 #### Request Body
 
@@ -494,13 +501,13 @@ Allows an administrator to update a user's `username` or trigger a password rese
 {
   "resetPassword": true,
   "username": "jcruz_updated",
-  "adminPassword": "Superadmin123!"
+  "confirmPassword": "Superadmin123!"
 }
 ```
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `adminPassword` | String | **Yes** | Logged-in administrator's password to confirm action |
+| `confirmPassword` | String | **Yes** | Logged-in administrator's password to confirm action |
 | `resetPassword` | Boolean | Optional | Set to `true` to auto-generate a new temporary password |
 | `username` | String | Optional | Updated unique username (min 3 chars) |
 
@@ -527,12 +534,16 @@ Allows an administrator to update a user's `username` or trigger a password rese
 
 ### 12. Deactivate / Activate or Block / Unblock User Account
 
-Updates a user account's active or blocked status. **Requires the administrator's password confirmation (`adminPassword`)**. Revoking access (`isActive = false` or `isBlocked = true`) immediately invalidates all active sessions. Super Admin accounts cannot be deactivated or blocked.
+> [!CAUTION]
+> **Dangerous Operation**: Deactivating or blocking a user immediately disables account access and terminates all active sessions. Requires administrator password confirmation. Super Admin accounts cannot be deactivated or blocked.
+
+Updates a user account's active or blocked status. **Requires the administrator's password confirmation (`adminPassword` or `confirmPassword`)**. Revoking access (`isActive = false` or `isBlocked = true`) immediately invalidates all active sessions. Super Admin accounts cannot be deactivated or blocked.
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/:id/status`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission**: `users.manage`
+- **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` / `adminPassword` in body or `x-confirm-password` header)
 
 #### Request Body
 
@@ -540,13 +551,13 @@ Updates a user account's active or blocked status. **Requires the administrator'
 {
   "isActive": false,
   "isBlocked": true,
-  "adminPassword": "Superadmin123!"
+  "confirmPassword": "Superadmin123!"
 }
 ```
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `adminPassword` | String | **Yes** | Logged-in administrator's password to confirm action |
+| `confirmPassword` | String | **Yes** | Logged-in administrator's password to confirm action |
 | `isActive` | Boolean | Optional | Set user active state (`true` or `false`) |
 | `isBlocked` | Boolean | Optional | Set user blocked state (`true` or `false`) |
 
@@ -574,7 +585,7 @@ Updates a user account's active or blocked status. **Requires the administrator'
 
 ---
 
-### 12. Get System Roles List
+### 13. Get System Roles List
 
 Retrieves available system roles.
 

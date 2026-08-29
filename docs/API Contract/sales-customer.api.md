@@ -280,6 +280,9 @@ Content-Type: application/json
 
 ### 5. Deactivate Customer
 
+> [!CAUTION]
+> **Dangerous Operation**: Soft-deactivating a customer profile marks it as inactive (`isActive = false`) and prevents new orders or deliveries from being dispatched. Requires password confirmation.
+
 Soft-deactivates a customer profile (`is_active = false`) so they are not treated as active in the system.
 
 - **HTTP Method**: `PATCH`

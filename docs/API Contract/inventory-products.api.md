@@ -299,6 +299,9 @@ Content-Type: application/json
 
 ### 5. Deactivate Item
 
+> [!CAUTION]
+> **Dangerous Operation**: Soft-deactivating an inventory product item marks it as inactive (`isActive = false`) and excludes it from active inventory listings. Requires password confirmation.
+
 Deactivates a product item so it is no longer treated as active (`is_active = false`).
 
 - **HTTP Method**: `PATCH`
