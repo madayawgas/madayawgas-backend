@@ -263,19 +263,28 @@ madayawgas-backend/
     * Supports multi-channel password extraction (`req.body.confirmPassword`, `req.body.adminPassword`, `req.body.password`, `req.headers['x-confirm-password']`).
     * Rejects with standard `401 Unauthorized` (`PASSWORD_CONFIRMATION_REQUIRED` or `INVALID_CONFIRMATION_PASSWORD`) before executing any domain service or database logic.
     * Updated all 8 test suites and confirmed 100% test pass rate across all 52 project tests.
+13. **Role Management CRUD & System Roles Matrix Expansion**:
+    * Created migration `006_roles_and_permissions_expansion.sql` and updated `001_user_management_seed.sql` to expand system roles to the final defined set: `Super Admin`, `Admin`, `Fleet Manager`, `Sales Manager`, `Sales Person`, and `Driver`.
+    * Implemented full Role Management CRUD & Permission Catalog (`GET /api/users/roles`, `GET /api/users/roles/:id`, `GET /api/users/permissions`, `POST /api/users/roles`, `PATCH /api/users/roles/:id`, `DELETE /api/users/roles/:id`).
+    * Deleting a role is protected by `requirePasswordConfirmation` and enforces system safeguards (cannot delete core system default roles or roles with assigned users).
+    * Updating a role's permissions automatically invalidates active sessions for all users holding that role.
+    * Added comprehensive Subtest 6 in `src/test/management.test.js` with 100% test pass rate (53 tests passing across 8 files).
+    * Updated `docs/permissions.md` and `docs/API Contract/user-management.api.md`.
 
 ---
 
 ## 5. Seed Users & Permanent Test Accounts
 
-The database seed provides permanent accounts for all 4 roles (`must_change_password = FALSE`):
+The database seed provides permanent accounts for all 6 system roles (`must_change_password = FALSE`):
 
 | Username | Password | Role | Phone | Permissions Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access. Cannot be deactivated or blocked. |
-| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access: user management, fleet, inventory. |
-| **`fleet_user`** | `FleetPass123!` | **Fleet Manager** | `+639170000003` | Fleet & routes management (`fleet.*`, `route.*`). |
-| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Sales representative (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`). |
+| **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access (`*`). Cannot be deactivated, blocked, or demoted. |
+| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales. |
+| **`fleet_user`** | `FleetPass123!` | **Fleet Manager** | `+639170000003` | Fleet & route dispatch (`dashboard.view`, `fleet.view`, `fleet.manage`, `route.view`, `route.manage`). |
+| **`sales_manager`** | `SalesMgrPass123!` | **Sales Manager** | `+639170000006` | Sales oversight & inventory (`inventory.view`, `inventory.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). |
+| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
+| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Vehicle driver record for fleet truck assignments. **No login permissions**. |
 
 ---
 

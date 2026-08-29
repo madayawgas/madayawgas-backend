@@ -370,6 +370,139 @@ class UsersController {
       });
     }
   }
+
+  // ============================================================
+  // Role & Permission Management Controllers
+  // ============================================================
+
+  /**
+   * GET /api/users/roles
+   * List all system roles with assigned permissions and user counts.
+   */
+  async getRoles(req, res) {
+    const roles = await managementService.getAllRoles();
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        roles,
+      },
+    });
+  }
+
+  /**
+   * GET /api/users/roles/:id
+   * Retrieve single role details with permissions and user count.
+   */
+  async getRoleById(req, res) {
+    try {
+      const role = await managementService.getRoleById(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          role,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.message === 'Role not found' ? 404 : 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/users/permissions
+   * List all registered system permissions.
+   */
+  async getPermissions(req, res) {
+    const permissions = await managementService.getAllPermissions();
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        permissions,
+      },
+    });
+  }
+
+  /**
+   * POST /api/users/roles
+   * Create a new custom role with assigned permissions.
+   */
+  async createRole(req, res) {
+    const { name, description, permissions } = req.body || {};
+
+    try {
+      const role = await managementService.createRole(req.user, {
+        name,
+        description,
+        permissions,
+      });
+
+      return res.status(201).json({
+        status: 'success',
+        message: 'Role created successfully',
+        data: {
+          role,
+        },
+      });
+    } catch (err) {
+      return res.status(400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/users/roles/:id
+   * Update role details and/or permissions list.
+   */
+  async updateRole(req, res) {
+    const { name, description, permissions } = req.body || {};
+
+    try {
+      const role = await managementService.updateRole(req.user, req.params.id, {
+        name,
+        description,
+        permissions,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Role updated successfully',
+        data: {
+          role,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.message === 'Role not found' ? 404 : 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/users/roles/:id
+   * Delete custom role (Dangerous operation).
+   */
+  async deleteRole(req, res) {
+    try {
+      const result = await managementService.deleteRole(req.user, req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+      });
+    } catch (err) {
+      const statusCode = err.message === 'Role not found' ? 404 : 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
 }
 
 module.exports = new UsersController();

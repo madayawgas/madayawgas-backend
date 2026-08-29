@@ -30,6 +30,42 @@ router.get(
   asyncHandler(usersController.getRoles.bind(usersController))
 );
 
+router.post(
+  '/roles',
+  authenticate,
+  requirePermission('users.manage'),
+  asyncHandler(usersController.createRole.bind(usersController))
+);
+
+router.get(
+  '/roles/:id',
+  authenticate,
+  requirePermission('users.manage'),
+  asyncHandler(usersController.getRoleById.bind(usersController))
+);
+
+router.patch(
+  '/roles/:id',
+  authenticate,
+  requirePermission('users.manage'),
+  asyncHandler(usersController.updateRole.bind(usersController))
+);
+
+router.delete(
+  '/roles/:id',
+  authenticate,
+  requirePermission('users.manage'),
+  requirePasswordConfirmation,
+  asyncHandler(usersController.deleteRole.bind(usersController))
+);
+
+router.get(
+  '/permissions',
+  authenticate,
+  requirePermission('users.manage'),
+  asyncHandler(usersController.getPermissions.bind(usersController))
+);
+
 router.get(
   '/admin-only-test',
   authenticate,

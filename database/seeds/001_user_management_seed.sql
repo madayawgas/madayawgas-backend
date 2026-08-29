@@ -23,8 +23,16 @@ VALUES
         'Manages fleet, route dispatch, and operational activities.'
     ),
     (
+        'Sales Manager',
+        'Oversees sales, customers, transactions, inventory products, and delivery fulfillment.'
+    ),
+    (
         'Sales Person',
         'Handles sales and deliveries assigned to the user.'
+    ),
+    (
+        'Driver',
+        'Vehicle driver assigned to fleet trucks. Does not have login/system permissions.'
     )
 ON CONFLICT (name) DO NOTHING;
 
@@ -146,6 +154,16 @@ VALUES
     (
         'users.manage',
         'Create, update, deactivate, block, and manage user accounts.'
+    ),
+
+
+    -- --------------------------------------------------------
+    -- System Event History Logs
+    -- --------------------------------------------------------
+
+    (
+        'history.view',
+        'View system event history logs.'
     )
 
 
@@ -171,13 +189,6 @@ ON CONFLICT DO NOTHING;
 -- 4. ADMIN
 -- ============================================================
 -- Admin also receives every permission.
--- The distinction between Admin and Super Admin is therefore
--- enforced by application rules, such as:
---
---   - Super Admin cannot be deleted
---   - Super Admin may be protected from modification
---
--- rather than by normal functional permissions.
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT
@@ -210,14 +221,7 @@ JOIN permissions p
 
         -- Route Dispatch
         'route.view',
-        'route.manage',
-
-        -- Inventory
-        'inventory.view',
-
-        -- Sales & Delivery
-        'sales.view',
-        'delivery.view'
+        'route.manage'
 
     )
 WHERE r.name = 'Fleet Manager'
@@ -225,7 +229,43 @@ ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 6. SALES PERSON
+-- 6. SALES MANAGER
+-- ============================================================
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT
+    r.id,
+    p.id
+FROM roles r
+JOIN permissions p
+    ON p.name IN (
+
+        -- Dashboard
+        'dashboard.view',
+
+        -- Inventory
+        'inventory.view',
+        'inventory.manage',
+
+        -- Sales
+        'sales.view',
+        'sales.update',
+        'sales.delete',
+
+        -- Deliveries
+        'delivery.view',
+        'delivery.update',
+
+        -- History Logs
+        'history.view'
+
+    )
+WHERE r.name = 'Sales Manager'
+ON CONFLICT DO NOTHING;
+
+
+-- ============================================================
+-- 7. SALES PERSON
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -240,7 +280,6 @@ JOIN permissions p
         'dashboard.view',
 
         -- Route Dispatch
-        -- Only the user's assigned route
         'route.view_own',
 
         -- Sales
@@ -258,7 +297,13 @@ ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 7. INITIAL SUPER ADMIN ACCOUNT
+-- 8. DRIVER
+-- ============================================================
+-- Driver does not have login credentials or system permissions.
+
+
+-- ============================================================
+-- 9. INITIAL SUPER ADMIN ACCOUNT
 -- ============================================================
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -281,7 +326,7 @@ ON CONFLICT (username) DO UPDATE SET
 
 
 -- ============================================================
--- 8. SAMPLE ADMIN ACCOUNT
+-- 10. SAMPLE ADMIN ACCOUNT
 -- ============================================================
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -304,7 +349,7 @@ ON CONFLICT (username) DO UPDATE SET
 
 
 -- ============================================================
--- 9. SAMPLE FLEET MANAGER ACCOUNT
+-- 11. SAMPLE FLEET MANAGER ACCOUNT
 -- ============================================================
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -327,7 +372,30 @@ ON CONFLICT (username) DO UPDATE SET
 
 
 -- ============================================================
--- 10. SAMPLE SALES PERSON ACCOUNT
+-- 12. SAMPLE SALES MANAGER ACCOUNT
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'sales_manager',
+    '$2b$10$4VxKnRqkfjC2yZMkE4/BzONuL6vYN20ySY2UQi.iQ2qvbruHbj0Rq',
+    'Elena',
+    'Sales',
+    '+639170000006',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Sales Manager'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
+
+-- ============================================================
+-- 13. SAMPLE SALES PERSON ACCOUNT
 -- ============================================================
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -343,6 +411,29 @@ SELECT
     FALSE
 FROM roles r
 WHERE r.name = 'Sales Person'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
+
+-- ============================================================
+-- 14. SAMPLE DRIVER ACCOUNT
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'driver_user',
+    '$2b$10$3clbX9EqLvdbCduxDMC8G.DSkCKgvV6W2lB8yD3P.skKKRIOrGOL2',
+    'Danilo',
+    'Driver',
+    '+639170000005',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Driver'
 ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     phone = EXCLUDED.phone,

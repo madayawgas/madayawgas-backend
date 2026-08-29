@@ -90,6 +90,24 @@ const EVENT_DEFINITIONS = {
         ? 'Updated personal profile details'
         : `Updated profile details for '${p.username}'`,
   },
+  ROLE_CREATED: {
+    module: MODULES.USER_MANAGEMENT,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'role',
+    template: (p) => `Created new role '${p.name}'`,
+  },
+  ROLE_UPDATED: {
+    module: MODULES.USER_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'role',
+    template: (p) => `Updated role '${p.name}'`,
+  },
+  ROLE_DELETED: {
+    module: MODULES.USER_MANAGEMENT,
+    actionType: ACTION_TYPES.DELETED,
+    targetType: 'role',
+    template: (p) => `Deleted role '${p.name}'`,
+  },
 
   // ============================================================
   // 2. FLEET MANAGEMENT EVENTS

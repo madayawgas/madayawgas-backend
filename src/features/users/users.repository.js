@@ -179,14 +179,141 @@ class UsersRepository {
     return res.rows;
   }
 
+  async getAllRolesWithDetails() {
+    const sql = `
+      SELECT 
+        r.id,
+        r.name,
+        r.description,
+        r.created_at,
+        COUNT(DISTINCT u.id)::int AS user_count,
+        COALESCE(
+          ARRAY_AGG(DISTINCT p.name) FILTER (WHERE p.name IS NOT NULL),
+          '{}'
+        ) AS permissions
+      FROM roles r
+      LEFT JOIN users u ON u.role_id = r.id
+      LEFT JOIN role_permissions rp ON rp.role_id = r.id
+      LEFT JOIN permissions p ON rp.permission_id = p.id
+      GROUP BY r.id, r.name, r.description, r.created_at
+      ORDER BY r.name ASC
+    `;
+    const res = await query(sql);
+    return res.rows;
+  }
+
+  async getRoleByIdWithDetails(roleId) {
+    const sql = `
+      SELECT 
+        r.id,
+        r.name,
+        r.description,
+        r.created_at,
+        COUNT(DISTINCT u.id)::int AS user_count,
+        COALESCE(
+          ARRAY_AGG(DISTINCT p.name) FILTER (WHERE p.name IS NOT NULL),
+          '{}'
+        ) AS permissions
+      FROM roles r
+      LEFT JOIN users u ON u.role_id = r.id
+      LEFT JOIN role_permissions rp ON rp.role_id = r.id
+      LEFT JOIN permissions p ON rp.permission_id = p.id
+      WHERE r.id = $1
+      GROUP BY r.id, r.name, r.description, r.created_at
+    `;
+    const res = await query(sql, [roleId]);
+    return res.rows[0] || null;
+  }
+
   async findRoleById(roleId) {
     const res = await query(`SELECT id, name, description FROM roles WHERE id = $1`, [roleId]);
     return res.rows[0] || null;
   }
 
   async findRoleByName(roleName) {
-    const res = await query(`SELECT id, name, description FROM roles WHERE name = $1`, [roleName]);
+    const res = await query(`SELECT id, name, description FROM roles WHERE LOWER(name) = LOWER($1)`, [roleName]);
     return res.rows[0] || null;
+  }
+
+  async getAllPermissions() {
+    const res = await query(`SELECT id, name, description FROM permissions ORDER BY name ASC`);
+    return res.rows;
+  }
+
+  async createRole({ name, description = null }) {
+    const res = await query(
+      `INSERT INTO roles (name, description)
+       VALUES ($1, $2)
+       RETURNING id, name, description, created_at`,
+      [name, description]
+    );
+    return res.rows[0];
+  }
+
+  async updateRole(roleId, { name, description }) {
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${idx++}`);
+      values.push(name);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${idx++}`);
+      values.push(description);
+    }
+
+    if (updates.length === 0) {
+      return this.findRoleById(roleId);
+    }
+
+    values.push(roleId);
+    const sql = `
+      UPDATE roles
+      SET ${updates.join(', ')}
+      WHERE id = $${idx}
+      RETURNING id, name, description, created_at
+    `;
+    const res = await query(sql, values);
+    return res.rows[0] || null;
+  }
+
+  async setRolePermissions(roleId, permissionNames = []) {
+    await query(`DELETE FROM role_permissions WHERE role_id = $1`, [roleId]);
+
+    if (permissionNames && permissionNames.length > 0) {
+      await query(
+        `INSERT INTO role_permissions (role_id, permission_id)
+         SELECT $1, p.id
+         FROM permissions p
+         WHERE p.name = ANY($2::text[])`,
+        [roleId, permissionNames]
+      );
+    }
+
+    return this.getPermissionsByRoleId(roleId);
+  }
+
+  async countUsersByRoleId(roleId) {
+    const res = await query(`SELECT COUNT(*)::int AS count FROM users WHERE role_id = $1`, [roleId]);
+    return res.rows[0]?.count || 0;
+  }
+
+  async deleteRole(roleId) {
+    await query(`DELETE FROM role_permissions WHERE role_id = $1`, [roleId]);
+    const res = await query(`DELETE FROM roles WHERE id = $1 RETURNING id, name`, [roleId]);
+    return res.rows[0] || null;
+  }
+
+  async revokeAllSessionsByRoleId(roleId) {
+    await query(
+      `UPDATE sessions
+       SET revoked_at = NOW()
+       WHERE user_id IN (SELECT id FROM users WHERE role_id = $1)
+         AND revoked_at IS NULL`,
+      [roleId]
+    );
   }
 
   async getPermissionsByRoleId(roleId) {

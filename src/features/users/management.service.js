@@ -368,10 +368,212 @@ class ManagementService {
   }
 
   /**
-   * Returns available roles for role selection.
+   * Returns all roles with their assigned permissions and user count.
+   */
+  async getAllRoles() {
+    const roles = await usersRepository.getAllRolesWithDetails();
+    return roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      permissions: r.permissions || [],
+      userCount: Number(r.user_count) || 0,
+      createdAt: r.created_at,
+    }));
+  }
+
+  /**
+   * Returns details for a single role by UUID.
+   */
+  async getRoleById(roleId) {
+    if (!roleId) {
+      throw new Error('Role ID is required');
+    }
+
+    const role = await usersRepository.getRoleByIdWithDetails(roleId);
+    if (!role) {
+      throw new Error('Role not found');
+    }
+
+    return {
+      id: role.id,
+      name: role.name,
+      description: role.description,
+      permissions: role.permissions || [],
+      userCount: Number(role.user_count) || 0,
+      createdAt: role.created_at,
+    };
+  }
+
+  /**
+   * Returns all registered system permissions.
+   */
+  async getAllPermissions() {
+    return usersRepository.getAllPermissions();
+  }
+
+  /**
+   * Creates a new custom system role.
+   */
+  async createRole(actorUser, { name, description = null, permissions = [] }) {
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      throw new Error('Role name must be at least 2 characters long');
+    }
+
+    const trimmedName = name.trim();
+    const existing = await usersRepository.findRoleByName(trimmedName);
+    if (existing) {
+      throw new Error(`Role '${trimmedName}' already exists`);
+    }
+
+    const created = await usersRepository.createRole({
+      name: trimmedName,
+      description: description ? description.trim() : null,
+    });
+
+    let assignedPermissions = [];
+    if (Array.isArray(permissions) && permissions.length > 0) {
+      assignedPermissions = await usersRepository.setRolePermissions(created.id, permissions);
+    }
+
+    await historyService.log(EVENTS.ROLE_CREATED, {
+      actorUser,
+      targetId: created.id,
+      payload: { name: created.name },
+      metadata: { permissions: assignedPermissions },
+    });
+
+    return {
+      id: created.id,
+      name: created.name,
+      description: created.description,
+      permissions: assignedPermissions,
+      userCount: 0,
+      createdAt: created.created_at,
+    };
+  }
+
+  /**
+   * Updates an existing role's name, description, or assigned permissions.
+   * Invariant: Automatically revokes active sessions for all users holding this role.
+   */
+  async updateRole(actorUser, roleId, { name, description, permissions }) {
+    if (!roleId) {
+      throw new Error('Role ID is required');
+    }
+
+    const existing = await usersRepository.findRoleById(roleId);
+    if (!existing) {
+      throw new Error('Role not found');
+    }
+
+    // Protect Super Admin from renaming
+    if (existing.name === 'Super Admin' && name && name.trim() !== 'Super Admin') {
+      throw new Error('Cannot rename the Super Admin role');
+    }
+
+    let updatedName = existing.name;
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (trimmed.length < 2) {
+        throw new Error('Role name must be at least 2 characters long');
+      }
+      if (trimmed.toLowerCase() !== existing.name.toLowerCase()) {
+        const duplicate = await usersRepository.findRoleByName(trimmed);
+        if (duplicate) {
+          throw new Error(`Role '${trimmed}' already exists`);
+        }
+      }
+      updatedName = trimmed;
+    }
+
+    const updated = await usersRepository.updateRole(roleId, {
+      name: updatedName,
+      description: description !== undefined ? (description ? description.trim() : null) : undefined,
+    });
+
+    let assignedPermissions;
+    if (Array.isArray(permissions)) {
+      if (existing.name === 'Super Admin') {
+        // Super Admin always maintains all permissions
+        assignedPermissions = await usersRepository.getPermissionsByRoleId(roleId);
+      } else {
+        assignedPermissions = await usersRepository.setRolePermissions(roleId, permissions);
+      }
+    } else {
+      assignedPermissions = await usersRepository.getPermissionsByRoleId(roleId);
+    }
+
+    // Invalidate all active sessions for all users assigned to this role
+    await usersRepository.revokeAllSessionsByRoleId(roleId);
+
+    await historyService.log(EVENTS.ROLE_UPDATED, {
+      actorUser,
+      targetId: roleId,
+      payload: { name: updated.name },
+      metadata: { permissions: assignedPermissions },
+    });
+
+    const userCount = await usersRepository.countUsersByRoleId(roleId);
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      description: updated.description,
+      permissions: assignedPermissions,
+      userCount,
+      createdAt: updated.created_at,
+    };
+  }
+
+  /**
+   * Deletes a role (Dangerous Operation).
+   * Invariant: Cannot delete system roles or roles with assigned users.
+   */
+  async deleteRole(actorUser, roleId) {
+    if (!roleId) {
+      throw new Error('Role ID is required');
+    }
+
+    const existing = await usersRepository.findRoleById(roleId);
+    if (!existing) {
+      throw new Error('Role not found');
+    }
+
+    const PROTECTED_ROLES = [
+      'Super Admin',
+      'Admin',
+      'Fleet Manager',
+      'Sales Manager',
+      'Sales Person',
+      'Driver',
+    ];
+
+    if (PROTECTED_ROLES.includes(existing.name)) {
+      throw new Error(`Cannot delete system default role '${existing.name}'`);
+    }
+
+    const userCount = await usersRepository.countUsersByRoleId(roleId);
+    if (userCount > 0) {
+      throw new Error(`Cannot delete role with ${userCount} assigned user(s). Reassign users first.`);
+    }
+
+    await usersRepository.deleteRole(roleId);
+
+    await historyService.log(EVENTS.ROLE_DELETED, {
+      actorUser,
+      targetId: roleId,
+      payload: { name: existing.name },
+    });
+
+    return { message: `Role '${existing.name}' successfully deleted` };
+  }
+
+  /**
+   * Legacy alias for role selection list.
    */
   async getRoles() {
-    return usersRepository.findRoles();
+    return this.getAllRoles();
   }
 }
 

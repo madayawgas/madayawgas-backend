@@ -448,4 +448,147 @@ test('User Administration & Management Tests', async (t) => {
     const superAdminErr = await superAdminRoleChange.json();
     assert.equal(superAdminErr.message, 'Cannot change the role of a Super Admin account');
   });
+
+  // ============================================================
+  // Subtest 6: Role Management CRUD & Permissions System Tests
+  // ============================================================
+  await t.test('6. Role Management CRUD, Permission Selection & Safeguards', async () => {
+    const adminLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_mgmt_superadmin', password: 'TestPass123!' }),
+    });
+    const adminCookie = parseCookieHeader(adminLogin);
+
+    // 1. List all permissions (GET /api/users/permissions)
+    const permsRes = await fetch(`${baseUrl}/api/users/permissions`, {
+      headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(permsRes.status, 200);
+    const permsBody = await permsRes.json();
+    assert.ok(Array.isArray(permsBody.data.permissions));
+    assert.ok(permsBody.data.permissions.some((p) => p.name === 'fleet.view'));
+    assert.ok(permsBody.data.permissions.some((p) => p.name === 'sales.view'));
+
+    // 2. List all roles (GET /api/users/roles) - checks presence of all 6 standard roles
+    const rolesRes = await fetch(`${baseUrl}/api/users/roles`, {
+      headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(rolesRes.status, 200);
+    const rolesBody = await rolesRes.json();
+    const roles = rolesBody.data.roles;
+    assert.ok(Array.isArray(roles));
+
+    const roleNames = roles.map((r) => r.name);
+    assert.ok(roleNames.includes('Super Admin'));
+    assert.ok(roleNames.includes('Admin'));
+    assert.ok(roleNames.includes('Fleet Manager'));
+    assert.ok(roleNames.includes('Sales Manager'));
+    assert.ok(roleNames.includes('Sales Person'));
+    assert.ok(roleNames.includes('Driver'));
+
+    const salesManager = roles.find((r) => r.name === 'Sales Manager');
+    assert.ok(salesManager.permissions.includes('inventory.view'));
+    assert.ok(salesManager.permissions.includes('sales.view'));
+
+    const driverRole = roles.find((r) => r.name === 'Driver');
+    assert.equal(driverRole.permissions.length, 0); // Driver has no login permissions
+
+    // 3. Create a new custom role (POST /api/users/roles)
+    const createRoleRes = await fetch(`${baseUrl}/api/users/roles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        name: 'Quality Inspector',
+        description: 'Inspects LPG tanks and vehicle maintenance quality',
+        permissions: ['fleet.view', 'inventory.view', 'dashboard.view'],
+      }),
+    });
+    assert.equal(createRoleRes.status, 201);
+    const createRoleBody = await createRoleRes.json();
+    assert.equal(createRoleBody.status, 'success');
+    const createdRole = createRoleBody.data.role;
+    assert.equal(createdRole.name, 'Quality Inspector');
+    assert.equal(createdRole.userCount, 0);
+    assert.equal(createdRole.permissions.length, 3);
+    assert.ok(createdRole.permissions.includes('inventory.view'));
+
+    // 4. Duplicate role name rejected (400)
+    const dupRoleRes = await fetch(`${baseUrl}/api/users/roles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        name: 'Quality Inspector',
+        description: 'Duplicate test',
+      }),
+    });
+    assert.equal(dupRoleRes.status, 400);
+
+    // 5. Get role by ID (GET /api/users/roles/:id)
+    const getRoleRes = await fetch(`${baseUrl}/api/users/roles/${createdRole.id}`, {
+      headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(getRoleRes.status, 200);
+    const getRoleBody = await getRoleRes.json();
+    assert.equal(getRoleBody.data.role.id, createdRole.id);
+    assert.equal(getRoleBody.data.role.name, 'Quality Inspector');
+
+    // 6. Update role details and permissions (PATCH /api/users/roles/:id)
+    const updateRoleRes = await fetch(`${baseUrl}/api/users/roles/${createdRole.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        name: 'Lead Quality Inspector',
+        description: 'Updated description',
+        permissions: ['fleet.view', 'fleet.manage', 'inventory.view', 'inventory.manage'],
+      }),
+    });
+    assert.equal(updateRoleRes.status, 200);
+    const updateRoleBody = await updateRoleRes.json();
+    assert.equal(updateRoleBody.data.role.name, 'Lead Quality Inspector');
+    assert.equal(updateRoleBody.data.role.permissions.length, 4);
+    assert.ok(updateRoleBody.data.role.permissions.includes('fleet.manage'));
+
+    // 7. Protected System Roles cannot be deleted (400)
+    const delSystemRoleRes = await fetch(`${baseUrl}/api/users/roles/${driverRole.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ confirmPassword: 'TestPass123!' }),
+    });
+    assert.equal(delSystemRoleRes.status, 400);
+    const delSystemRoleJson = await delSystemRoleRes.json();
+    assert.ok(delSystemRoleJson.message.includes('Cannot delete system default role'));
+
+    // 8. Role deletion requires password confirmation
+    const noPassDel = await fetch(`${baseUrl}/api/users/roles/${createdRole.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(noPassDel.status, 401);
+    const noPassDelJson = await noPassDel.json();
+    assert.equal(noPassDelJson.code, 'PASSWORD_CONFIRMATION_REQUIRED');
+
+    const wrongPassDel = await fetch(`${baseUrl}/api/users/roles/${createdRole.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ confirmPassword: 'WrongPassword!' }),
+    });
+    assert.equal(wrongPassDel.status, 401);
+    const wrongPassDelJson = await wrongPassDel.json();
+    assert.equal(wrongPassDelJson.code, 'INVALID_CONFIRMATION_PASSWORD');
+
+    // 9. Successfully delete custom role with valid password confirmation (200)
+    const successDel = await fetch(`${baseUrl}/api/users/roles/${createdRole.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ confirmPassword: 'TestPass123!' }),
+    });
+    assert.equal(successDel.status, 200);
+
+    // Verify role is deleted (404)
+    const verifyDel = await fetch(`${baseUrl}/api/users/roles/${createdRole.id}`, {
+      headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(verifyDel.status, 404);
+  });
 });
