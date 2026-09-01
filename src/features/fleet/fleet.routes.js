@@ -43,6 +43,35 @@ router.get(
   asyncHandler(trucksController.getRegisterOptions.bind(trucksController))
 );
 
+/**
+ * GET /api/fleet/drivers
+ * List all eligible drivers with their current truck assignment status.
+ */
+router.get(
+  '/drivers',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(trucksController.getAllDrivers.bind(trucksController))
+);
+
+/**
+ * GET /api/fleet/drivers/available & GET /api/fleet/available-drivers
+ * List only available (unassigned) eligible drivers.
+ */
+router.get(
+  '/drivers/available',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(trucksController.getAvailableDrivers.bind(trucksController))
+);
+
+router.get(
+  '/available-drivers',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(trucksController.getAvailableDrivers.bind(trucksController))
+);
+
 // ============================================================
 // 2. Collection Level Endpoints (/trucks and root /)
 // ============================================================
@@ -122,14 +151,39 @@ router.patch(
 );
 
 /**
- * PATCH /api/fleet/trucks/:id/assign
- * Assign an active driver to vehicle, or unassign driver.
+ * PATCH /api/fleet/trucks/:id/assign and POST /api/fleet/trucks/:id/assign
+ * Assign an active driver to vehicle.
  */
 router.patch(
   '/trucks/:id/assign',
   authenticate,
   requirePermission('fleet.manage'),
   asyncHandler(trucksController.assignDriver.bind(trucksController))
+);
+
+router.post(
+  '/trucks/:id/assign',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(trucksController.assignDriver.bind(trucksController))
+);
+
+/**
+ * PATCH /api/fleet/trucks/:id/unassign and POST /api/fleet/trucks/:id/unassign
+ * Unassign driver from vehicle, making the driver AVAILABLE again.
+ */
+router.patch(
+  '/trucks/:id/unassign',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(trucksController.unassignDriver.bind(trucksController))
+);
+
+router.post(
+  '/trucks/:id/unassign',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(trucksController.unassignDriver.bind(trucksController))
 );
 
 /**

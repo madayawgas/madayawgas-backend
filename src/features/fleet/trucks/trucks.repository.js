@@ -247,14 +247,23 @@ class TrucksRepository {
   }
 
   /**
-   * Finds an active user by ID to verify driver eligibility.
+   * Finds an active user by ID and retrieves role information to verify driver eligibility.
    * @param {string} userId - User UUID
    */
   async findDriverUserById(userId) {
     const sql = `
-      SELECT id, username, first_name, last_name, phone, is_active, is_blocked
-      FROM users
-      WHERE id = $1
+      SELECT 
+        u.id, 
+        u.username, 
+        u.first_name, 
+        u.last_name, 
+        u.phone, 
+        u.is_active, 
+        u.is_blocked,
+        r.name AS role_name
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      WHERE u.id = $1
     `;
 
     const result = await query(sql, [userId]);
@@ -279,9 +288,45 @@ class TrucksRepository {
   }
 
   /**
-   * Retrieves active, unblocked users who are NOT currently assigned to any truck.
+   * Unassigns the driver from a truck by setting driver_id to NULL.
+   * @param {string} truckId - Truck UUID
    */
-  async getAvailableDrivers() {
+  async unassignDriver(truckId) {
+    const sql = `
+      UPDATE trucks
+      SET driver_id = NULL
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await query(sql, [truckId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Retrieves users holding the 'Driver' role with their live truck assignment information.
+   * @param {Object} filters - { availableOnly, search }
+   */
+  async getAllDrivers(filters = {}) {
+    const { availableOnly, search } = filters;
+    const conditions = [
+      'u.is_active = TRUE',
+      'u.is_blocked = FALSE',
+      "LOWER(r.name) = 'driver'",
+    ];
+    const params = [];
+    let paramIndex = 1;
+
+    if (availableOnly) {
+      conditions.push('t.id IS NULL');
+    }
+
+    if (search) {
+      conditions.push(`(u.first_name ILIKE $${paramIndex} OR u.last_name ILIKE $${paramIndex} OR u.username ILIKE $${paramIndex})`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
     const sql = `
       SELECT 
         u.id,
@@ -289,21 +334,26 @@ class TrucksRepository {
         u.first_name,
         u.last_name,
         u.phone,
-        r.name AS role_name
+        r.name AS role_name,
+        t.id AS assigned_truck_id,
+        t.plate_number AS assigned_truck_plate,
+        t.model AS assigned_truck_model
       FROM users u
       JOIN roles r ON u.role_id = r.id
-      WHERE u.is_active = TRUE
-        AND u.is_blocked = FALSE
-        AND u.id NOT IN (
-          SELECT driver_id 
-          FROM trucks 
-          WHERE driver_id IS NOT NULL
-        )
+      LEFT JOIN trucks t ON u.id = t.driver_id
+      WHERE ${conditions.join(' AND ')}
       ORDER BY u.first_name ASC, u.last_name ASC
     `;
 
-    const result = await query(sql);
+    const result = await query(sql, params);
     return result.rows;
+  }
+
+  /**
+   * Retrieves active, unblocked users who are NOT currently assigned to any truck.
+   */
+  async getAvailableDrivers() {
+    return this.getAllDrivers({ availableOnly: true });
   }
 }
 

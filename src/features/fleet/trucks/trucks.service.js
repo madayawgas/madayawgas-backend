@@ -40,6 +40,33 @@ function formatTruck(row) {
 }
 
 /**
+ * Maps database driver row to camelCase DTO with live assignment status.
+ */
+function formatDriver(row) {
+  if (!row) return null;
+
+  const isAssigned = row.assigned_truck_id !== null && row.assigned_truck_id !== undefined;
+
+  return {
+    id: row.id,
+    username: row.username,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    phone: row.phone,
+    role: row.role_name,
+    isAssigned,
+    status: isAssigned ? 'ASSIGNED' : 'AVAILABLE',
+    assignedTruck: isAssigned
+      ? {
+          id: row.assigned_truck_id,
+          plateNumber: row.assigned_truck_plate,
+          model: row.assigned_truck_model,
+        }
+      : null,
+  };
+}
+
+/**
  * Trucks Service
  * Handles business rules and domain logic for fleet vehicle management.
  */
@@ -50,6 +77,24 @@ class TrucksService {
   async getAllTrucks(filters = {}) {
     const rows = await trucksRepository.getAllTrucks(filters);
     return rows.map(formatTruck);
+  }
+
+  /**
+   * Retrieves all eligible drivers with their live assignment status.
+   * @param {Object} filters - { availableOnly, search }
+   */
+  async getAllDrivers(filters = {}) {
+    const rows = await trucksRepository.getAllDrivers(filters);
+    return rows.map(formatDriver);
+  }
+
+  /**
+   * Retrieves only available (unassigned) drivers.
+   * @param {Object} filters - { search }
+   */
+  async getAvailableDrivers(filters = {}) {
+    const rows = await trucksRepository.getAllDrivers({ ...filters, availableOnly: true });
+    return rows.map(formatDriver);
   }
 
   /**
@@ -134,10 +179,14 @@ class TrucksService {
       if (!driver.is_active || driver.is_blocked) {
         throw new Error('Assigned driver is not an active eligible user');
       }
+      if (driver.role_name !== 'Driver') {
+        throw new Error(`Only users with the 'Driver' role can be assigned to vehicles (user '${driver.username}' has role '${driver.role_name}')`);
+      }
 
       const alreadyAssigned = await trucksRepository.findTruckByDriverId(driverId);
       if (alreadyAssigned) {
-        throw new Error(`Driver is already assigned to vehicle with plate '${alreadyAssigned.plate_number}'`);
+        const driverName = `${driver.first_name} ${driver.last_name}`;
+        throw new Error(`Driver '${driverName}' is already assigned to vehicle '${alreadyAssigned.plate_number}'. The driver must be unassigned first before being assigned to another vehicle.`);
       }
 
       finalDriverId = driverId;
@@ -263,7 +312,10 @@ class TrucksService {
   }
 
   /**
-   * Assigns or unassigns a driver to/from a vehicle.
+   * Assigns an eligible driver to a vehicle.
+   * Enforces strict unassign-first constraints:
+   * - Driver cannot be assigned if already assigned to any vehicle.
+   * - Target vehicle cannot have a new driver assigned if it already has an assigned driver without unassigning first.
    */
   async assignDriver(truckId, driverId) {
     if (!truckId || typeof truckId !== 'string') {
@@ -277,15 +329,7 @@ class TrucksService {
 
     // Unassignment case
     if (driverId === null || driverId === undefined || driverId === '') {
-      await trucksRepository.assignDriver(truckId, null);
-      const unassigned = await this.getTruckById(truckId);
-
-      await historyService.log(EVENTS.TRUCK_DRIVER_UNASSIGNED, {
-        targetId: truckId,
-        payload: { plateNumber: unassigned.plateNumber },
-      });
-
-      return unassigned;
+      return this.unassignDriver(truckId);
     }
 
     // Assignment case: verify vehicle is not inactive or retired
@@ -293,7 +337,18 @@ class TrucksService {
       throw new Error(`Cannot assign a driver to a vehicle with status '${truck.status}'`);
     }
 
-    // Verify driver user exists and is active
+    // Check if target truck already has another driver assigned
+    if (truck.driver_id) {
+      if (truck.driver_id === driverId) {
+        return formatTruck(truck);
+      }
+      const currentDriverName = truck.driver_first_name
+        ? `${truck.driver_first_name} ${truck.driver_last_name}`
+        : 'another driver';
+      throw new Error(`Vehicle '${truck.plate_number}' is already assigned to driver '${currentDriverName}'. Please unassign the current driver first before assigning a new driver.`);
+    }
+
+    // Verify driver user exists and is active with 'Driver' role
     const driver = await trucksRepository.findDriverUserById(driverId);
     if (!driver) {
       throw new Error('Driver user not found');
@@ -301,11 +356,15 @@ class TrucksService {
     if (!driver.is_active || driver.is_blocked) {
       throw new Error('Driver user is inactive or blocked');
     }
+    if (driver.role_name !== 'Driver') {
+      throw new Error(`Only users with the 'Driver' role can be assigned to vehicles (user '${driver.username}' has role '${driver.role_name}')`);
+    }
 
     // Check if driver is already assigned to another vehicle
     const currentAssignment = await trucksRepository.findTruckByDriverId(driverId);
-    if (currentAssignment && currentAssignment.id !== truckId) {
-      throw new Error(`Driver is already assigned to vehicle '${currentAssignment.plate_number}'`);
+    if (currentAssignment) {
+      const driverFullName = `${driver.first_name} ${driver.last_name}`;
+      throw new Error(`Driver '${driverFullName}' is already assigned to vehicle '${currentAssignment.plate_number}'. The driver must be unassigned from vehicle '${currentAssignment.plate_number}' first before being assigned to another vehicle.`);
     }
 
     await trucksRepository.assignDriver(truckId, driverId);
@@ -320,6 +379,34 @@ class TrucksService {
     });
 
     return assigned;
+  }
+
+  /**
+   * Unassigns the driver currently attached to a vehicle.
+   */
+  async unassignDriver(truckId) {
+    if (!truckId || typeof truckId !== 'string') {
+      throw new Error('Truck ID is required');
+    }
+
+    const truck = await trucksRepository.getTruckById(truckId);
+    if (!truck) {
+      throw new Error('Vehicle not found');
+    }
+
+    if (!truck.driver_id) {
+      return formatTruck(truck);
+    }
+
+    await trucksRepository.unassignDriver(truckId);
+    const unassigned = await this.getTruckById(truckId);
+
+    await historyService.log(EVENTS.TRUCK_DRIVER_UNASSIGNED, {
+      targetId: truckId,
+      payload: { plateNumber: unassigned.plateNumber },
+    });
+
+    return unassigned;
   }
 
   /**
@@ -382,16 +469,9 @@ class TrucksService {
    * Retrieves data needed for the Fleet Registration page (available drivers and status options).
    */
   async getRegisterOptions() {
-    const drivers = await trucksRepository.getAvailableDrivers();
+    const drivers = await this.getAvailableDrivers();
     return {
-      availableDrivers: drivers.map((d) => ({
-        id: d.id,
-        username: d.username,
-        firstName: d.first_name,
-        lastName: d.last_name,
-        phone: d.phone,
-        role: d.role_name,
-      })),
+      availableDrivers: drivers,
       statusOptions: ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'],
     };
   }

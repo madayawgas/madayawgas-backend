@@ -471,11 +471,16 @@ Deactivates a vehicle asset (`status = 'INACTIVE'`) and releases its driver assi
 
 ---
 
-### 10. Assign / Transfer Vehicle Driver
+### 10. Assign Driver to Vehicle
 
-Assigns or transfers an active eligible driver to a vehicle as their soft-bounded default driver, or unassigns with `driverId: null`.
+Assigns an active eligible driver to a vehicle as their soft-bounded default driver.
 
-- **HTTP Method**: `PATCH`
+> [!IMPORTANT]
+> **Strict Unassign-First Invariant**:
+> 1. If the driver is already assigned to another vehicle, the request is rejected with `409 Conflict`. The driver must be unassigned from their current vehicle first.
+> 2. If the vehicle already has an assigned driver, the request is rejected with `409 Conflict`. The current driver must be unassigned first before assigning a new driver.
+
+- **HTTP Method**: `PATCH` / `POST`
 - **URL**: `/api/fleet/trucks/:id/assign`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.manage`
@@ -520,9 +525,147 @@ Assigns or transfers an active eligible driver to a vehicle as their soft-bounde
 }
 ```
 
+#### Response: `409 Conflict` (Driver Already Assigned)
+
+```json
+{
+  "status": "fail",
+  "message": "Driver 'Juan Sales' is already assigned to vehicle 'NGX-2045'. The driver must be unassigned from vehicle 'NGX-2045' first before being assigned to another vehicle."
+}
+```
+
 ---
 
-### 11. Fleet Register Page Options
+### 11. Unassign Driver from Vehicle
+
+Unassigns the driver currently attached to a vehicle, immediately transitioning the driver's status back to `AVAILABLE`.
+
+- **HTTP Method**: `PATCH` / `POST`
+- **URL**: `/api/fleet/trucks/:id/unassign`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Driver successfully unassigned",
+  "data": {
+    "truck": {
+      "id": "33333333-4444-5555-6666-777777777777",
+      "plateNumber": "NGX-2045",
+      "model": "Isuzu Forward FVR 34P",
+      "yearModel": 2023,
+      "currentOdometer": 18500,
+      "lastPmOdometer": 15000,
+      "status": "ACTIVE",
+      "operationalStatus": "ACTIVE",
+      "isAvailable": true,
+      "driverId": null,
+      "driver": null,
+      "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T22:50:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+### 12. Driver Directory (List All Drivers)
+
+Lists all eligible driver accounts with their live assignment status (`AVAILABLE` vs `ASSIGNED`) and attached truck details.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/drivers`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `search` | String | No | Search keyword matching first name, last name, or username |
+| `availableOnly` | Boolean | No | Filter to only unassigned drivers (`true` / `false`) |
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 2,
+    "drivers": [
+      {
+        "id": "22222222-3333-4444-5555-666666666666",
+        "username": "sales_user",
+        "firstName": "Juan",
+        "lastName": "Sales",
+        "phone": "+639170000004",
+        "role": "Driver",
+        "isAssigned": true,
+        "status": "ASSIGNED",
+        "assignedTruck": {
+          "id": "33333333-4444-5555-6666-777777777777",
+          "plateNumber": "NGX-2045",
+          "model": "Isuzu Forward FVR 34P"
+        }
+      },
+      {
+        "id": "44444444-5555-6666-7777-888888888888",
+        "username": "driver_two",
+        "firstName": "Pedro",
+        "lastName": "Santos",
+        "phone": "+639170000009",
+        "role": "Driver",
+        "isAssigned": false,
+        "status": "AVAILABLE",
+        "assignedTruck": null
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 13. List Available Drivers
+
+Dedicated endpoint returning only active, eligible, unassigned drivers ready for vehicle assignment.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/drivers/available` (alias: `/api/fleet/available-drivers`)
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 1,
+    "drivers": [
+      {
+        "id": "44444444-5555-6666-7777-888888888888",
+        "username": "driver_two",
+        "firstName": "Pedro",
+        "lastName": "Santos",
+        "phone": "+639170000009",
+        "role": "Driver",
+        "isAssigned": false,
+        "status": "AVAILABLE",
+        "assignedTruck": null
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 14. Fleet Register Page Options
 
 Retrieves configuration metadata and eligible unassigned drivers to populate vehicle registration forms.
 
@@ -544,7 +687,10 @@ Retrieves configuration metadata and eligible unassigned drivers to populate veh
         "firstName": "Pedro",
         "lastName": "Santos",
         "phone": "+639170000009",
-        "role": "Sales Person"
+        "role": "Driver",
+        "isAssigned": false,
+        "status": "AVAILABLE",
+        "assignedTruck": null
       }
     ],
     "statusOptions": [

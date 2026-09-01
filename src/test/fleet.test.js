@@ -50,6 +50,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const superAdminRole = (await query(`SELECT id FROM roles WHERE name = 'Super Admin'`)).rows[0].id;
     const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`)).rows[0].id;
     const salesPersonRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
+    const driverRole = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 
     // 3. Create test users
     const passwordHash = await bcrypt.hash('FleetPass123!', 10);
@@ -75,14 +76,14 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const driver1Res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE) RETURNING id`,
-      ['test_fleet_driver1', passwordHash, 'Driver', 'One', '+639171000004', salesPersonRole]
+      ['test_fleet_driver1', passwordHash, 'Driver', 'One', '+639171000004', driverRole]
     );
     driver1Id = driver1Res.rows[0].id;
 
     const driver2Res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE) RETURNING id`,
-      ['test_fleet_driver2', passwordHash, 'Driver', 'Two', '+639171000005', salesPersonRole]
+      ['test_fleet_driver2', passwordHash, 'Driver', 'Two', '+639171000005', driverRole]
     );
     driver2Id = driver2Res.rows[0].id;
 
@@ -492,10 +493,50 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   });
 
   // ------------------------------------------------------------
-  // 8. Assign Vehicle (PATCH /api/fleet/trucks/:id/assign)
+  // 8. Driver Management & Availability Endpoints (GET /api/fleet/drivers & /api/fleet/drivers/available)
   // ------------------------------------------------------------
-  await t.test('8. Assign Vehicle to Driver & Unassigning', async () => {
-    // 1) Create two active available trucks
+  await t.test('8. Driver Directory & Available Drivers Endpoints - Strictly Driver Role Only', async () => {
+    // Initially driver1 and driver2 are unassigned
+    const allDriversRes = await fetch(`${baseUrl}/api/fleet/drivers`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    assert.equal(allDriversRes.status, 200);
+    const allDriversJson = await allDriversRes.json();
+    assert.equal(allDriversJson.status, 'success');
+    assert.ok(Array.isArray(allDriversJson.data.drivers));
+    
+    // Every returned user MUST have role 'Driver'
+    for (const d of allDriversJson.data.drivers) {
+      assert.equal(d.role, 'Driver');
+    }
+
+    const d1 = allDriversJson.data.drivers.find((d) => d.id === driver1Id);
+    assert.ok(d1);
+    assert.equal(d1.isAssigned, false);
+    assert.equal(d1.status, 'AVAILABLE');
+    assert.equal(d1.assignedTruck, null);
+
+    // Fetch available drivers directly
+    const availRes = await fetch(`${baseUrl}/api/fleet/drivers/available`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    assert.equal(availRes.status, 200);
+    const availJson = await availRes.json();
+    const availIds = availJson.data.drivers.map((d) => d.id);
+    assert.ok(availIds.includes(driver1Id));
+    assert.ok(availIds.includes(driver2Id));
+
+    // Ensure non-driver roles (Super Admin, Fleet Manager, Sales Person) are NOT returned
+    for (const d of availJson.data.drivers) {
+      assert.equal(d.role, 'Driver');
+    }
+  });
+
+  // ------------------------------------------------------------
+  // 9. Assign & Unassign Driver - Strict Unassign-First Invariant & Status Reflection
+  // ------------------------------------------------------------
+  await t.test('9. Assign & Unassign Driver - Strict Unassign-First Invariant & Status Reflection', async () => {
+    // 1) Create two test vehicles
     const truck1Res = await fetch(`${baseUrl}/api/fleet/trucks`, {
       method: 'POST',
       headers: {
@@ -516,6 +557,20 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     });
     const truck2Id = (await truck2Res.json()).data.truck.id;
 
+    // Reject assigning non-driver role user (e.g. Sales Person) -> 400 Bad Request
+    const salesUserId = (await query(`SELECT id FROM users WHERE username = 'test_fleet_sales'`)).rows[0].id;
+    const nonDriverAssignRes = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({ driverId: salesUserId }),
+    });
+    assert.equal(nonDriverAssignRes.status, 400);
+    const nonDriverJson = await nonDriverAssignRes.json();
+    assert.ok(nonDriverJson.message.includes('Driver'));
+
     // 2) Assign driver1 to Truck 1 -> 200 OK
     const assign1Res = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
       method: 'PATCH',
@@ -530,7 +585,16 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(assign1Json.data.truck.status, 'ACTIVE');
     assert.equal(assign1Json.data.truck.driver.id, driver1Id);
 
-    // 3) Attempt assigning driver1 to Truck 2 (already assigned) -> 409 Conflict
+    // Verify driver1 is now ASSIGNED in driver directory and excluded from available drivers
+    const checkAvailRes = await fetch(`${baseUrl}/api/fleet/drivers/available`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    const checkAvailJson = await checkAvailRes.json();
+    const availableIdsAfterAssign = checkAvailJson.data.drivers.map((d) => d.id);
+    assert.ok(!availableIdsAfterAssign.includes(driver1Id));
+    assert.ok(availableIdsAfterAssign.includes(driver2Id));
+
+    // 3) Attempt assigning driver1 to Truck 2 (driver1 already assigned to Truck 1) -> 409 Conflict
     const conflictAssign = await fetch(`${baseUrl}/api/fleet/trucks/${truck2Id}/assign`, {
       method: 'PATCH',
       headers: {
@@ -540,8 +604,23 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
       body: JSON.stringify({ driverId: driver1Id }),
     });
     assert.equal(conflictAssign.status, 409);
+    const conflictJson = await conflictAssign.json();
+    assert.ok(conflictJson.message.includes('already assigned'));
 
-    // 4) Attempt assigning non-existent driver -> 404 Not Found
+    // 4) Attempt assigning driver2 to Truck 1 (Truck 1 already has driver1 without unassigning first) -> 409 Conflict
+    const conflictTruckAssign = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({ driverId: driver2Id }),
+    });
+    assert.equal(conflictTruckAssign.status, 409);
+    const conflictTruckJson = await conflictTruckAssign.json();
+    assert.ok(conflictTruckJson.message.includes('already assigned'));
+
+    // 5) Attempt assigning non-existent driver -> 404 Not Found
     const notFoundDriver = await fetch(`${baseUrl}/api/fleet/trucks/${truck2Id}/assign`, {
       method: 'PATCH',
       headers: {
@@ -552,23 +631,30 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     });
     assert.equal(notFoundDriver.status, 404);
 
-    // 5) Unassign driver from Truck 1 (driverId: null) -> 200 OK
-    const unassignRes = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
+    // 6) Dedicated Unassign Endpoint: PATCH /api/fleet/trucks/:id/unassign -> 200 OK
+    const unassignRes = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/unassign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${fleetManagerCookie}`,
       },
-      body: JSON.stringify({ driverId: null }),
     });
     assert.equal(unassignRes.status, 200);
     const unassignJson = await unassignRes.json();
     assert.equal(unassignJson.data.truck.status, 'ACTIVE');
     assert.equal(unassignJson.data.truck.driver, null);
 
-    // 6) Now driver1 can be assigned to Truck 2
+    // 7) Verify driver1 is now back to AVAILABLE status in /api/fleet/drivers/available
+    const availAfterUnassignRes = await fetch(`${baseUrl}/api/fleet/drivers/available`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    const availAfterUnassignJson = await availAfterUnassignRes.json();
+    const availableIdsAfterUnassign = availAfterUnassignJson.data.drivers.map((d) => d.id);
+    assert.ok(availableIdsAfterUnassign.includes(driver1Id));
+
+    // 8) Now driver1 can be cleanly assigned to Truck 2
     const assign2Res = await fetch(`${baseUrl}/api/fleet/trucks/${truck2Id}/assign`, {
-      method: 'PATCH',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${fleetManagerCookie}`,
@@ -576,12 +662,14 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
       body: JSON.stringify({ driverId: driver1Id }),
     });
     assert.equal(assign2Res.status, 200);
+    const assign2Json = await assign2Res.json();
+    assert.equal(assign2Json.data.truck.driver.id, driver1Id);
   });
 
   // ------------------------------------------------------------
-  // 9. Fleet Register Page Options (GET /api/fleet/register-options)
+  // 10. Fleet Register Page Options (GET /api/fleet/register-options)
   // ------------------------------------------------------------
-  await t.test('9. Fleet Register Options - Available Unassigned Drivers', async () => {
+  await t.test('10. Fleet Register Options - Available Unassigned Drivers', async () => {
     // Assign driver1 to a vehicle
     await query(
       `INSERT INTO trucks (plate_number, model, year_model, driver_id, status)
@@ -603,9 +691,9 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   });
 
   // ------------------------------------------------------------
-  // 10. Record Vehicle Mileage (POST & PATCH /api/fleet/trucks/:id/mileage)
+  // 11. Record Vehicle Mileage (POST & PATCH /api/fleet/trucks/:id/mileage)
   // ------------------------------------------------------------
-  await t.test('10. Record Vehicle Mileage - Usage & Maintenance Calculation', async () => {
+  await t.test('11. Record Vehicle Mileage - Usage & Maintenance Calculation', async () => {
     // 1) Create truck with initial 10,000 km odometer and 8,000 km PM odometer
     const regRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
       method: 'POST',

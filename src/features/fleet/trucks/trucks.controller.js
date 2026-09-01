@@ -139,6 +139,41 @@ class TrucksController {
   }
 
   /**
+   * GET /api/fleet/drivers
+   */
+  async getAllDrivers(req, res) {
+    const { search, availableOnly } = req.query || {};
+    const drivers = await trucksService.getAllDrivers({
+      search,
+      availableOnly: availableOnly === 'true' || availableOnly === true,
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        count: drivers.length,
+        drivers,
+      },
+    });
+  }
+
+  /**
+   * GET /api/fleet/drivers/available & GET /api/fleet/available-drivers
+   */
+  async getAvailableDrivers(req, res) {
+    const { search } = req.query || {};
+    const drivers = await trucksService.getAvailableDrivers({ search });
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        count: drivers.length,
+        drivers,
+      },
+    });
+  }
+
+  /**
    * PATCH /api/fleet/trucks/:id/assign
    */
   async assignDriver(req, res) {
@@ -160,6 +195,26 @@ class TrucksController {
       }
       const isConflict = err.message.includes('already assigned');
       return res.status(isConflict ? 409 : 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/fleet/trucks/:id/unassign & POST /api/fleet/trucks/:id/unassign
+   */
+  async unassignDriver(req, res) {
+    try {
+      const truck = await trucksService.unassignDriver(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Driver successfully unassigned',
+        data: { truck },
+      });
+    } catch (err) {
+      const isNotFound = err.message === 'Vehicle not found';
+      return res.status(isNotFound ? 404 : 400).json({
         status: 'fail',
         message: err.message,
       });
