@@ -34,6 +34,7 @@ function parseCookieHeader(res) {
 test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
   let superAdminCookie;
   let adminCookie;
+  let salesManagerCookie;
   let fleetManagerCookie;
   let salesPersonCookie;
 
@@ -48,6 +49,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     // 2. Fetch role IDs
     const superAdminRole = (await query(`SELECT id FROM roles WHERE name = 'Super Admin'`)).rows[0].id;
     const adminRole = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
+    const salesManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Manager'`)).rows[0].id;
     const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`)).rows[0].id;
     const salesPersonRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
 
@@ -69,13 +71,19 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
-      ['test_inv_fleet', passwordHash, 'Fleet', 'Manager', '+639172000003', fleetManagerRole]
+      ['test_inv_sales_mgr', passwordHash, 'Sales', 'Manager', '+639172000003', salesManagerRole]
     );
 
     await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
-      ['test_inv_sales', passwordHash, 'Sales', 'Rep', '+639172000004', salesPersonRole]
+      ['test_inv_fleet', passwordHash, 'Fleet', 'Manager', '+639172000004', fleetManagerRole]
+    );
+
+    await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_inv_sales', passwordHash, 'Sales', 'Rep', '+639172000005', salesPersonRole]
     );
 
     // 4. Authenticate users to obtain session cookies
@@ -92,6 +100,13 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
       body: JSON.stringify({ username: 'test_inv_admin', password: 'InvPass123!' }),
     });
     adminCookie = parseCookieHeader(adminLogin);
+
+    const smLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_inv_sales_mgr', password: 'InvPass123!' }),
+    });
+    salesManagerCookie = parseCookieHeader(smLogin);
 
     const fmLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
@@ -126,7 +141,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(unauthPost.status, 401);
 
-    // B. Sales Person (no inventory permissions) -> 403 Forbidden
+    // B. Sales Person & Fleet Manager (no inventory permissions) -> 403 Forbidden
     const salesGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
     });
@@ -134,6 +149,14 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     const salesGetJson = await salesGet.json();
     assert.equal(salesGetJson.status, 'fail');
     assert.equal(salesGetJson.message, 'Forbidden');
+
+    const fmGet = await fetch(`${baseUrl}/api/inventory/products`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    assert.equal(fmGet.status, 403);
+    const fmGetJson = await fmGet.json();
+    assert.equal(fmGetJson.status, 'fail');
+    assert.equal(fmGetJson.message, 'Forbidden');
 
     const salesPost = await fetch(`${baseUrl}/api/inventory/products`, {
       method: 'POST',
@@ -150,26 +173,26 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(salesPost.status, 403);
 
-    // C. Fleet Manager (has inventory.view, but not inventory.manage) -> GET 200, POST 403
-    const fmGet = await fetch(`${baseUrl}/api/inventory/products`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    // C. Sales Manager (has inventory.view & inventory.manage) -> GET 200, POST 201
+    const smGet = await fetch(`${baseUrl}/api/inventory/products`, {
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
-    assert.equal(fmGet.status, 200);
+    assert.equal(smGet.status, 200);
 
-    const fmPost = await fetch(`${baseUrl}/api/inventory/products`, {
+    const smPost = await fetch(`${baseUrl}/api/inventory/products`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${fleetManagerCookie}`,
+        Cookie: `mg_sid=${salesManagerCookie}`,
       },
       body: JSON.stringify({
-        name: 'TEST-PROD- 11kg FM Create',
+        name: 'TEST-PROD- 11kg SM Create',
         category: 'LPG',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
       }),
     });
-    assert.equal(fmPost.status, 403);
+    assert.equal(smPost.status, 201);
 
     // D. Admin (has inventory.manage) -> POST 201
     const adminPost = await fetch(`${baseUrl}/api/inventory/products`, {
@@ -375,7 +398,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 2. View all products list
     const listRes = await fetch(`${baseUrl}/api/inventory/products`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     assert.equal(listRes.status, 200);
     const listJson = await listRes.json();
@@ -386,7 +409,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 3. Filter by containerType=CANISTER
     const canisterFilterRes = await fetch(`${baseUrl}/api/inventory/products?containerType=CANISTER`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     const canisterJson = await canisterFilterRes.json();
     const testCanisters = canisterJson.data.products.filter((p) => p.name.startsWith('TEST-PROD-'));
@@ -395,7 +418,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 4. Search filter
     const searchRes = await fetch(`${baseUrl}/api/inventory/products?search=Commercial`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     const searchJson = await searchRes.json();
     const searchMatches = searchJson.data.products.filter((p) => p.name.startsWith('TEST-PROD-'));
@@ -404,7 +427,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 5. Get single product detail by ID
     const singleRes = await fetch(`${baseUrl}/api/inventory/products/${p1Id}`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     assert.equal(singleRes.status, 200);
     const singleJson = await singleRes.json();
@@ -415,7 +438,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 6. Non-existent product ID -> 404
     const notFoundRes = await fetch(`${baseUrl}/api/inventory/products/00000000-0000-0000-0000-000000000000`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     assert.equal(notFoundRes.status, 404);
     const notFoundJson = await notFoundRes.json();
@@ -534,14 +557,14 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 5. Verify single get shows isActive = false
     const getRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     const getJson = await getRes.json();
     assert.equal(getJson.data.product.isActive, false);
 
     // 6. Verify isActive=true filter excludes the deactivated product
     const activeFilterRes = await fetch(`${baseUrl}/api/inventory/products?isActive=true`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     const activeJson = await activeFilterRes.json();
     const activeMatch = activeJson.data.products.find((p) => p.id === createdProduct.id);
@@ -549,7 +572,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
 
     // 7. Verify isActive=false filter includes the deactivated product
     const inactiveFilterRes = await fetch(`${baseUrl}/api/inventory/products?isActive=false`, {
-      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
     const inactiveJson = await inactiveFilterRes.json();
     const inactiveMatch = inactiveJson.data.products.find((p) => p.id === createdProduct.id);

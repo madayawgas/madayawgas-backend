@@ -1,6 +1,7 @@
 const usersRepository = require('./users.repository');
 const permissionService = require('./permission.service');
 const { historyService, EVENTS } = require('../history');
+const { parsePhoneNumber } = require('../../utils/phoneParser');
 
 /**
  * Profile Service
@@ -77,7 +78,7 @@ class ProfileService {
     }
 
     if (phone !== undefined) {
-      updatePayload.phone = phone !== null && typeof phone === 'string' ? phone.trim() : null;
+      updatePayload.phone = parsePhoneNumber(phone, { required: false });
     }
 
     if (birthdate !== undefined) {

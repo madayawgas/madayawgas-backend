@@ -79,7 +79,7 @@ Content-Type: application/json
 | :--- | :--- | :--- | :--- |
 | `name` | String | Yes | Full customer or business name (1-255 chars) |
 | `address` | String | Yes | Complete delivery/location address (non-empty) |
-| `contactNumber` | String | Yes | Contact phone or mobile number (1-50 chars) |
+| `contactNumber` | String | Yes | Philippine Mobile or Landline number in any standard format (e.g. `+639171234567`, `0917-123-4567`, `(+63) 917 123 4567`, `(082) 224-5678`, `(02) 8123-4567`). Automatically standardized to `+63...` format in database and response. |
 | `customerType` | String | Yes | Customer category (`RETAIL`, `COMMERCIAL`, `WHOLESALE`) |
 | `isActive` | Boolean | No | Active status flag (defaults to `true`) |
 
@@ -247,7 +247,7 @@ Content-Type: application/json
 | :--- | :--- | :--- | :--- |
 | `name` | String | No | Updated customer/business name (non-empty, max 255 chars) |
 | `address` | String | No | Updated address (non-empty) |
-| `contactNumber` | String | No | Updated contact number (non-empty, max 50 chars) |
+| `contactNumber` | String | No | Updated phone number in any supported mobile/landline format. Automatically standardized to `+63...`. |
 | `customerType` | String | No | Updated customer type (`RETAIL`, `COMMERCIAL`, `WHOLESALE`) |
 | `isActive` | Boolean | No | Updated active status |
 

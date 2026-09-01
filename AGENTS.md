@@ -270,6 +270,11 @@ madayawgas-backend/
     * Updating a role's permissions automatically invalidates active sessions for all users holding that role.
     * Added comprehensive Subtest 6 in `src/test/management.test.js` with 100% test pass rate (53 tests passing across 8 files).
     * Updated `docs/permissions.md` and `docs/API Contract/user-management.api.md`.
+14. **Philippine Phone Number Parsing & Standardization (`src/utils/phoneParser.js`)**:
+    * Built centralized phone number parsing utility supporting all Philippine mobile formats (`+63917...`, `0917...`, `(+63) 917...`, `0917-123-4567`) and landline formats (`+6382...`, `(082) 224-5678`, `(02) 8123-4567`).
+    * Automatically validates and normalizes all incoming contact numbers to the standard canonical international format (`+63...`) in PostgreSQL and API responses.
+    * Integrated into Customer Profile CRUD (`customer.service.js`) and User Account Management (`management.service.js`, `profile.service.js`).
+    * Added dedicated unit test suite in `src/test/phone.test.js` and updated integration tests (60 total tests passing with 100% success across 9 test files).
 
 ---
 

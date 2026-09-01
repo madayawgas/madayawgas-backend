@@ -1,5 +1,6 @@
 const customerRepository = require('./customer.repository');
 const { historyService, EVENTS } = require('../../history');
+const { parsePhoneNumber } = require('../../../utils/phoneParser');
 
 const ALLOWED_CUSTOMER_TYPES = ['RETAIL', 'COMMERCIAL', 'WHOLESALE'];
 
@@ -83,14 +84,8 @@ class CustomerService {
     }
     const cleanAddress = address.trim();
 
-    // 3. Validate contact number
-    if (!rawContactNumber || typeof rawContactNumber !== 'string' || rawContactNumber.trim().length === 0) {
-      throw new Error('Contact number is required');
-    }
-    const cleanContactNumber = rawContactNumber.trim();
-    if (cleanContactNumber.length > 50) {
-      throw new Error('Contact number cannot exceed 50 characters');
-    }
+    // 3. Validate and standardize contact number
+    const cleanContactNumber = parsePhoneNumber(rawContactNumber, { required: true });
 
     // 4. Validate customer type
     if (!rawCustomerType || typeof rawCustomerType !== 'string') {
@@ -161,16 +156,10 @@ class CustomerService {
       updateFields.address = data.address.trim();
     }
 
-    // Validate contact number if provided
+    // Validate and standardize contact number if provided
     const rawContactNumber = data.contactNumber !== undefined ? data.contactNumber : data.contact_number;
     if (rawContactNumber !== undefined) {
-      if (typeof rawContactNumber !== 'string' || rawContactNumber.trim().length === 0) {
-        throw new Error('Contact number cannot be empty');
-      }
-      const cleanContact = rawContactNumber.trim();
-      if (cleanContact.length > 50) {
-        throw new Error('Contact number cannot exceed 50 characters');
-      }
+      const cleanContact = parsePhoneNumber(rawContactNumber, { required: true });
       updateFields.contactNumber = cleanContact;
     }
 

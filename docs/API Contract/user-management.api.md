@@ -306,7 +306,7 @@ Creates a new user account. **The system automatically generates the username (f
 | :--- | :--- | :--- | :--- |
 | `firstName` | String | Yes | User first name |
 | `lastName` | String | Yes | User last name |
-| `phone` | String | No | Contact phone number |
+| `phone` | String | No | Contact phone number in any supported format. Automatically standardized to `+63...`. |
 | `birthdate` | Date/String | No | User birthdate (YYYY-MM-DD or null) |
 | `roleId` | UUID | Yes | Target role ID from roles table |
 

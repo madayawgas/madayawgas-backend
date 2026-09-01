@@ -115,13 +115,14 @@ test('User Administration & Management Tests', async (t) => {
       body: JSON.stringify({
         firstName: 'Jane',
         lastName: 'Cruz',
-        phone: '+639179876543',
+        phone: '0917-987-6543', // Formatted mobile
         roleId: salesPersonRoleId,
       }),
     });
     assert.equal(createRes2.status, 201);
     const createBody2 = await createRes2.json();
     assert.equal(createBody2.data.user.username, 'jcruz1');
+    assert.equal(createBody2.data.user.phone, '+639179876543'); // Standardized to +63...
 
     // 3) Non-admin prevented from creating users
     const userCookie = parseCookieHeader(userLogin);

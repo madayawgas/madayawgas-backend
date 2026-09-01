@@ -34,6 +34,7 @@ function parseCookieHeader(res) {
 test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
   let superAdminCookie;
   let adminCookie;
+  let salesManagerCookie;
   let fleetManagerCookie;
   let salesPersonCookie;
 
@@ -50,6 +51,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     // 2. Fetch role IDs
     const superAdminRole = (await query(`SELECT id FROM roles WHERE name = 'Super Admin'`)).rows[0].id;
     const adminRole = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
+    const salesManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Manager'`)).rows[0].id;
     const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`)).rows[0].id;
     const salesPersonRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
 
@@ -71,13 +73,19 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
-      ['test_cust_fleet', passwordHash, 'Fleet', 'Manager', '+639173000003', fleetManagerRole]
+      ['test_cust_sales_mgr', passwordHash, 'Sales', 'Manager', '+639173000003', salesManagerRole]
     );
 
     await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
-      ['test_cust_sales', passwordHash, 'Sales', 'Rep', '+639173000004', salesPersonRole]
+      ['test_cust_fleet', passwordHash, 'Fleet', 'Manager', '+639173000004', fleetManagerRole]
+    );
+
+    await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_cust_sales', passwordHash, 'Sales', 'Rep', '+639173000005', salesPersonRole]
     );
 
     // 4. Authenticate users to obtain session cookies
@@ -94,6 +102,13 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
       body: JSON.stringify({ username: 'test_cust_admin', password: 'CustPass123!' }),
     });
     adminCookie = parseCookieHeader(adminLogin);
+
+    const smLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_cust_sales_mgr', password: 'CustPass123!' }),
+    });
+    salesManagerCookie = parseCookieHeader(smLogin);
 
     const fmLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
@@ -128,31 +143,40 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(unauthPost.status, 401);
 
-    // B. Fleet Manager has sales.view -> GET 200 OK, but lacks sales.create -> POST 403 Forbidden
+    // B. Fleet Manager (no sales permissions) -> GET 403 Forbidden
     const fmGet = await fetch(`${baseUrl}/api/sales/customers`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
-    assert.equal(fmGet.status, 200);
+    assert.equal(fmGet.status, 403);
+    const fmGetJson = await fmGet.json();
+    assert.equal(fmGetJson.status, 'fail');
+    assert.equal(fmGetJson.message, 'Forbidden');
 
-    const fmPost = await fetch(`${baseUrl}/api/sales/customers`, {
+    // C. Sales Manager has sales.view -> GET 200 OK, but lacks sales.create -> POST 403 Forbidden
+    const smGet = await fetch(`${baseUrl}/api/sales/customers`, {
+      headers: { Cookie: `mg_sid=${salesManagerCookie}` },
+    });
+    assert.equal(smGet.status, 200);
+
+    const smPost = await fetch(`${baseUrl}/api/sales/customers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${fleetManagerCookie}`,
+        Cookie: `mg_sid=${salesManagerCookie}`,
       },
       body: JSON.stringify({
-        name: 'TEST-CUST- FM Customer',
+        name: 'TEST-CUST- SM Customer',
         address: '123 Test St',
         contactNumber: '09170000000',
         customerType: 'RETAIL',
       }),
     });
-    assert.equal(fmPost.status, 403);
-    const fmPostJson = await fmPost.json();
-    assert.equal(fmPostJson.status, 'fail');
-    assert.equal(fmPostJson.message, 'Forbidden');
+    assert.equal(smPost.status, 403);
+    const smPostJson = await smPost.json();
+    assert.equal(smPostJson.status, 'fail');
+    assert.equal(smPostJson.message, 'Forbidden');
 
-    // C. Sales Person has sales.view_own and sales.create -> GET 200, POST 201
+    // D. Sales Person has sales.view_own and sales.create -> GET 200, POST 201
     const salesGet = await fetch(`${baseUrl}/api/sales/customers`, {
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
     });
@@ -204,7 +228,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     assert.ok(retailData.data.customer.createdAt);
     assert.ok(retailData.data.customer.updatedAt);
 
-    // B. Successfully create COMMERCIAL customer
+    // B. Successfully create COMMERCIAL customer with formatted landline: (082) 224-5678
     const createCommercialRes = await fetch(`${baseUrl}/api/sales/customers`, {
       method: 'POST',
       headers: {
@@ -214,7 +238,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
       body: JSON.stringify({
         name: 'TEST-CUST- Davao Central Bakery',
         address: 'Corner San Pedro St, Davao City',
-        contactNumber: '+63822245678',
+        contactNumber: '(082) 224-5678', // Formatted landline
         customerType: 'COMMERCIAL',
       }),
     });
@@ -222,8 +246,9 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     const commercialData = await createCommercialRes.json();
     assert.equal(commercialData.status, 'success');
     assert.equal(commercialData.data.customer.customerType, 'COMMERCIAL');
+    assert.equal(commercialData.data.customer.contactNumber, '+63822245678'); // Standardized to +63...
 
-    // C. Successfully create WHOLESALE customer
+    // C. Successfully create WHOLESALE customer with hyphenated mobile: 0917-123-4567
     const createWholesaleRes = await fetch(`${baseUrl}/api/sales/customers`, {
       method: 'POST',
       headers: {
@@ -233,7 +258,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
       body: JSON.stringify({
         name: 'TEST-CUST- Mindanao LPG Distro',
         address: 'Km 11 Sasa, Davao City',
-        contactNumber: '+63822345678',
+        contactNumber: '0917-123-4567', // Hyphenated mobile
         customerType: 'WHOLESALE',
       }),
     });
@@ -241,6 +266,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     const wholesaleData = await createWholesaleRes.json();
     assert.equal(wholesaleData.status, 'success');
     assert.equal(wholesaleData.data.customer.customerType, 'WHOLESALE');
+    assert.equal(wholesaleData.data.customer.contactNumber, '+639171234567'); // Standardized to +63...
 
     // D. Validation: Missing name
     const missingNameRes = await fetch(`${baseUrl}/api/sales/customers`, {
@@ -314,6 +340,25 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     const invalidTypeJson = await invalidTypeRes.json();
     assert.equal(invalidTypeJson.status, 'fail');
     assert.match(invalidTypeJson.message, /Invalid customer type/i);
+
+    // H. Validation: Invalid Phone Format (non-PH)
+    const invalidPhoneRes = await fetch(`${baseUrl}/api/sales/customers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesPersonCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-CUST- Invalid Phone',
+        address: '123 Address',
+        contactNumber: '12345',
+        customerType: 'RETAIL',
+      }),
+    });
+    assert.equal(invalidPhoneRes.status, 400);
+    const invalidPhoneJson = await invalidPhoneRes.json();
+    assert.equal(invalidPhoneJson.status, 'fail');
+    assert.match(invalidPhoneJson.message, /Invalid Philippine phone number format/i);
   });
 
   // ============================================================
@@ -445,14 +490,14 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     });
     const createdCust = (await createRes.json()).data.customer;
 
-    // 2. Update multiple fields
+    // 2. Update multiple fields with formatted landline: (02) 8123-4567
     const updateRes = await fetch(`${baseUrl}/api/sales/customers/${createdCust.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
       body: JSON.stringify({
         name: 'TEST-CUST- Updated Customer Name',
         address: 'Updated Address, Davao City',
-        contactNumber: '+639179998877',
+        contactNumber: '(02) 8123-4567', // Formatted landline
         customerType: 'COMMERCIAL',
       }),
     });
@@ -462,7 +507,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     assert.equal(updateJson.data.customer.id, createdCust.id);
     assert.equal(updateJson.data.customer.name, 'TEST-CUST- Updated Customer Name');
     assert.equal(updateJson.data.customer.address, 'Updated Address, Davao City');
-    assert.equal(updateJson.data.customer.contactNumber, '+639179998877');
+    assert.equal(updateJson.data.customer.contactNumber, '+63281234567'); // Standardized to +63...
     assert.equal(updateJson.data.customer.customerType, 'COMMERCIAL');
 
     // 3. Validation: Empty name on update -> 400

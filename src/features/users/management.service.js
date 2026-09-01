@@ -5,6 +5,7 @@ const profileService = require('./profile.service');
 const { historyService, EVENTS } = require('../history');
 const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
+const { parsePhoneNumber } = require('../../utils/phoneParser');
 
 /**
  * Management Service
@@ -69,7 +70,7 @@ class ManagementService {
       passwordHash,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      phone: phone !== null && typeof phone === 'string' ? phone.trim() : null,
+      phone: parsePhoneNumber(phone, { required: false }),
       birthdate,
       roleId,
       mustChangePassword: true,
