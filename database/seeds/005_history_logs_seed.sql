@@ -45,7 +45,7 @@ FROM users sa
 CROSS JOIN users target
 JOIN roles r ON target.role_id = r.id
 WHERE sa.username = 'superadmin'
-  AND target.username = 'fleet_user'
+  AND target.username = 'logistics_supervisor'
   AND NOT EXISTS (
       SELECT 1 FROM history_logs hl
       WHERE hl.action = 'USER_CREATED' AND hl.target_id = target.id::text
@@ -142,13 +142,13 @@ WHERE adm.username = 'admin_user'
 
 
 -- 3. FLEET MANAGEMENT SEED EVENTS
--- Fleet Manager registering vehicles, assigning driver, and managing maintenance
+-- Logistics Supervisor registering vehicles, assigning driver, and managing maintenance
 
 INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
 SELECT
     fm.id,
     fm.first_name || ' ' || fm.last_name,
-    'Fleet Manager',
+    'Logistics Supervisor',
     'Created',
     'Fleet Management',
     'TRUCK_CREATED',
@@ -158,7 +158,7 @@ SELECT
     NOW() - INTERVAL '20 days'
 FROM users fm
 CROSS JOIN trucks t
-WHERE fm.username = 'fleet_user'
+WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1001'
   AND NOT EXISTS (
       SELECT 1 FROM history_logs hl
@@ -169,7 +169,7 @@ INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, ac
 SELECT
     fm.id,
     fm.first_name || ' ' || fm.last_name,
-    'Fleet Manager',
+    'Logistics Supervisor',
     'Assigned',
     'Fleet Management',
     'TRUCK_DRIVER_ASSIGNED',
@@ -180,7 +180,7 @@ SELECT
 FROM users fm
 CROSS JOIN trucks t
 JOIN users d ON t.driver_id = d.id
-WHERE fm.username = 'fleet_user'
+WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1001'
   AND NOT EXISTS (
       SELECT 1 FROM history_logs hl
@@ -191,7 +191,7 @@ INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, ac
 SELECT
     fm.id,
     fm.first_name || ' ' || fm.last_name,
-    'Fleet Manager',
+    'Logistics Supervisor',
     'Created',
     'Fleet Management',
     'TRUCK_CREATED',
@@ -201,7 +201,7 @@ SELECT
     NOW() - INTERVAL '20 days' + INTERVAL '30 minutes'
 FROM users fm
 CROSS JOIN trucks t
-WHERE fm.username = 'fleet_user'
+WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1002'
   AND NOT EXISTS (
       SELECT 1 FROM history_logs hl
@@ -212,7 +212,7 @@ INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, ac
 SELECT
     fm.id,
     fm.first_name || ' ' || fm.last_name,
-    'Fleet Manager',
+    'Logistics Supervisor',
     'Created',
     'Fleet Management',
     'TRUCK_CREATED',
@@ -222,7 +222,7 @@ SELECT
     NOW() - INTERVAL '20 days' + INTERVAL '1 hour'
 FROM users fm
 CROSS JOIN trucks t
-WHERE fm.username = 'fleet_user'
+WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1003'
   AND NOT EXISTS (
       SELECT 1 FROM history_logs hl
@@ -233,7 +233,7 @@ INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, ac
 SELECT
     fm.id,
     fm.first_name || ' ' || fm.last_name,
-    'Fleet Manager',
+    'Logistics Supervisor',
     'Updated',
     'Fleet Management',
     'TRUCK_STATUS_UPDATED',
@@ -243,7 +243,7 @@ SELECT
     NOW() - INTERVAL '5 days'
 FROM users fm
 CROSS JOIN trucks t
-WHERE fm.username = 'fleet_user'
+WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1003'
   AND NOT EXISTS (
       SELECT 1 FROM history_logs hl

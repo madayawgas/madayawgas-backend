@@ -53,7 +53,7 @@ SELECT
     40000,
     'ACTIVE'::truck_status
 FROM users u
-WHERE u.username = 'sales_user'
+WHERE u.username = 'driver_user'
 ON CONFLICT (plate_number) DO UPDATE SET
     driver_id = EXCLUDED.driver_id,
     model = EXCLUDED.model,
@@ -91,7 +91,7 @@ SELECT
     FALSE
 FROM trucks t
 CROSS JOIN users u
-WHERE t.plate_number = 'ABC-1001' AND u.username = 'fleet_user'
+WHERE t.plate_number = 'ABC-1001' AND u.username = 'logistics_supervisor'
 AND NOT EXISTS (
     SELECT 1 FROM vehicle_inspections vi
     WHERE vi.truck_id = t.id AND vi.findings LIKE 'Routine pre-trip inspection passed%'
@@ -107,7 +107,7 @@ SELECT
     TRUE
 FROM trucks t
 CROSS JOIN users u
-WHERE t.plate_number = 'ABC-1003' AND u.username = 'fleet_user'
+WHERE t.plate_number = 'ABC-1003' AND u.username = 'logistics_supervisor'
 AND NOT EXISTS (
     SELECT 1 FROM vehicle_inspections vi
     WHERE vi.truck_id = t.id AND vi.findings LIKE 'Brake pads worn near minimum thickness%'
@@ -159,7 +159,7 @@ FROM trucks t
 CROSS JOIN users u
 CROSS JOIN maintenance_types mt
 WHERE t.plate_number = 'ABC-1002'
-  AND u.username = 'fleet_user'
+  AND u.username = 'logistics_supervisor'
   AND mt.type_name = 'Oil & Filter Change'
   AND NOT EXISTS (
       SELECT 1 FROM work_orders wo
@@ -184,7 +184,7 @@ FROM trucks t
 CROSS JOIN users u
 CROSS JOIN maintenance_types mt
 WHERE t.plate_number = 'ABC-1003'
-  AND u.username = 'fleet_user'
+  AND u.username = 'logistics_supervisor'
   AND mt.type_name = 'Brake System Overhaul'
   AND NOT EXISTS (
       SELECT 1 FROM work_orders wo

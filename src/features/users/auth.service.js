@@ -75,7 +75,9 @@ class AuthService {
     const newExpiresAt = new Date(newExpiresAtMs);
     await usersRepository.updateSessionExpiration(sessionData.session_id, newExpiresAt);
 
-    const permissions = await permissionService.getPermissionsForRole(sessionData.role_id);
+    const userRoles = await usersRepository.getUserRoles(sessionData.user_id);
+    const permissions = await permissionService.getPermissionsForUser(sessionData.user_id);
+    const primaryRole = userRoles.find((r) => r.is_primary) || userRoles[0];
 
     return {
       user: {
@@ -85,8 +87,10 @@ class AuthService {
         lastName: sessionData.last_name,
         phone: sessionData.phone,
         birthdate: sessionData.birthdate,
-        role: sessionData.role_name,
-        roleId: sessionData.role_id,
+        role: primaryRole ? primaryRole.name : sessionData.role_name,
+        roleId: primaryRole ? primaryRole.id : sessionData.role_id,
+        roles: userRoles.map((r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary })),
+        roleNames: userRoles.map((r) => r.name),
         isActive: sessionData.is_active,
         isBlocked: sessionData.is_blocked,
         mustChangePassword: sessionData.must_change_password,
@@ -121,7 +125,9 @@ class AuthService {
     }
 
     const { token } = await this.createSession(user.id);
-    const permissions = await permissionService.getPermissionsForRole(user.role_id);
+    const userRoles = await usersRepository.getUserRoles(user.id);
+    const permissions = await permissionService.getPermissionsForUser(user.id);
+    const primaryRole = userRoles.find((r) => r.is_primary) || userRoles[0];
 
     const userSummary = {
       id: user.id,
@@ -130,8 +136,10 @@ class AuthService {
       lastName: user.last_name,
       phone: user.phone,
       birthdate: user.birthdate,
-      role: user.role_name,
-      roleId: user.role_id,
+      role: primaryRole ? primaryRole.name : user.role_name,
+      roleId: primaryRole ? primaryRole.id : user.role_id,
+      roles: userRoles.map((r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary })),
+      roleNames: userRoles.map((r) => r.name),
       isActive: user.is_active,
       isBlocked: user.is_blocked,
       mustChangePassword: user.must_change_password,

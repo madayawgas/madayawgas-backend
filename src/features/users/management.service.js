@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const authService = require('./auth.service');
 const profileService = require('./profile.service');
+const permissionService = require('./permission.service');
 const { historyService, EVENTS } = require('../history');
 const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
@@ -37,24 +38,34 @@ class ManagementService {
    * Automatically generates the username (firstName[0] + lastName, e.g. jdoe)
    * and generates a cryptographically random temporary password.
    */
-  async createUser(actorUser, { firstName, lastName, phone = null, birthdate = null, roleId }) {
-    if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
-      throw new Error('First name is required');
+  async createUser(actorUser, userData) {
+    const { firstName, lastName, phone, birthdate, roleId, roleIds, primaryRoleId } = userData || {};
+
+    if (!firstName || !lastName) {
+      throw new Error('First name and last name are required');
     }
 
-    if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
-      throw new Error('Last name is required');
-    }
+    const effectiveRoleIds = Array.isArray(roleIds) && roleIds.length > 0
+      ? roleIds
+      : (roleId ? [roleId] : []);
 
-    if (!roleId) {
+    if (effectiveRoleIds.length === 0) {
       throw new Error('Role ID is required');
     }
 
-    // Validate role exists
-    const role = await usersRepository.findRoleById(roleId);
-    if (!role) {
-      throw new Error('Invalid role ID');
+    // Validate all roles exist
+    const validatedRoles = [];
+    for (const rId of effectiveRoleIds) {
+      const foundRole = await usersRepository.findRoleById(rId);
+      if (!foundRole) {
+        throw new Error(`Invalid role ID: ${rId}`);
+      }
+      validatedRoles.push(foundRole);
     }
+
+    const primaryRole = (primaryRoleId && validatedRoles.find((r) => r.id === primaryRoleId))
+      ? validatedRoles.find((r) => r.id === primaryRoleId)
+      : validatedRoles[0];
 
     // Auto-generate username strictly from firstName and lastName (e.g. John Doe -> jdoe)
     const baseUsername = generateBaseUsername(firstName, lastName);
@@ -72,24 +83,29 @@ class ManagementService {
       lastName: lastName.trim(),
       phone: parsePhoneNumber(phone, { required: false }),
       birthdate,
-      roleId,
+      roleId: primaryRole.id,
+      roleIds: validatedRoles.map((r) => r.id),
+      primaryRoleId: primaryRole.id,
       mustChangePassword: true,
     });
+
+    const userRoles = await usersRepository.getUserRoles(createdUser.id);
+    const roleNamesStr = userRoles.map((r) => r.name).join(', ');
 
     if (actorUser) {
       await usersRepository.createAuditLog({
         userId: actorUser.id,
         targetUserId: createdUser.id,
         action: 'USER_CREATED',
-        description: `Created user ${createdUser.username} with role ${role.name}`,
+        description: `Created user ${createdUser.username} with role(s) ${roleNamesStr}`,
       });
     }
 
     await historyService.log(EVENTS.USER_CREATED, {
       actorUser,
       targetId: createdUser.id,
-      payload: { name: `${createdUser.first_name} ${createdUser.last_name}`, role: role.name },
-      metadata: { username: createdUser.username, role: role.name },
+      payload: { name: `${createdUser.first_name} ${createdUser.last_name}`, role: roleNamesStr },
+      metadata: { username: createdUser.username, role: roleNamesStr, roles: userRoles.map((r) => r.name) },
     });
 
     return {
@@ -100,8 +116,10 @@ class ManagementService {
         lastName: createdUser.last_name,
         phone: createdUser.phone,
         birthdate: createdUser.birthdate,
-        role: role.name,
-        roleId: createdUser.role_id,
+        role: primaryRole.name,
+        roleId: primaryRole.id,
+        roles: userRoles.map((r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary })),
+        roleNames: userRoles.map((r) => r.name),
         isActive: createdUser.is_active,
         isBlocked: createdUser.is_blocked,
         mustChangePassword: createdUser.must_change_password,
@@ -125,6 +143,7 @@ class ManagementService {
       birthdate: u.birthdate,
       role: u.role_name,
       roleId: u.role_id,
+      roles: u.roles || [],
       isActive: u.is_active,
       isBlocked: u.is_blocked,
       mustChangePassword: u.must_change_password,
@@ -141,58 +160,99 @@ class ManagementService {
 
   /**
    * Updates user role as an Administrator.
+   * Supports assigning a single role or multiple roles (roleIds).
    * Revokes all active sessions for the target user so updated permissions apply immediately.
    */
-  async updateUserRole(actorUser, targetUserId, roleId) {
+  async updateUserRole(actorUser, targetUserId, roleOrRolesData) {
     const target = await usersRepository.findUserById(targetUserId);
     if (!target) {
       throw new Error('User not found');
     }
 
-    if (target.username === 'superadmin' || target.role_name === 'Super Admin') {
+    let effectiveRoleIds = [];
+    let primaryRoleId = null;
+
+    if (typeof roleOrRolesData === 'string') {
+      effectiveRoleIds = [roleOrRolesData];
+      primaryRoleId = roleOrRolesData;
+    } else if (roleOrRolesData && typeof roleOrRolesData === 'object') {
+      const { roleId, roleIds, primaryRoleId: pId } = roleOrRolesData;
+      if (Array.isArray(roleIds) && roleIds.length > 0) {
+        effectiveRoleIds = roleIds;
+      } else if (roleId) {
+        effectiveRoleIds = [roleId];
+      }
+      primaryRoleId = pId || null;
+    }
+
+    if (effectiveRoleIds.length === 0) {
+      throw new Error('Role ID is required');
+    }
+
+    // Validate all roles exist
+    const validatedRoles = [];
+    for (const rId of effectiveRoleIds) {
+      const foundRole = await usersRepository.findRoleById(rId);
+      if (!foundRole) {
+        throw new Error(`Invalid role ID: ${rId}`);
+      }
+      validatedRoles.push(foundRole);
+    }
+
+    const hasSuperAdmin = validatedRoles.some((r) => r.name === 'Super Admin');
+    if ((target.username === 'superadmin' || target.role_name === 'Super Admin') && !hasSuperAdmin) {
       throw new Error('Cannot change the role of a Super Admin account');
     }
 
-    const role = await usersRepository.findRoleById(roleId);
-    if (!role) {
-      throw new Error('Invalid role ID');
-    }
+    const primaryRole = (primaryRoleId && validatedRoles.find((r) => r.id === primaryRoleId))
+      ? validatedRoles.find((r) => r.id === primaryRoleId)
+      : validatedRoles[0];
 
-    const updated = await usersRepository.updateUserProfile(targetUserId, { roleId });
+    // Update user_roles and primary role
+    await usersRepository.setUserRoles(
+      targetUserId,
+      validatedRoles.map((r) => r.id),
+      primaryRole.id
+    );
 
     // Revoke all active sessions so target user gets new permissions upon next login
     await authService.revokeAllUserSessions(targetUserId);
+
+    const userRoles = await usersRepository.getUserRoles(targetUserId);
+    const roleNamesStr = userRoles.map((r) => r.name).join(', ');
 
     await usersRepository.createAuditLog({
       userId: actorUser.id,
       targetUserId,
       action: 'USER_ROLE_UPDATED',
-      description: `Updated role for user ${target.username} to ${role.name}`,
+      description: `Updated role for user ${target.username} to ${roleNamesStr}`,
     });
 
     await historyService.log(EVENTS.USER_ROLE_UPDATED, {
       actorUser,
       targetId: targetUserId,
-      payload: { username: target.username, role: role.name },
-      metadata: { previousRole: target.role_name, newRole: role.name },
+      payload: { username: target.username, role: roleNamesStr },
+      metadata: { previousRole: target.role_name, newRole: roleNamesStr, roles: userRoles.map((r) => r.name) },
     });
 
-    const permissions = await usersRepository.getPermissionsByRoleId(updated.role_id);
+    const permissions = await permissionService.getPermissionsForUser(targetUserId);
 
     return {
-      id: updated.id,
-      username: updated.username,
-      firstName: updated.first_name,
-      lastName: updated.last_name,
-      phone: updated.phone,
-      birthdate: updated.birthdate,
-      role: updated.role_name,
-      roleId: updated.role_id,
-      isActive: updated.is_active,
-      isBlocked: updated.is_blocked,
-      mustChangePassword: updated.must_change_password,
+      id: target.id,
+      username: target.username,
+      firstName: target.first_name,
+      lastName: target.last_name,
+      phone: target.phone,
+      birthdate: target.birthdate,
+      role: primaryRole.name,
+      roleId: primaryRole.id,
+      roles: userRoles.map((r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary })),
+      roleNames: userRoles.map((r) => r.name),
+      isActive: target.is_active,
+      isBlocked: target.is_blocked,
+      mustChangePassword: target.must_change_password,
       permissions,
-      createdAt: updated.created_at,
+      createdAt: target.created_at,
     };
   }
 
@@ -544,6 +604,9 @@ class ManagementService {
     const PROTECTED_ROLES = [
       'Super Admin',
       'Admin',
+      'Plant Supervisor',
+      'Logistics Supervisor',
+      'Sales Supervisor',
       'Fleet Manager',
       'Sales Manager',
       'Sales Person',
