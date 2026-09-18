@@ -215,6 +215,488 @@ class MaintenanceRepository {
     const result = await query(sql, params);
     return result.rows;
   }
+
+  /**
+   * Updates a truck's operational status.
+   * Supports execution within an optional transaction client.
+   * @param {Object} params - { truckId, status }
+   * @param {Object} [client] - Optional pg transaction client
+   * @returns {Promise<Object>} Updated truck record
+   */
+  async updateTruckStatus({ truckId, status }, client = null) {
+    const db = client || { query };
+    const sql = `
+      UPDATE trucks
+      SET 
+        status = $1,
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING 
+        id,
+        plate_number,
+        model,
+        year_model,
+        current_odometer,
+        last_pm_odometer,
+        status,
+        updated_at
+    `;
+
+    const result = await db.query(sql, [status, truckId]);
+    return result.rows[0] || null;
+  }
+
+  // ============================================================
+  // SAFETY INSPECTION QUERIES (Issue-Reporting Only - No Checklist)
+  // ============================================================
+
+  /**
+   * Inserts an inspection record into vehicle_inspections.
+   * Supports execution within an optional transaction client.
+   * @param {Object} data - { truckId, inspectorId, result, findings, issueDetected, inspectionDate }
+   * @param {Object} [client] - Optional pg transaction client
+   * @returns {Promise<Object>} Created inspection record
+   */
+  async insertInspection({ truckId, inspectorId, result, findings, issueDetected, inspectionDate }, client = null) {
+    const db = client || { query };
+    const sql = `
+      INSERT INTO vehicle_inspections (
+        truck_id,
+        inspector_id,
+        result,
+        findings,
+        issue_detected,
+        inspection_date
+      )
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()))
+      RETURNING 
+        id,
+        truck_id,
+        inspector_id,
+        result,
+        findings,
+        issue_detected,
+        inspection_date
+    `;
+
+    const res = await db.query(sql, [
+      truckId,
+      inspectorId || null,
+      result,
+      findings,
+      issueDetected !== undefined ? issueDetected : true,
+      inspectionDate || null,
+    ]);
+
+    return res.rows[0];
+  }
+
+  /**
+   * Retrieves paginated inspections for a specific truck with inspector details.
+   * @param {string} truckId - Truck UUID
+   * @param {Object} options - { limit, offset, result }
+   * @returns {Promise<Array<Object>>} Array of inspection records
+   */
+  async getInspectionsByTruck(truckId, { limit = 50, offset = 0, result = null } = {}) {
+    const conditions = ['vi.truck_id = $1'];
+    const params = [truckId];
+    let paramIndex = 2;
+
+    if (result) {
+      conditions.push(`vi.result = $${paramIndex++}`);
+      params.push(result.toUpperCase());
+    }
+
+    params.push(limit, offset);
+
+    const sql = `
+      SELECT 
+        vi.id,
+        vi.truck_id,
+        vi.inspector_id,
+        vi.result,
+        vi.findings,
+        vi.issue_detected,
+        vi.inspection_date,
+        u.username AS inspector_username,
+        u.first_name AS inspector_first_name,
+        u.last_name AS inspector_last_name,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status
+      FROM vehicle_inspections vi
+      LEFT JOIN users u ON vi.inspector_id = u.id
+      JOIN trucks t ON vi.truck_id = t.id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY vi.inspection_date DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  /**
+   * Counts total inspections for a specific truck.
+   * @param {string} truckId - Truck UUID
+   * @param {Object} [filters] - { result }
+   * @returns {Promise<number>} Total inspection count
+   */
+  async countInspectionsByTruck(truckId, { result = null } = {}) {
+    const conditions = ['truck_id = $1'];
+    const params = [truckId];
+
+    if (result) {
+      conditions.push('result = $2');
+      params.push(result.toUpperCase());
+    }
+
+    const sql = `
+      SELECT COUNT(*)::int AS count
+      FROM vehicle_inspections
+      WHERE ${conditions.join(' AND ')}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows[0]?.count || 0;
+  }
+
+  /**
+   * Retrieves single inspection record by UUID with truck and inspector details.
+   * @param {string} id - Inspection UUID
+   * @returns {Promise<Object|null>} Inspection record or null
+   */
+  async getInspectionById(id) {
+    const sql = `
+      SELECT 
+        vi.id,
+        vi.truck_id,
+        vi.inspector_id,
+        vi.result,
+        vi.findings,
+        vi.issue_detected,
+        vi.inspection_date,
+        u.username AS inspector_username,
+        u.first_name AS inspector_first_name,
+        u.last_name AS inspector_last_name,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status
+      FROM vehicle_inspections vi
+      LEFT JOIN users u ON vi.inspector_id = u.id
+      JOIN trucks t ON vi.truck_id = t.id
+      WHERE vi.id = $1
+    `;
+
+    const res = await query(sql, [id]);
+    return res.rows[0] || null;
+  }
+
+  // ============================================================
+  // INCIDENT REPORTING QUERIES
+  // ============================================================
+
+  /**
+   * Retrieves all available incident classification types.
+   * @returns {Promise<Array<Object>>} Array of incident types { id, type_name }
+   */
+  async getIncidentTypes() {
+    const sql = `
+      SELECT id, type_name, created_at
+      FROM incident_types
+      ORDER BY id ASC
+    `;
+    const res = await query(sql);
+    return res.rows;
+  }
+
+  /**
+   * Retrieves a single incident type by ID.
+   * @param {number} id - Incident Type ID
+   * @returns {Promise<Object|null>} Incident type row or null
+   */
+  async getIncidentTypeById(id) {
+    const sql = `
+      SELECT id, type_name, created_at
+      FROM incident_types
+      WHERE id = $1
+    `;
+    const res = await query(sql, [id]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Inserts an incident report into incident_reports.
+   * Supports execution within an optional transaction client.
+   * @param {Object} data - { truckId, reporterId, incidentTypeId, severity, incidentLocation, description, reportDate }
+   * @param {Object} [client] - Optional pg transaction client
+   * @returns {Promise<Object>} Created incident report row
+   */
+  async insertIncidentReport({ truckId, reporterId, incidentTypeId, severity, incidentLocation, description, reportDate }, client = null) {
+    const db = client || { query };
+    const sql = `
+      INSERT INTO incident_reports (
+        truck_id,
+        reporter_id,
+        incident_type_id,
+        severity,
+        incident_location,
+        description,
+        report_date
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()))
+      RETURNING 
+        id,
+        truck_id,
+        reporter_id,
+        incident_type_id,
+        severity,
+        incident_location,
+        description,
+        report_date
+    `;
+
+    const res = await db.query(sql, [
+      truckId,
+      reporterId || null,
+      incidentTypeId,
+      severity,
+      incidentLocation || null,
+      description,
+      reportDate || null,
+    ]);
+
+    return res.rows[0];
+  }
+
+  /**
+   * Retrieves paginated incidents for a specific truck.
+   * @param {string} truckId - Truck UUID
+   * @param {Object} pagination - { limit, offset }
+   * @returns {Promise<Array<Object>>} Array of incident report records
+   */
+  async getIncidentsByTruck(truckId, { limit = 50, offset = 0 } = {}) {
+    const sql = `
+      SELECT 
+        ir.id,
+        ir.truck_id,
+        ir.reporter_id,
+        ir.incident_type_id,
+        it.type_name AS incident_type_name,
+        ir.severity,
+        ir.incident_location,
+        ir.description,
+        ir.report_date,
+        u.username AS reporter_username,
+        u.first_name AS reporter_first_name,
+        u.last_name AS reporter_last_name,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status
+      FROM incident_reports ir
+      JOIN incident_types it ON ir.incident_type_id = it.id
+      LEFT JOIN users u ON ir.reporter_id = u.id
+      JOIN trucks t ON ir.truck_id = t.id
+      WHERE ir.truck_id = $1
+      ORDER BY ir.report_date DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const res = await query(sql, [truckId, limit, offset]);
+    return res.rows;
+  }
+
+  /**
+   * Counts total incident reports for a specific truck.
+   * @param {string} truckId - Truck UUID
+   * @returns {Promise<number>} Total incident count
+   */
+  async countIncidentsByTruck(truckId) {
+    const sql = `
+      SELECT COUNT(*)::int AS count
+      FROM incident_reports
+      WHERE truck_id = $1
+    `;
+
+    const res = await query(sql, [truckId]);
+    return res.rows[0]?.count || 0;
+  }
+
+  /**
+   * Retrieves fleet-wide incident reports with optional filtering.
+   * @param {Object} filters - { truckId, severity, incidentTypeId, startDate, endDate, search }
+   * @param {Object} pagination - { limit, offset }
+   * @returns {Promise<Array<Object>>} Filtered incident records
+   */
+  async getAllIncidents(filters = {}, { limit = 50, offset = 0 } = {}) {
+    const { truckId, severity, incidentTypeId, startDate, endDate, search } = filters;
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (truckId) {
+      conditions.push(`ir.truck_id = $${paramIndex++}`);
+      params.push(truckId);
+    }
+
+    if (severity) {
+      conditions.push(`ir.severity = $${paramIndex++}`);
+      params.push(severity.toUpperCase());
+    }
+
+    if (incidentTypeId) {
+      conditions.push(`ir.incident_type_id = $${paramIndex++}`);
+      params.push(Number(incidentTypeId));
+    }
+
+    if (startDate) {
+      conditions.push(`ir.report_date >= $${paramIndex++}`);
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      conditions.push(`ir.report_date <= $${paramIndex++}`);
+      params.push(endDate);
+    }
+
+    if (search) {
+      conditions.push(`(
+        t.plate_number ILIKE $${paramIndex} 
+        OR t.model ILIKE $${paramIndex}
+        OR ir.description ILIKE $${paramIndex}
+        OR ir.incident_location ILIKE $${paramIndex}
+      )`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    params.push(limit, offset);
+
+    const sql = `
+      SELECT 
+        ir.id,
+        ir.truck_id,
+        ir.reporter_id,
+        ir.incident_type_id,
+        it.type_name AS incident_type_name,
+        ir.severity,
+        ir.incident_location,
+        ir.description,
+        ir.report_date,
+        u.username AS reporter_username,
+        u.first_name AS reporter_first_name,
+        u.last_name AS reporter_last_name,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status
+      FROM incident_reports ir
+      JOIN incident_types it ON ir.incident_type_id = it.id
+      LEFT JOIN users u ON ir.reporter_id = u.id
+      JOIN trucks t ON ir.truck_id = t.id
+      ${whereClause}
+      ORDER BY ir.report_date DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  /**
+   * Counts total fleet-wide incident reports matching filters.
+   * @param {Object} filters - { truckId, severity, incidentTypeId, startDate, endDate, search }
+   * @returns {Promise<number>} Total count of matching incidents
+   */
+  async countAllIncidents(filters = {}) {
+    const { truckId, severity, incidentTypeId, startDate, endDate, search } = filters;
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (truckId) {
+      conditions.push(`ir.truck_id = $${paramIndex++}`);
+      params.push(truckId);
+    }
+
+    if (severity) {
+      conditions.push(`ir.severity = $${paramIndex++}`);
+      params.push(severity.toUpperCase());
+    }
+
+    if (incidentTypeId) {
+      conditions.push(`ir.incident_type_id = $${paramIndex++}`);
+      params.push(Number(incidentTypeId));
+    }
+
+    if (startDate) {
+      conditions.push(`ir.report_date >= $${paramIndex++}`);
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      conditions.push(`ir.report_date <= $${paramIndex++}`);
+      params.push(endDate);
+    }
+
+    if (search) {
+      conditions.push(`(
+        t.plate_number ILIKE $${paramIndex} 
+        OR t.model ILIKE $${paramIndex}
+        OR ir.description ILIKE $${paramIndex}
+        OR ir.incident_location ILIKE $${paramIndex}
+      )`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT COUNT(*)::int AS count
+      FROM incident_reports ir
+      JOIN incident_types it ON ir.incident_type_id = it.id
+      JOIN trucks t ON ir.truck_id = t.id
+      ${whereClause}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows[0]?.count || 0;
+  }
+
+  /**
+   * Retrieves single incident report by UUID with joined details.
+   * @param {string} id - Incident Report UUID
+   * @returns {Promise<Object|null>} Incident report row or null
+   */
+  async getIncidentById(id) {
+    const sql = `
+      SELECT 
+        ir.id,
+        ir.truck_id,
+        ir.reporter_id,
+        ir.incident_type_id,
+        it.type_name AS incident_type_name,
+        ir.severity,
+        ir.incident_location,
+        ir.description,
+        ir.report_date,
+        u.username AS reporter_username,
+        u.first_name AS reporter_first_name,
+        u.last_name AS reporter_last_name,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status
+      FROM incident_reports ir
+      JOIN incident_types it ON ir.incident_type_id = it.id
+      LEFT JOIN users u ON ir.reporter_id = u.id
+      JOIN trucks t ON ir.truck_id = t.id
+      WHERE ir.id = $1
+    `;
+
+    const res = await query(sql, [id]);
+    return res.rows[0] || null;
+  }
 }
 
 module.exports = new MaintenanceRepository();

@@ -61,12 +61,14 @@ madayawgas-backend/
 │       ├── 004_sales_customers_seed.sql     # Seed customer profiles
 │       └── 005_history_logs_seed.sql        # Seed system event historical logs
 ├── docs/
-│   ├── API Contract/
-│   │   ├── fleet-and-maintenance.api.md     # Fleet and maintenance endpoints contract
-│   │   ├── history-log.api.md               # System event history log endpoints contract
-│   │   ├── inventory-products.api.md        # Inventory products endpoints contract
-│   │   ├── sales-customer.api.md            # Sales customer profile endpoints contract
-│   │   └── user-management.api.md           # Formal HTTP API contract and schemas
+│   ├── api-contracts/
+│   │   ├── README.md                        # Master directory & route matrix
+│   │   ├── fleet/                           # Fleet availability, trucks, drivers, maintenance
+│   │   ├── history/                         # System event history logs
+│   │   ├── inventory/                       # Inventory product CRUD
+│   │   ├── sales/                           # Sales customer profile CRUD
+│   │   ├── users/                           # Auth, profile, management, roles & permissions
+│   │   └── _archive/                        # Preserved original monolithic contract files
 │   ├── ERD_mermaid/
 │   │   ├── fleet_and_maintenance_erd.md     # Fleet ERD diagram
 │   │   └── sales_and_delivery_erd.md        # Sales and delivery ERD diagram
@@ -313,6 +315,16 @@ madayawgas-backend/
     * Mounted sub-router in `src/features/fleet/fleet.routes.js` and barrel-exported in `src/features/fleet/index.js`.
     * Updated formal API contract in `docs/API Contract/fleet-and-maintenance.api.md`.
     * Built comprehensive integration test suite `src/test/fleet.maintenance.test.js` covering RBAC route protection, monotonic integrity, distance calculations, threshold alert flags, audit trail validation, and overview retrieval (10 test suites, 68 tests passing with 100% success across the repository).
+18. **Fleet & Maintenance Subsystem - Part 3: Safety Inspections & Incident Reporting**:
+    * Implemented complete 3-layer architecture for vehicle safety inspections and roadside incidents under `src/features/fleet/maintenance/`:
+      - `maintenance.repository.js`: Parameterized queries with transaction client support (`insertInspection`, `getInspectionsByTruck`, `countInspectionsByTruck`, `getInspectionById`, `getIncidentTypes`, `getIncidentTypeById`, `insertIncidentReport`, `getIncidentsByTruck`, `countIncidentsByTruck`, `getAllIncidents`, `countAllIncidents`, `getIncidentById`, `updateTruckStatus`).
+      - `maintenance.service.js`:
+        - Safety Inspections: Enforces the **No Checklists Rule** (strictly issue-reporting records with mandatory text `findings` and `issueDetected` boolean). If `result === 'FAILED'`, atomically transitions the vehicle operational status to `'UNDER_MAINTENANCE'` while preserving the assigned driver (`driver_id`). Emits centralized history event `MAINTENANCE_INSPECTION_RECORDED`.
+        - Incident & Breakdown Reporting: Retrieves reference types (`GET /incidents/types`). Supports severity classification (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`). If `severity === 'CRITICAL'`, atomically grounds the vehicle to `'UNDER_MAINTENANCE'` while preserving driver assignment. Emits centralized history event `MAINTENANCE_INCIDENT_REPORTED`.
+      - `maintenance.controller.js`: Parameter validation, error handling with standard HTTP status codes (`201`, `200`, `400`, `404`), and formatted camelCase DTOs.
+      - `maintenance.routes.js`: Mounted 8 new endpoints under `/api/fleet/maintenance` guarded with `fleet.manage` (recording inspections & incidents) and `fleet.view` (viewing lists, catalogs, and single records). Declared static routes before parameterized routes to eliminate routing collisions.
+    * Expanded integration test suite `src/test/fleet.maintenance.test.js` with Subtests 6 and 7 covering RBAC, input validation, automated grounding on failure, automated grounding on critical incident, driver retention invariants, search & severity filtering, single detail lookups, and audit log verification. Full test suite passing with 100% success (70 tests across 10 test files).
+    * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
 
 ---
 
@@ -335,8 +347,8 @@ The database seed provides permanent accounts for system testing (`must_change_p
 
 ## 6. Next Steps & Roadmap
 
-1. **Maintenance Logs & Work Orders Module (`src/features/fleet/maintenance/`)**:
-   - Vehicle inspections, incident reporting, work orders, repair approvals, and maintenance logs when requested.
+1. **Fleet & Maintenance Subsystem - Part 4: Work Orders & Repair Approvals Engine**:
+   - Work order creation, scheduling, cost estimation, executive approval workflow, and financial closure maintenance logs.
 2. **Sales & Orders Feature Implementation (`src/features/sales/orders/`)**:
    - Build 3-layer architecture for Orders and Sales Transactions with ownership scoping (`sales.view_own` vs `sales.view`).
 3. **Inventory & Cylinder Tracking Module**:

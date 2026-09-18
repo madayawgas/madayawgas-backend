@@ -945,4 +945,336 @@ Retrieves a summary of all fleet trucks with computed 5,000-km preventive mainte
 }
 ```
 
+---
+
+## Safety Inspections (Issue-Reporting Only — No Checklists)
+
+Safety inspections allow supervisors or authorized personnel to log physical vehicle inspections without cumbersome checklist schemas. If an inspection fails (`result === 'FAILED'`), the vehicle asset is immediately and automatically grounded (`status -> 'UNDER_MAINTENANCE'`) in an atomic transaction while retaining the assigned driver.
+
+### 5. Record Safety Inspection
+
+Records a vehicle safety inspection and automatically grounds the vehicle if failed.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/inspections`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+```json
+{
+  "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+  "result": "FAILED",
+  "findings": "Brake line leaking fluid near rear axle; pedal spongey.",
+  "issueDetected": true,
+  "inspectionDate": "2026-09-18T08:00:00.000Z"
+}
+```
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Vehicle inspection recorded successfully.",
+  "data": {
+    "inspection": {
+      "id": "7b82fe10-6a55-4bc9-9302-d922a9452011",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "inspectorId": "11111111-2222-3333-4444-555555555555",
+      "inspectorName": "Logistics Supervisor",
+      "result": "FAILED",
+      "findings": "Brake line leaking fluid near rear axle; pedal spongey.",
+      "issueDetected": true,
+      "inspectionDate": "2026-09-18T08:00:00.000Z"
+    },
+    "truck": {
+      "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "previousStatus": "ACTIVE",
+      "currentStatus": "UNDER_MAINTENANCE",
+      "isGrounded": true
+    }
+  }
+}
+```
+
+---
+
+### 6. View Truck Inspections History
+
+Retrieves paginated safety inspection records for a specific vehicle asset.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/inspections/truck/:truckId`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+    "plateNumber": "ABC-1001",
+    "count": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "inspections": [
+      {
+        "id": "7b82fe10-6a55-4bc9-9302-d922a9452011",
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "truckModel": "Isuzu Elf N-Series",
+        "inspectorId": "11111111-2222-3333-4444-555555555555",
+        "inspectorName": "Logistics Supervisor",
+        "inspectorUsername": "logistics_supervisor",
+        "result": "FAILED",
+        "findings": "Brake line leaking fluid near rear axle; pedal spongey.",
+        "issueDetected": true,
+        "inspectionDate": "2026-09-18T08:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 7. Get Inspection Record by ID
+
+Retrieves a single safety inspection record by its UUID.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/inspections/:id`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "inspection": {
+      "id": "7b82fe10-6a55-4bc9-9302-d922a9452011",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "truckModel": "Isuzu Elf N-Series",
+      "truckStatus": "UNDER_MAINTENANCE",
+      "inspectorId": "11111111-2222-3333-4444-555555555555",
+      "inspectorName": "Logistics Supervisor",
+      "inspectorUsername": "logistics_supervisor",
+      "result": "FAILED",
+      "findings": "Brake line leaking fluid near rear axle; pedal spongey.",
+      "issueDetected": true,
+      "inspectionDate": "2026-09-18T08:00:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+## Mid-Route Incident & Breakdown Reporting
+
+Records unexpected roadside failures, accidents, tire punctures, and mechanical breakdowns. Critical incidents (`severity === 'CRITICAL'`) automatically ground the vehicle (`status -> 'UNDER_MAINTENANCE'`) while retaining the assigned driver.
+
+### 8. Get Incident Types Catalog
+
+Retrieves reference list of registered incident classification categories.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/incidents/types`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 4,
+    "types": [
+      { "id": 1, "typeName": "MECHANICAL_DEFECT", "createdAt": "2026-09-18T00:00:00.000Z" },
+      { "id": 2, "typeName": "ROAD_ACCIDENT", "createdAt": "2026-09-18T00:00:00.000Z" },
+      { "id": 3, "typeName": "TIRE_FAILURE", "createdAt": "2026-09-18T00:00:00.000Z" },
+      { "id": 4, "typeName": "LEAK_ISSUE", "createdAt": "2026-09-18T00:00:00.000Z" }
+    ]
+  }
+}
+```
+
+---
+
+### 9. Report Incident / Breakdown
+
+Records a mid-route breakdown or roadside incident. If severity is `'CRITICAL'`, the truck is automatically grounded to `'UNDER_MAINTENANCE'`.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/incidents`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Incident reported successfully.",
+  "data": {
+    "incident": {
+      "id": "8c93ef21-7b66-4cd0-a413-e033b0563122",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "reporterId": "11111111-2222-3333-4444-555555555555",
+      "reporterName": "Logistics Supervisor",
+      "incidentTypeId": 1,
+      "incidentTypeName": "MECHANICAL_DEFECT",
+      "severity": "CRITICAL",
+      "incidentLocation": "Km 14 Panacan Highway, Davao City",
+      "description": "Engine overheating with thick white smoke; truck stalled roadside.",
+      "reportDate": "2026-09-18T08:15:00.000Z"
+    },
+    "truck": {
+      "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "previousStatus": "ACTIVE",
+      "currentStatus": "UNDER_MAINTENANCE",
+      "isGrounded": true
+    }
+  }
+}
+```
+
+---
+
+### 10. List Fleet Incidents
+
+Retrieves fleet-wide incident reports with filtering and pagination.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/incidents`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "incidents": [
+      {
+        "id": "8c93ef21-7b66-4cd0-a413-e033b0563122",
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "truckModel": "Isuzu Elf N-Series",
+        "truckStatus": "UNDER_MAINTENANCE",
+        "reporterId": "11111111-2222-3333-4444-555555555555",
+        "reporterName": "Logistics Supervisor",
+        "reporterUsername": "logistics_supervisor",
+        "incidentTypeId": 1,
+        "incidentTypeName": "MECHANICAL_DEFECT",
+        "severity": "CRITICAL",
+        "incidentLocation": "Km 14 Panacan Highway, Davao City",
+        "description": "Engine overheating with thick white smoke; truck stalled roadside.",
+        "reportDate": "2026-09-18T08:15:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 11. View Truck Incident History
+
+Retrieves incident reports for a specific vehicle asset.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/incidents/truck/:truckId`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+    "plateNumber": "ABC-1001",
+    "count": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "incidents": [
+      {
+        "id": "8c93ef21-7b66-4cd0-a413-e033b0563122",
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "truckModel": "Isuzu Elf N-Series",
+        "truckStatus": "UNDER_MAINTENANCE",
+        "reporterId": "11111111-2222-3333-4444-555555555555",
+        "reporterName": "Logistics Supervisor",
+        "reporterUsername": "logistics_supervisor",
+        "incidentTypeId": 1,
+        "incidentTypeName": "MECHANICAL_DEFECT",
+        "severity": "CRITICAL",
+        "incidentLocation": "Km 14 Panacan Highway, Davao City",
+        "description": "Engine overheating with thick white smoke; truck stalled roadside.",
+        "reportDate": "2026-09-18T08:15:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 12. Get Incident Report by ID
+
+Retrieves a single incident report by its UUID.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/incidents/:id`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "incident": {
+      "id": "8c93ef21-7b66-4cd0-a413-e033b0563122",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "truckModel": "Isuzu Elf N-Series",
+      "truckStatus": "UNDER_MAINTENANCE",
+      "reporterId": "11111111-2222-3333-4444-555555555555",
+      "reporterName": "Logistics Supervisor",
+      "reporterUsername": "logistics_supervisor",
+      "incidentTypeId": 1,
+      "incidentTypeName": "MECHANICAL_DEFECT",
+      "severity": "CRITICAL",
+      "incidentLocation": "Km 14 Panacan Highway, Davao City",
+      "description": "Engine overheating with thick white smoke; truck stalled roadside.",
+      "reportDate": "2026-09-18T08:15:00.000Z"
+    }
+  }
+}
+```
+
 
