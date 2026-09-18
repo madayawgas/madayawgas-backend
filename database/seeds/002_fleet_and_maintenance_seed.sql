@@ -1,7 +1,7 @@
 -- ============================================================
 -- FLEET AND MAINTENANCE SEED
 -- Reference Data, Sample Fleet Vehicles, Inspections,
--- Incident Reports, Work Orders, Approvals, and Logs
+-- Incident Reports, Work Orders, Approvals, Logs, and Odometer Tracking
 -- ============================================================
 
 
@@ -11,14 +11,10 @@
 
 INSERT INTO maintenance_types (type_name)
 VALUES
-    ('Preventive Maintenance'),
-    ('Corrective Maintenance'),
-    ('Tire Replacement & Balancing'),
-    ('Oil & Filter Change'),
-    ('Brake System Overhaul'),
-    ('Battery & Electrical Service'),
-    ('Engine Tune-up'),
-    ('Emergency Repair')
+    ('PREVENTIVE'),
+    ('CORRECTIVE'),
+    ('ACCIDENT_REPAIR'),
+    ('EMERGENCY')
 ON CONFLICT (type_name) DO NOTHING;
 
 
@@ -28,14 +24,10 @@ ON CONFLICT (type_name) DO NOTHING;
 
 INSERT INTO incident_types (type_name)
 VALUES
-    ('Minor Collision'),
-    ('Major Collision'),
-    ('Flat Tire'),
-    ('Engine Breakdown'),
-    ('Engine Overheating'),
-    ('Brake Failure'),
-    ('Electrical Failure'),
-    ('Fuel Leak')
+    ('MECHANICAL_DEFECT'),
+    ('ROAD_ACCIDENT'),
+    ('TIRE_FAILURE'),
+    ('LEAK_ISSUE')
 ON CONFLICT (type_name) DO NOTHING;
 
 
@@ -49,7 +41,7 @@ SELECT
     u.id,
     'Isuzu Elf N-Series',
     2022,
-    45000,
+    45200,
     40000,
     'ACTIVE'::truck_status
 FROM users u
@@ -78,32 +70,37 @@ ON CONFLICT (plate_number) DO UPDATE SET
 
 
 -- ============================================================
--- 4. VEHICLE INSPECTIONS
+-- 4. ODOMETER LOGS (POST-DISPATCH RETURN TRACKING)
+-- ============================================================
+
+INSERT INTO vehicle_odometer_logs (truck_id, odometer_reading, logged_by, source, notes, logged_at)
+SELECT
+    t.id,
+    45200,
+    u.id,
+    'POST_DISPATCH_RETURN',
+    'Standard post-route return inspection and odometer check-in.',
+    NOW() - INTERVAL '1 day'
+FROM trucks t
+CROSS JOIN users u
+WHERE t.plate_number = 'ABC-1001' AND u.username = 'logistics_supervisor'
+AND NOT EXISTS (
+    SELECT 1 FROM vehicle_odometer_logs vol
+    WHERE vol.truck_id = t.id AND vol.odometer_reading = 45200
+);
+
+
+-- ============================================================
+-- 5. VEHICLE INSPECTIONS (Issue Reporting Only - No Checklist)
 -- ============================================================
 
 INSERT INTO vehicle_inspections (truck_id, inspector_id, result, inspection_date, findings, issue_detected)
 SELECT
     t.id,
     u.id,
-    'PASSED'::inspection_result,
-    NOW() - INTERVAL '3 days',
-    'Routine pre-trip inspection passed. All fluid levels, brakes, tires, and lights in good condition.',
-    FALSE
-FROM trucks t
-CROSS JOIN users u
-WHERE t.plate_number = 'ABC-1001' AND u.username = 'logistics_supervisor'
-AND NOT EXISTS (
-    SELECT 1 FROM vehicle_inspections vi
-    WHERE vi.truck_id = t.id AND vi.findings LIKE 'Routine pre-trip inspection passed%'
-);
-
-INSERT INTO vehicle_inspections (truck_id, inspector_id, result, inspection_date, findings, issue_detected)
-SELECT
-    t.id,
-    u.id,
-    'NEEDS_ATTENTION'::inspection_result,
+    'NEEDS_ATTENTION',
     NOW() - INTERVAL '5 days',
-    'Brake pads worn near minimum thickness. Front brake pads require replacement.',
+    'Brake pads worn near minimum thickness. Front brake pads require immediate replacement.',
     TRUE
 FROM trucks t
 CROSS JOIN users u
@@ -115,7 +112,7 @@ AND NOT EXISTS (
 
 
 -- ============================================================
--- 5. INCIDENT REPORTS
+-- 6. INCIDENT REPORTS
 -- ============================================================
 
 INSERT INTO incident_reports (truck_id, reporter_id, incident_type_id, severity, report_date, incident_location, description)
@@ -123,7 +120,7 @@ SELECT
     t.id,
     u.id,
     it.id,
-    'HIGH'::maintenance_severity,
+    'HIGH',
     NOW() - INTERVAL '4 days',
     'Davao-Cotabato Highway km 18',
     'Driver experienced spongy brake pedal response and reduced braking efficiency while descending slight incline.'
@@ -132,7 +129,7 @@ CROSS JOIN users u
 CROSS JOIN incident_types it
 WHERE t.plate_number = 'ABC-1003'
   AND u.username = 'sales_user'
-  AND it.type_name = 'Brake Failure'
+  AND it.type_name = 'MECHANICAL_DEFECT'
   AND NOT EXISTS (
       SELECT 1 FROM incident_reports ir
       WHERE ir.truck_id = t.id AND ir.incident_location = 'Davao-Cotabato Highway km 18'
@@ -140,7 +137,7 @@ WHERE t.plate_number = 'ABC-1003'
 
 
 -- ============================================================
--- 6. WORK ORDERS
+-- 7. WORK ORDERS
 -- ============================================================
 
 -- Work Order 1: Completed Routine PM for ABC-1002
@@ -148,7 +145,7 @@ INSERT INTO work_orders (truck_id, creator_id, status, maintenance_type_id, requ
 SELECT
     t.id,
     u.id,
-    'COMPLETED'::work_order_status,
+    'COMPLETED',
     mt.id,
     NOW() - INTERVAL '10 days',
     NOW() - INTERVAL '8 days',
@@ -160,21 +157,21 @@ CROSS JOIN users u
 CROSS JOIN maintenance_types mt
 WHERE t.plate_number = 'ABC-1002'
   AND u.username = 'logistics_supervisor'
-  AND mt.type_name = 'Oil & Filter Change'
+  AND mt.type_name = 'PREVENTIVE'
   AND NOT EXISTS (
       SELECT 1 FROM work_orders wo
       WHERE wo.truck_id = t.id AND wo.description LIKE 'Scheduled 60,000 km%'
   );
 
--- Work Order 2: Approved Brake Repair for ABC-1003
+-- Work Order 2: Approved Corrective Brake Repair for ABC-1003
 INSERT INTO work_orders (truck_id, creator_id, status, maintenance_type_id, inspection_id, incident_report_id, request_date, scheduled_date, shop_name, estimated_cost, description)
 SELECT
     t.id,
     u.id,
-    'APPROVED'::work_order_status,
+    'APPROVED',
     mt.id,
-    (SELECT vi.id FROM vehicle_inspections vi WHERE vi.truck_id = t.id ORDER BY vi.created_at DESC LIMIT 1),
-    (SELECT ir.id FROM incident_reports ir WHERE ir.truck_id = t.id ORDER BY ir.created_at DESC LIMIT 1),
+    (SELECT vi.id FROM vehicle_inspections vi WHERE vi.truck_id = t.id ORDER BY vi.inspection_date DESC LIMIT 1),
+    (SELECT ir.id FROM incident_reports ir WHERE ir.truck_id = t.id ORDER BY ir.report_date DESC LIMIT 1),
     NOW() - INTERVAL '3 days',
     NOW() + INTERVAL '2 days',
     'Precision Heavy Auto Repair Center',
@@ -185,7 +182,7 @@ CROSS JOIN users u
 CROSS JOIN maintenance_types mt
 WHERE t.plate_number = 'ABC-1003'
   AND u.username = 'logistics_supervisor'
-  AND mt.type_name = 'Brake System Overhaul'
+  AND mt.type_name = 'CORRECTIVE'
   AND NOT EXISTS (
       SELECT 1 FROM work_orders wo
       WHERE wo.truck_id = t.id AND wo.description LIKE 'Replace front and rear brake pads%'
@@ -193,7 +190,7 @@ WHERE t.plate_number = 'ABC-1003'
 
 
 -- ============================================================
--- 7. APPROVAL REQUESTS
+-- 8. APPROVAL REQUESTS
 -- ============================================================
 
 INSERT INTO approval_requests (work_order_id, decider_id, requested_date, decided_date, amount_requested, is_approved, remarks)
@@ -216,14 +213,14 @@ ON CONFLICT (work_order_id) DO UPDATE SET
 
 
 -- ============================================================
--- 8. MAINTENANCE LOGS
+-- 9. MAINTENANCE LOGS
 -- ============================================================
 
 INSERT INTO maintenance_logs (work_order_id, maintenance_type_id, severity, date_started, date_resolved, parts_cost, labor_cost, downtime_days, odometer_at_service, official_receipt_number)
 SELECT
     wo.id,
     mt.id,
-    'LOW'::maintenance_severity,
+    'LOW',
     NOW() - INTERVAL '8 days',
     NOW() - INTERVAL '7 days',
     5200.00,
@@ -232,7 +229,7 @@ SELECT
     60120,
     'OR-2026-00891'
 FROM work_orders wo
-JOIN maintenance_types mt ON mt.type_name = 'Oil & Filter Change'
+JOIN maintenance_types mt ON mt.type_name = 'PREVENTIVE'
 WHERE wo.description LIKE 'Scheduled 60,000 km%'
 ON CONFLICT (work_order_id) DO UPDATE SET
     parts_cost = EXCLUDED.parts_cost,

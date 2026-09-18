@@ -780,3 +780,169 @@ Records a new vehicle mileage reading (odometer), calculates the distance travel
 }
 ```
 
+---
+
+## Maintenance & Preventive Maintenance (PM) Endpoints
+
+### 11. Record Single-Point Return Odometer Reading
+
+Records single-point odometer reading upon plant check-in/return during post-dispatch operations. Automatically updates the truck's registered odometer, tracks distance driven this trip, evaluates the 5,000-km preventive maintenance threshold, and emits a centralized history log.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/odometer`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `truckId` | UUID | Yes | Target truck UUID |
+| `odometerReading` | Integer | Yes | Non-negative integer reading in km (must be >= `truck.current_odometer`) |
+| `source` | String | No | Source of reading (default: `'POST_DISPATCH_RETURN'`) |
+| `notes` | String | No | Optional supervisor notes or remarks |
+
+```json
+{
+  "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+  "odometerReading": 45500,
+  "source": "POST_DISPATCH_RETURN",
+  "notes": "End of shift return check-in"
+}
+```
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Odometer reading recorded successfully.",
+  "data": {
+    "logId": "5ca9dc91-d5eb-4e9a-8450-9c1680541392",
+    "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+    "plateNumber": "ABC-1001",
+    "currentOdometer": 45500,
+    "previousOdometer": 45200,
+    "distanceDrivenThisTrip": 300,
+    "lastPmOdometer": 40000,
+    "distanceSinceLastPm": 5500,
+    "isPmDue": true,
+    "remainingKmBeforePm": 0,
+    "loggedAt": "2026-09-18T05:30:00.000Z"
+  }
+}
+```
+
+#### Response: `400 Bad Request` (Monotonic Violation)
+
+```json
+{
+  "status": "fail",
+  "message": "New odometer reading (44000 km) cannot be less than the current odometer reading (45200 km)."
+}
+```
+
+---
+
+### 12. View Truck Odometer Log History
+
+Retrieves paginated history of odometer logs recorded for a specific truck.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/odometer/truck/:truckId`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `page` | Integer | No | Page number (default: 1) |
+| `limit` | Integer | No | Items per page (default: 50, max: 100) |
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+    "plateNumber": "ABC-1001",
+    "model": "Isuzu Elf N-Series",
+    "currentOdometer": 45500,
+    "lastPmOdometer": 40000,
+    "count": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "logs": [
+      {
+        "id": "5ca9dc91-d5eb-4e9a-8450-9c1680541392",
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "odometerReading": 45500,
+        "loggedBy": "11111111-2222-3333-4444-555555555555",
+        "loggedByName": "Logistics Supervisor",
+        "source": "POST_DISPATCH_RETURN",
+        "notes": "End of shift return check-in",
+        "loggedAt": "2026-09-18T05:30:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 13. View Fleet PM Status Overview
+
+Retrieves a summary of all fleet trucks with computed 5,000-km preventive maintenance indicators, distance driven since last PM service, and remaining kilometers.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/pm-overview`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `status` | String | No | Filter by truck status (`ACTIVE`, `UNDER_MAINTENANCE`, etc.) |
+| `search` | String | No | Search by plate number or truck model |
+| `isPmDue` | Boolean | No | Filter by PM due status (`true` / `false`) |
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 5,
+    "summary": {
+      "totalVehicles": 5,
+      "operationalVehicles": 3,
+      "pmDueTotal": 2,
+      "operationalPmDue": 1
+    },
+    "trucks": [
+      {
+        "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "model": "Isuzu Elf N-Series",
+        "yearModel": 2022,
+        "status": "ACTIVE",
+        "driverId": "22222222-3333-4444-5555-666666666666",
+        "driverName": "Juan Driver",
+        "currentOdometer": 45500,
+        "lastPmOdometer": 40000,
+        "distanceSinceLastPm": 5500,
+        "isPmDue": true,
+        "remainingKmBeforePm": 0,
+        "createdAt": "2026-08-27T21:40:00.000Z",
+        "updatedAt": "2026-09-18T05:30:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+
