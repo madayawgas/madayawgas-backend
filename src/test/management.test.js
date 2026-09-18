@@ -38,10 +38,10 @@ test('User Administration & Management Tests', async (t) => {
 
   beforeEach(async () => {
     // Clean test_mgmt sessions & users
-    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1')) OR user_name LIKE '%test_mgmt_%' OR details LIKE '%jcruz%'`);
-    await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1')) OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1'))`);
-    await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1'))`);
-    await query(`DELETE FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1')`);
+    await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1') OR username LIKE 'sdoe%' OR username LIKE 'pplant%') OR user_name LIKE '%test_mgmt_%' OR details LIKE '%jcruz%' OR details LIKE '%sdoe%' OR details LIKE '%pplant%'`);
+    await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1') OR username LIKE 'sdoe%' OR username LIKE 'pplant%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1') OR username LIKE 'sdoe%' OR username LIKE 'pplant%')`);
+    await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1') OR username LIKE 'sdoe%' OR username LIKE 'pplant%')`);
+    await query(`DELETE FROM users WHERE username LIKE 'test_mgmt_%' OR username IN ('jcruz', 'jcruz1') OR username LIKE 'sdoe%' OR username LIKE 'pplant%'`);
 
     const roleRes = await query(`SELECT id FROM roles WHERE name = 'Super Admin'`);
     testRoleId = roleRes.rows[0].id;
@@ -591,5 +591,154 @@ test('User Administration & Management Tests', async (t) => {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     assert.equal(verifyDel.status, 404);
+  });
+
+  await t.test('7. Multi-Role User Operations & Org Chart Roles Alignment', async () => {
+    const adminLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_mgmt_superadmin', password: 'TestPass123!' }),
+    });
+    const adminCookie = parseCookieHeader(adminLogin);
+
+    // Fetch org chart role IDs
+    const salesSupRes = await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`);
+    const salesSupId = salesSupRes.rows[0].id;
+
+    const logisticsSupRes = await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`);
+    const logisticsSupId = logisticsSupRes.rows[0].id;
+
+    const plantSupRes = await query(`SELECT id FROM roles WHERE name = 'Plant Supervisor'`);
+    const plantSupId = plantSupRes.rows[0].id;
+
+    // 1. Admin creates a multi-role user (Samantha Doe: Sales Supervisor + Logistics Supervisor)
+    const createMultiRes = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        firstName: 'Samantha',
+        lastName: 'Doe',
+        phone: '+639178889999',
+        roleIds: [salesSupId, logisticsSupId],
+      }),
+    });
+    assert.equal(createMultiRes.status, 201);
+    const createMultiJson = await createMultiRes.json();
+    assert.equal(createMultiJson.status, 'success');
+    assert.equal(createMultiJson.data.user.role, 'Sales Supervisor'); // Primary role preserved
+    assert.ok(Array.isArray(createMultiJson.data.user.roles));
+    assert.equal(createMultiJson.data.user.roles.length, 2);
+    assert.ok(createMultiJson.data.user.roleNames.includes('Sales Supervisor'));
+    assert.ok(createMultiJson.data.user.roleNames.includes('Logistics Supervisor'));
+    const samanthaTempPassword = createMultiJson.data.temporaryPassword;
+    const samanthaUserId = createMultiJson.data.user.id;
+
+    // 2. Samantha logs in and changes temporary password
+    const samanthaUsername = createMultiJson.data.user.username;
+    const samanthaLogin1 = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: samanthaUsername, password: samanthaTempPassword }),
+    });
+    assert.equal(samanthaLogin1.status, 200);
+    const samanthaCookie1 = parseCookieHeader(samanthaLogin1);
+
+    const passChangeRes = await fetch(`${baseUrl}/api/users/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${samanthaCookie1}` },
+      body: JSON.stringify({ newPassword: 'NewSupervisorPass123!' }),
+    });
+    assert.equal(passChangeRes.status, 200);
+
+    // Re-login with new password
+    const samanthaLogin2 = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: samanthaUsername, password: 'NewSupervisorPass123!' }),
+    });
+    assert.equal(samanthaLogin2.status, 200);
+    const samanthaCookie2 = parseCookieHeader(samanthaLogin2);
+    const samanthaProfile = await samanthaLogin2.json();
+
+    // 3. Verify union permissions across both Sales and Logistics roles
+    const samanthaPerms = samanthaProfile.data.user.permissions;
+    assert.ok(samanthaPerms.includes('sales.view'), 'Must have Sales Supervisor permission');
+    assert.ok(samanthaPerms.includes('sales.update'), 'Must have Sales Supervisor permission');
+    assert.ok(samanthaPerms.includes('fleet.view'), 'Must have Logistics Supervisor permission');
+    assert.ok(samanthaPerms.includes('fleet.manage'), 'Must have Logistics Supervisor permission');
+    assert.ok(samanthaPerms.includes('route.view'), 'Must have Logistics Supervisor permission');
+    assert.ok(!samanthaPerms.includes('users.manage'), 'Must not have User Management permission');
+
+    // Access Sales endpoint -> 200 OK
+    const salesAccess = await fetch(`${baseUrl}/api/sales/customers`, {
+      headers: { Cookie: `mg_sid=${samanthaCookie2}` },
+    });
+    assert.equal(salesAccess.status, 200);
+
+    // Access Fleet endpoint -> 200 OK
+    const fleetAccess = await fetch(`${baseUrl}/api/fleet/overview`, {
+      headers: { Cookie: `mg_sid=${samanthaCookie2}` },
+    });
+    assert.equal(fleetAccess.status, 200);
+
+    // Access Admin Users endpoint -> 403 Forbidden
+    const adminAccess = await fetch(`${baseUrl}/api/users`, {
+      headers: { Cookie: `mg_sid=${samanthaCookie2}` },
+    });
+    assert.equal(adminAccess.status, 403);
+
+    // 4. Plant Supervisor role verification (empty permissions as per requirements)
+    const createPlantRes = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        firstName: 'Pedro',
+        lastName: 'Plant',
+        phone: '+639177776666',
+        roleId: plantSupId,
+      }),
+    });
+    assert.equal(createPlantRes.status, 201);
+    const createPlantJson = await createPlantRes.json();
+    assert.equal(createPlantJson.data.user.role, 'Plant Supervisor');
+
+    // Plant user login & session verification
+    const plantUsername = createPlantJson.data.user.username;
+    const plantLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: plantUsername, password: createPlantJson.data.temporaryPassword }),
+    });
+    assert.equal(plantLogin.status, 200);
+    const plantProfile = await plantLogin.json();
+    assert.equal(plantProfile.data.user.permissions.length, 0, 'Plant Supervisor must have no permissions assigned yet');
+
+    // 5. Admin updates a user to multi-role via PATCH /api/users/:id/role
+    const roleUpdateRes = await fetch(`${baseUrl}/api/users/${samanthaUserId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({
+        roleIds: [plantSupId, salesSupId],
+        primaryRoleId: plantSupId,
+        confirmPassword: 'TestPass123!',
+      }),
+    });
+    assert.equal(roleUpdateRes.status, 200);
+    const roleUpdateJson = await roleUpdateRes.json();
+    assert.equal(roleUpdateJson.data.user.role, 'Plant Supervisor');
+    assert.equal(roleUpdateJson.data.user.roles.length, 2);
+
+    // 6. Delete role protection for org chart roles (400 Bad Request)
+    for (const protectedRole of ['Plant Supervisor', 'Logistics Supervisor', 'Sales Supervisor']) {
+      const pRoleRes = await query(`SELECT id FROM roles WHERE name = $1`, [protectedRole]);
+      const delRes = await fetch(`${baseUrl}/api/users/roles/${pRoleRes.rows[0].id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+        body: JSON.stringify({ confirmPassword: 'TestPass123!' }),
+      });
+      assert.equal(delRes.status, 400);
+      const delJson = await delRes.json();
+      assert.ok(delJson.message.includes('Cannot delete system default role'));
+    }
   });
 });

@@ -179,7 +179,7 @@ class TrucksService {
       if (!driver.is_active || driver.is_blocked) {
         throw new Error('Assigned driver is not an active eligible user');
       }
-      if (driver.role_name !== 'Driver') {
+      if (driver.role_name !== 'Driver' && !driver.is_driver) {
         throw new Error(`Only users with the 'Driver' role can be assigned to vehicles (user '${driver.username}' has role '${driver.role_name}')`);
       }
 
@@ -356,7 +356,7 @@ class TrucksService {
     if (!driver.is_active || driver.is_blocked) {
       throw new Error('Driver user is inactive or blocked');
     }
-    if (driver.role_name !== 'Driver') {
+    if (driver.role_name !== 'Driver' && !driver.is_driver) {
       throw new Error(`Only users with the 'Driver' role can be assigned to vehicles (user '${driver.username}' has role '${driver.role_name}')`);
     }
 

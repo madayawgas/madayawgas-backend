@@ -63,6 +63,16 @@ Sets HTTP-Only `mg_sid` cookie.
       "birthdate": null,
       "role": "Super Admin",
       "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
+      "roles": [
+        {
+          "id": "d710521e-2549-43dd-a890-470fc0988ef8",
+          "name": "Super Admin",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Super Admin"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": false,
@@ -187,6 +197,16 @@ Fetches profile details and permissions of the currently logged-in user.
       "birthdate": null,
       "role": "Super Admin",
       "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
+      "roles": [
+        {
+          "id": "d710521e-2549-43dd-a890-470fc0988ef8",
+          "name": "Super Admin",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Super Admin"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": false,
@@ -232,6 +252,16 @@ Updates personal profile information of the currently authenticated user (`first
       "birthdate": "1990-05-15T00:00:00.000Z",
       "role": "Super Admin",
       "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
+      "roles": [
+        {
+          "id": "d710521e-2549-43dd-a890-470fc0988ef8",
+          "name": "Super Admin",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Super Admin"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": false
@@ -269,6 +299,13 @@ Returns a list of all user accounts.
         "birthdate": null,
         "role": "Super Admin",
         "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
+        "roles": [
+          {
+            "id": "d710521e-2549-43dd-a890-470fc0988ef8",
+            "name": "Super Admin",
+            "isPrimary": true
+          }
+        ],
         "isActive": true,
         "isBlocked": false,
         "mustChangePassword": false,
@@ -283,14 +320,14 @@ Returns a list of all user accounts.
 
 ### 7. Register / Create User Account
 
-Creates a new user account. **The system automatically generates the username (firstName[0] + lastName, e.g. jdoe) and temporary password.**
+Creates a new user account. **The system automatically generates the username (firstName[0] + lastName, e.g. jdoe) and temporary password.** Supports single-role assignment (`roleId`) or multi-role assignment (`roleIds` + `primaryRoleId`).
 
 - **HTTP Method**: `POST`
 - **URL**: `/api/users`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission**: `users.manage`
 
-#### Request Body
+#### Request Body (Single Role)
 
 ```json
 {
@@ -302,13 +339,31 @@ Creates a new user account. **The system automatically generates the username (f
 }
 ```
 
+#### Request Body (Multi-Role)
+
+```json
+{
+  "firstName": "Samantha",
+  "lastName": "Doe",
+  "phone": "+639171234588",
+  "birthdate": "1992-04-10",
+  "roleIds": [
+    "5752c002-125c-42ae-9bc6-e78fffeaa583",
+    "f2fef090-ffb9-47ff-b52e-6d9b4c4897f2"
+  ],
+  "primaryRoleId": "5752c002-125c-42ae-9bc6-e78fffeaa583"
+}
+```
+
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `firstName` | String | Yes | User first name |
 | `lastName` | String | Yes | User last name |
 | `phone` | String | No | Contact phone number in any supported format. Automatically standardized to `+63...`. |
 | `birthdate` | Date/String | No | User birthdate (YYYY-MM-DD or null) |
-| `roleId` | UUID | Yes | Target role ID from roles table |
+| `roleId` | UUID | Optional* | Target primary role ID (Required if `roleIds` is not provided) |
+| `roleIds` | Array<UUID> | Optional* | Array of role IDs for multi-role assignment (e.g. Sales Supervisor + Logistics Supervisor) |
+| `primaryRoleId` | UUID | Optional | Designates primary role among `roleIds` (defaults to first ID if omitted) |
 
 #### Response: `201 Created` (Success)
 
@@ -325,6 +380,16 @@ Creates a new user account. **The system automatically generates the username (f
       "birthdate": "1995-10-20",
       "role": "Sales Person",
       "roleId": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84",
+      "roles": [
+        {
+          "id": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84",
+          "name": "Sales Person",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Sales Person"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": true,
@@ -361,6 +426,16 @@ Retrieves details for a specific user.
       "birthdate": "1995-10-20",
       "role": "Sales Person",
       "roleId": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84",
+      "roles": [
+        {
+          "id": "98b3be70-2bd5-4a6d-be32-a9174cb1cb84",
+          "name": "Sales Person",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Sales Person"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": true,
@@ -394,6 +469,16 @@ Updates profile information for a target user. Admins can update roles; users ca
 }
 ```
 
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `firstName` | String | No | Updated first name |
+| `lastName` | String | No | Updated last name |
+| `phone` | String | No | Updated contact number |
+| `birthdate` | Date/String | No | Updated birthdate |
+| `roleId` | UUID | No | Single role ID (Admin only, requires `users.manage`) |
+| `roleIds` | Array<UUID> | No | Array of role IDs for multi-role (Admin only, requires `users.manage`) |
+| `primaryRoleId` | UUID | No | Designates primary role among `roleIds` (Admin only) |
+
 #### Response: `200 OK` (Success)
 
 ```json
@@ -409,6 +494,16 @@ Updates profile information for a target user. Admins can update roles; users ca
       "birthdate": "1995-10-20",
       "role": "Fleet Manager",
       "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
+      "roles": [
+        {
+          "id": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
+          "name": "Fleet Manager",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Fleet Manager"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": true
@@ -424,7 +519,7 @@ Updates profile information for a target user. Admins can update roles; users ca
 > [!CAUTION]
 > **Dangerous Operation**: Modifying user roles alters system access permissions and immediately revokes all active sessions for the target user. Requires administrator password confirmation.
 
-Updates a user's system role and reconfigures their permissions. Revokes all active sessions for the user so updated permissions apply immediately.
+Updates a user's system role and reconfigures their permissions. Supports single-role (`roleId`) or multi-role (`roleIds` + `primaryRoleId`). Revokes all active sessions for the user so updated permissions apply immediately.
 
 - **HTTP Method**: `PATCH`
 - **URL**: `/api/users/:id/role`
@@ -432,7 +527,7 @@ Updates a user's system role and reconfigures their permissions. Revokes all act
 - **Permission**: `users.manage`
 - **Dangerous Operation Guard**: Requires password confirmation (`confirmPassword` / `adminPassword` in body or `x-confirm-password` header)
 
-#### Request Body
+#### Request Body (Single Role)
 
 ```json
 {
@@ -441,9 +536,24 @@ Updates a user's system role and reconfigures their permissions. Revokes all act
 }
 ```
 
+#### Request Body (Multi-Role)
+
+```json
+{
+  "roleIds": [
+    "5752c002-125c-42ae-9bc6-e78fffeaa583",
+    "f2fef090-ffb9-47ff-b52e-6d9b4c4897f2"
+  ],
+  "primaryRoleId": "5752c002-125c-42ae-9bc6-e78fffeaa583",
+  "confirmPassword": "AdminPassword123!"
+}
+```
+
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `roleId` | UUID | **Yes** | Valid Role UUID to assign to the user |
+| `roleId` | UUID | Optional* | Valid Role UUID to assign (Required if `roleIds` is not provided) |
+| `roleIds` | Array<UUID> | Optional* | Array of valid Role UUIDs for multi-role assignment (e.g. Sales Supervisor + Logistics Supervisor) |
+| `primaryRoleId` | UUID | Optional | Designates primary role among `roleIds` (defaults to first ID if omitted) |
 | `confirmPassword` | String | **Yes** | Acting administrator's current account password |
 
 #### Response: `200 OK` (Success)
@@ -462,6 +572,16 @@ Updates a user's system role and reconfigures their permissions. Revokes all act
       "birthdate": "1995-10-20",
       "role": "Fleet Manager",
       "roleId": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
+      "roles": [
+        {
+          "id": "5f60e166-8de5-4dd9-bfdb-58e71ec5244b",
+          "name": "Fleet Manager",
+          "isPrimary": true
+        }
+      ],
+      "roleNames": [
+        "Fleet Manager"
+      ],
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": false,
@@ -870,7 +990,7 @@ Updates an existing role's name, description, or assigned permissions. Automatic
 
 #### Error Responses
 
-- **`400 Bad Request`**: Role is a protected system default role (`Super Admin`, `Admin`, `Fleet Manager`, `Sales Manager`, `Sales Person`, `Driver`) or has active assigned users.
+- **`400 Bad Request`**: Role is a protected system default role (`Super Admin`, `Admin`, `Plant Supervisor`, `Logistics Supervisor`, `Sales Supervisor`, `Fleet Manager`, `Sales Manager`, `Sales Person`, `Driver`) or has active assigned users.
 - **`401 Unauthorized`**: Missing or incorrect confirmation password.
 - **`404 Not Found`**: Role ID not found.
 

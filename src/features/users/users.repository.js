@@ -53,22 +53,117 @@ class UsersRepository {
   async findAllUsers() {
     const res = await query(
       `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
+              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name,
+              COALESCE(
+                JSON_AGG(
+                  JSON_BUILD_OBJECT('id', r2.id, 'name', r2.name, 'isPrimary', ur.is_primary)
+                  ORDER BY ur.is_primary DESC, r2.name ASC
+                ) FILTER (WHERE r2.id IS NOT NULL),
+                '[]'::json
+              ) as roles
        FROM users u
        JOIN roles r ON u.role_id = r.id
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       LEFT JOIN roles r2 ON ur.role_id = r2.id
+       GROUP BY u.id, r.name
        ORDER BY u.created_at DESC`
     );
     return res.rows;
   }
 
-  async createUser({ username, passwordHash, firstName, lastName, phone = null, birthdate = null, roleId, mustChangePassword = true }) {
+  async getUserRoles(userId) {
+    const res = await query(
+      `SELECT r.id, r.name, r.description, ur.is_primary, ur.assigned_at
+       FROM user_roles ur
+       JOIN roles r ON ur.role_id = r.id
+       WHERE ur.user_id = $1
+       ORDER BY ur.is_primary DESC, r.name ASC`,
+      [userId]
+    );
+    if (res.rows.length > 0) {
+      return res.rows;
+    }
+
+    // Resilient fallback for direct raw database inserts
+    const fallback = await query(
+      `SELECT r.id, r.name, r.description, TRUE as is_primary, NOW() as assigned_at
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    return fallback.rows;
+  }
+
+  async setUserRoles(userId, roleIds = [], primaryRoleId = null) {
+    if (!Array.isArray(roleIds) || roleIds.length === 0) {
+      return this.getUserRoles(userId);
+    }
+
+    const primary = primaryRoleId && roleIds.includes(primaryRoleId) ? primaryRoleId : roleIds[0];
+
+    // Delete existing roles
+    await query(`DELETE FROM user_roles WHERE user_id = $1`, [userId]);
+
+    // Insert new roles
+    for (const rid of roleIds) {
+      const isPrimary = rid === primary;
+      await query(
+        `INSERT INTO user_roles (user_id, role_id, is_primary)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, role_id) DO UPDATE SET is_primary = EXCLUDED.is_primary`,
+        [userId, rid, isPrimary]
+      );
+    }
+
+    // Update users.role_id to primary role
+    await query(`UPDATE users SET role_id = $1 WHERE id = $2`, [primary, userId]);
+
+    return this.getUserRoles(userId);
+  }
+
+  async getPermissionsByUserId(userId) {
+    const res = await query(
+      `SELECT DISTINCT p.name
+       FROM permissions p
+       JOIN role_permissions rp ON rp.permission_id = p.id
+       WHERE rp.role_id IN (
+         SELECT role_id FROM user_roles WHERE user_id = $1
+         UNION
+         SELECT role_id FROM users WHERE id = $1
+       )`,
+      [userId]
+    );
+    return res.rows.map((row) => row.name);
+  }
+
+  async createUser({ username, passwordHash, firstName, lastName, phone = null, birthdate = null, roleId, roleIds = [], primaryRoleId = null, mustChangePassword = true }) {
+    const effectiveRoleIds = Array.isArray(roleIds) && roleIds.length > 0 ? roleIds : [roleId].filter(Boolean);
+    const primaryId = (primaryRoleId && effectiveRoleIds.includes(primaryRoleId))
+      ? primaryRoleId
+      : (roleId || effectiveRoleIds[0]);
+
     const res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE, $8)
        RETURNING id, username, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password, created_at`,
-      [username, passwordHash, firstName, lastName, phone, birthdate, roleId, mustChangePassword]
+      [username, passwordHash, firstName, lastName, phone, birthdate, primaryId, mustChangePassword]
     );
-    return res.rows[0];
+    const createdUser = res.rows[0];
+
+    // Populate user_roles
+    for (const rid of effectiveRoleIds) {
+      if (rid) {
+        await query(
+          `INSERT INTO user_roles (user_id, role_id, is_primary)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (user_id, role_id) DO UPDATE SET is_primary = EXCLUDED.is_primary`,
+          [createdUser.id, rid, rid === primaryId]
+        );
+      }
+    }
+
+    return createdUser;
   }
 
   async updateUserProfile(id, { firstName, lastName, phone, birthdate, roleId }) {
@@ -186,13 +281,13 @@ class UsersRepository {
         r.name,
         r.description,
         r.created_at,
-        COUNT(DISTINCT u.id)::int AS user_count,
+        COUNT(DISTINCT ur.user_id)::int AS user_count,
         COALESCE(
           ARRAY_AGG(DISTINCT p.name) FILTER (WHERE p.name IS NOT NULL),
           '{}'
         ) AS permissions
       FROM roles r
-      LEFT JOIN users u ON u.role_id = r.id
+      LEFT JOIN user_roles ur ON ur.role_id = r.id
       LEFT JOIN role_permissions rp ON rp.role_id = r.id
       LEFT JOIN permissions p ON rp.permission_id = p.id
       GROUP BY r.id, r.name, r.description, r.created_at
@@ -209,13 +304,13 @@ class UsersRepository {
         r.name,
         r.description,
         r.created_at,
-        COUNT(DISTINCT u.id)::int AS user_count,
+        COUNT(DISTINCT ur.user_id)::int AS user_count,
         COALESCE(
           ARRAY_AGG(DISTINCT p.name) FILTER (WHERE p.name IS NOT NULL),
           '{}'
         ) AS permissions
       FROM roles r
-      LEFT JOIN users u ON u.role_id = r.id
+      LEFT JOIN user_roles ur ON ur.role_id = r.id
       LEFT JOIN role_permissions rp ON rp.role_id = r.id
       LEFT JOIN permissions p ON rp.permission_id = p.id
       WHERE r.id = $1
@@ -296,7 +391,12 @@ class UsersRepository {
   }
 
   async countUsersByRoleId(roleId) {
-    const res = await query(`SELECT COUNT(*)::int AS count FROM users WHERE role_id = $1`, [roleId]);
+    const res = await query(
+      `SELECT COUNT(DISTINCT user_id)::int AS count
+       FROM user_roles
+       WHERE role_id = $1`,
+      [roleId]
+    );
     return res.rows[0]?.count || 0;
   }
 
@@ -310,7 +410,7 @@ class UsersRepository {
     await query(
       `UPDATE sessions
        SET revoked_at = NOW()
-       WHERE user_id IN (SELECT id FROM users WHERE role_id = $1)
+       WHERE user_id IN (SELECT user_id FROM user_roles WHERE role_id = $1)
          AND revoked_at IS NULL`,
       [roleId]
     );

@@ -21,7 +21,9 @@ class ProfileService {
       throw new Error('User not found');
     }
 
-    const permissions = await permissionService.getPermissionsForRole(user.role_id);
+    const permissions = await permissionService.getPermissionsForUser(userId);
+    const userRoles = await usersRepository.getUserRoles(userId);
+    const primaryRole = userRoles.find((r) => r.is_primary) || userRoles[0];
 
     return {
       id: user.id,
@@ -30,8 +32,10 @@ class ProfileService {
       lastName: user.last_name,
       phone: user.phone,
       birthdate: user.birthdate,
-      role: user.role_name,
-      roleId: user.role_id,
+      role: primaryRole ? primaryRole.name : user.role_name,
+      roleId: primaryRole ? primaryRole.id : user.role_id,
+      roles: userRoles.map((r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary })),
+      roleNames: userRoles.map((r) => r.name),
       isActive: user.is_active,
       isBlocked: user.is_blocked,
       mustChangePassword: user.must_change_password,
@@ -106,6 +110,9 @@ class ProfileService {
       payload: { isSelf, username: target.username },
     });
 
+    const userRoles = await usersRepository.getUserRoles(targetUserId);
+    const primaryRole = userRoles.find((r) => r.is_primary) || userRoles[0];
+
     return {
       id: updated.id,
       username: updated.username,
@@ -113,8 +120,10 @@ class ProfileService {
       lastName: updated.last_name,
       phone: updated.phone,
       birthdate: updated.birthdate,
-      role: updated.role_name,
-      roleId: updated.role_id,
+      role: primaryRole ? primaryRole.name : updated.role_name,
+      roleId: primaryRole ? primaryRole.id : updated.role_id,
+      roles: userRoles.map((r) => ({ id: r.id, name: r.name, isPrimary: r.is_primary })),
+      roleNames: userRoles.map((r) => r.name),
       isActive: updated.is_active,
       isBlocked: updated.is_blocked,
       mustChangePassword: updated.must_change_password,

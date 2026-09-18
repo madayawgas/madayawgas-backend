@@ -179,7 +179,7 @@ class UsersController {
    * Creates a user account with auto-generated username (e.g. jdoe) and temporary password.
    */
   async createUser(req, res) {
-    const { firstName, lastName, phone, birthdate, roleId } = req.body || {};
+    const { firstName, lastName, phone, birthdate, roleId, roleIds, primaryRoleId } = req.body || {};
 
     try {
       const result = await managementService.createUser(req.user, {
@@ -188,6 +188,8 @@ class UsersController {
         phone,
         birthdate,
         roleId,
+        roleIds,
+        primaryRoleId,
       });
 
       return res.status(201).json({
@@ -237,7 +239,7 @@ class UsersController {
    * PATCH /api/users/:id
    */
   async updateUserProfile(req, res) {
-    const { firstName, lastName, phone, birthdate, roleId } = req.body || {};
+    const { firstName, lastName, phone, birthdate, roleId, roleIds, primaryRoleId } = req.body || {};
 
     try {
       let updatedUser;
@@ -253,14 +255,18 @@ class UsersController {
       }
 
       // Handle role updates (requires users.manage)
-      if (roleId !== undefined) {
+      if (roleId !== undefined || roleIds !== undefined) {
         if (!permissionService.can(req.user, 'users.manage')) {
           return res.status(403).json({
             status: 'fail',
             message: 'Forbidden: You do not have permission to change user roles',
           });
         }
-        updatedUser = await managementService.updateUserRole(req.user, req.params.id, roleId);
+        updatedUser = await managementService.updateUserRole(req.user, req.params.id, {
+          roleId,
+          roleIds,
+          primaryRoleId,
+        });
       }
 
       if (!updatedUser) {
@@ -285,19 +291,24 @@ class UsersController {
   /**
    * PATCH /api/users/:id/role
    * Admin updates a user's role and assigns new permissions.
+   * Supports single role (roleId) or multiple roles (roleIds).
    */
   async updateUserRole(req, res) {
-    const { roleId } = req.body || {};
+    const { roleId, roleIds, primaryRoleId } = req.body || {};
 
-    if (!roleId) {
+    if (!roleId && (!Array.isArray(roleIds) || roleIds.length === 0)) {
       return res.status(400).json({
         status: 'fail',
-        message: 'Role ID is required',
+        message: 'Role ID or roleIds array is required',
       });
     }
 
     try {
-      const updatedUser = await managementService.updateUserRole(req.user, req.params.id, roleId);
+      const updatedUser = await managementService.updateUserRole(req.user, req.params.id, {
+        roleId,
+        roleIds,
+        primaryRoleId,
+      });
 
       return res.status(200).json({
         status: 'success',

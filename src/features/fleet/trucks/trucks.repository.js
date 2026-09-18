@@ -260,7 +260,12 @@ class TrucksRepository {
         u.phone, 
         u.is_active, 
         u.is_blocked,
-        r.name AS role_name
+        r.name AS role_name,
+        EXISTS (
+          SELECT 1 FROM user_roles ur
+          JOIN roles r2 ON ur.role_id = r2.id
+          WHERE ur.user_id = u.id AND LOWER(r2.name) = 'driver'
+        ) OR LOWER(r.name) = 'driver' AS is_driver
       FROM users u
       JOIN roles r ON u.role_id = r.id
       WHERE u.id = $1
@@ -312,7 +317,7 @@ class TrucksRepository {
     const conditions = [
       'u.is_active = TRUE',
       'u.is_blocked = FALSE',
-      "LOWER(r.name) = 'driver'",
+      "(LOWER(r.name) = 'driver' OR EXISTS (SELECT 1 FROM user_roles ur JOIN roles r2 ON ur.role_id = r2.id WHERE ur.user_id = u.id AND LOWER(r2.name) = 'driver'))",
     ];
     const params = [];
     let paramIndex = 1;

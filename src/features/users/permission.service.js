@@ -14,6 +14,14 @@ class PermissionService {
   }
 
   /**
+   * Fetches unified deduplicated permission string list for a user ID across all their assigned roles.
+   */
+  async getPermissionsForUser(userId) {
+    if (!userId) return [];
+    return usersRepository.getPermissionsByUserId(userId);
+  }
+
+  /**
    * Helper to extract permission list from either a user context object or permissions array.
    */
   _extractPermissions(userOrPermissions) {

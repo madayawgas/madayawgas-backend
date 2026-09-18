@@ -44,7 +44,9 @@ madayawgas-backend/
 │   │   ├── 002_fleet_and_maintenance.sql    # Vehicles, maintenance, dispatch schema
 │   │   ├── 003_products.sql                 # Inventory products schema
 │   │   ├── 004_customers.sql                # Sales customers schema
-│   │   └── 005_history_logs.sql             # System event history logs schema
+│   │   ├── 005_history_logs.sql             # System event history logs schema
+│   │   ├── 006_roles_and_permissions_expansion.sql # Roles matrix expansion schema
+│   │   └── 007_multi_role_and_org_chart_roles.sql # Multi-role junction & org chart roles schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -275,21 +277,32 @@ madayawgas-backend/
     * Automatically validates and normalizes all incoming contact numbers to the standard canonical international format (`+63...`) in PostgreSQL and API responses.
     * Integrated into Customer Profile CRUD (`customer.service.js`) and User Account Management (`management.service.js`, `profile.service.js`).
     * Added dedicated unit test suite in `src/test/phone.test.js` and updated integration tests (60 total tests passing with 100% success across 9 test files).
+15. **Multi-Role Architecture & Organizational Chart Roles Alignment**:
+    * Created migration `007_multi_role_and_org_chart_roles.sql` introducing normalized `user_roles` junction table (`user_id`, `role_id`, `is_primary`, `assigned_at`, `PRIMARY KEY (user_id, role_id)`).
+    * Seeded and aligned organizational chart roles: `Plant Supervisor` (seeded with empty permissions `[]`, plant inventory deferred, filling & shifts deferred), `Logistics Supervisor`, and `Sales Supervisor` while retaining `Fleet Manager` and `Sales Manager` aliases for complete backward compatibility.
+    * Zero breaking changes: Models and endpoints preserve `user.role` (primary role name) and `user.roleId` (primary role ID) while attaching `user.roles: [{ id, name, isPrimary }]` and `user.roleNames: [...]`.
+    * Permission unification engine (`permissionService.getPermissionsForUser`) dynamically unions permissions across all assigned roles without duplicate entries.
+    * Enhanced user creation (`POST /api/users`), profile updates (`PATCH /api/users/:id`), and admin role modification (`PATCH /api/users/:id/role`) to accept both single `roleId` and multi-role `roleIds` + `primaryRoleId`.
+    * Fleet driver checks (`findDriverUserById`, `getAllDrivers`) check `user_roles` so multi-role users holding the `Driver` role are recognized as eligible drivers.
+    * Expanded role deletion safeguards in `management.service.js` to protect all core system default roles (`Super Admin`, `Admin`, `Plant Supervisor`, `Logistics Supervisor`, `Sales Supervisor`, `Fleet Manager`, `Sales Manager`, `Sales Person`, `Driver`).
+    * Added comprehensive Subtest 7 in `src/test/management.test.js` verifying multi-role creation, credential initialization, endpoint authorization unions, 403 route blocking, and role modifications. All 62 project tests passing with 100% success across 9 test files.
 
 ---
 
 ## 5. Seed Users & Permanent Test Accounts
 
-The database seed provides permanent accounts for all 6 system roles (`must_change_password = FALSE`):
+The database seed provides permanent accounts for system testing (`must_change_password = FALSE`):
 
-| Username | Password | Role | Phone | Permissions Summary |
+| Username | Password | Role(s) | Phone | Permissions Summary |
 | :--- | :--- | :--- | :--- | :--- |
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access (`*`). Cannot be deactivated, blocked, or demoted. |
-| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales. |
-| **`fleet_user`** | `FleetPass123!` | **Fleet Manager** | `+639170000003` | Fleet & route dispatch (`dashboard.view`, `fleet.view`, `fleet.manage`, `route.view`, `route.manage`). |
-| **`sales_manager`** | `SalesMgrPass123!` | **Sales Manager** | `+639170000006` | Sales oversight & inventory (`inventory.view`, `inventory.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). |
-| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
+| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales, history. |
+| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet & logistics oversight (`dashboard.view`, `fleet.view`, `fleet.manage`, `route.view`, `route.manage`, `delivery.view`, `delivery.update`). |
 | **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Vehicle driver record for fleet truck assignments. **No login permissions**. |
+| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & inventory (`inventory.view`, `inventory.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). |
+| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
+| **`plant_user`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Catalog role defined; permissions deferred (`[]`) until plant inventory implementation. |
+| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.*`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
 
 ---
 

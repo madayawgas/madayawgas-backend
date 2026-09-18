@@ -19,12 +19,24 @@ VALUES
         'Administrator with unrestricted access to the system.'
     ),
     (
+        'Plant Supervisor',
+        'Oversees plant operations, cylinder refilling, and plant inventory. Permissions pending plant subsystem implementation.'
+    ),
+    (
+        'Logistics Supervisor',
+        'Manages logistics, fleet, route dispatch, and operational truck activities.'
+    ),
+    (
+        'Sales Supervisor',
+        'Oversees sales, customers, transactions, and delivery fulfillment.'
+    ),
+    (
         'Fleet Manager',
-        'Manages fleet, route dispatch, and operational activities.'
+        'Legacy alias for Logistics Supervisor. Manages fleet, route dispatch, and operational activities.'
     ),
     (
         'Sales Manager',
-        'Oversees sales, customers, transactions, inventory products, and delivery fulfillment.'
+        'Legacy alias for Sales Supervisor. Oversees sales, customers, transactions, inventory products, and delivery fulfillment.'
     ),
     (
         'Sales Person',
@@ -201,7 +213,15 @@ ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 5. FLEET MANAGER
+-- 5. PLANT SUPERVISOR
+-- ============================================================
+-- Plant Supervisor oversees plant operations, cylinder refilling,
+-- and plant inventory. No permissions are assigned yet (placeholder
+-- for future plant operations and inventory subsystem implementation).
+
+
+-- ============================================================
+-- 6. LOGISTICS SUPERVISOR (and legacy Fleet Manager)
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -221,15 +241,22 @@ JOIN permissions p
 
         -- Route Dispatch
         'route.view',
-        'route.manage'
+        'route.manage',
+
+        -- Deliveries
+        'delivery.view',
+        'delivery.update',
+
+        -- History Logs
+        'history.view'
 
     )
-WHERE r.name = 'Fleet Manager'
+WHERE r.name IN ('Logistics Supervisor', 'Fleet Manager')
 ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 6. SALES MANAGER
+-- 7. SALES SUPERVISOR (and legacy Sales Manager)
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -260,7 +287,7 @@ JOIN permissions p
         'history.view'
 
     )
-WHERE r.name = 'Sales Manager'
+WHERE r.name IN ('Sales Supervisor', 'Sales Manager')
 ON CONFLICT DO NOTHING;
 
 
@@ -349,48 +376,50 @@ ON CONFLICT (username) DO UPDATE SET
 
 
 -- ============================================================
--- 11. SAMPLE FLEET MANAGER ACCOUNT
+-- 11. SAMPLE LOGISTICS SUPERVISOR ACCOUNT
 -- ============================================================
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
-    'fleet_user',
-    '$2b$10$JGOSJIBM8.zjWXuPD8a/cugoMZRdw7Fpfwx./wVyaxStzwqTweZU.',
+    'logistics_supervisor',
+    '$2b$10$NyLLNftp8wfMY4Df7m.QlO.kwjdsplUTBepucbswgz2rXSq/nr.wO',
     'Carlos',
-    'Fleet',
+    'Logistics',
     '+639170000003',
     r.id,
     TRUE,
     FALSE,
     FALSE
 FROM roles r
-WHERE r.name = 'Fleet Manager'
+WHERE r.name = 'Logistics Supervisor'
 ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     phone = EXCLUDED.phone,
+    role_id = EXCLUDED.role_id,
     must_change_password = FALSE;
 
 
 -- ============================================================
--- 12. SAMPLE SALES MANAGER ACCOUNT
+-- 12. SAMPLE SALES SUPERVISOR ACCOUNT
 -- ============================================================
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
-    'sales_manager',
-    '$2b$10$4VxKnRqkfjC2yZMkE4/BzONuL6vYN20ySY2UQi.iQ2qvbruHbj0Rq',
+    'sales_supervisor',
+    '$2b$10$h6cUCFj3jDW5RyReECnBaesvsae7WuKpWEJTd8pXyuhSC2yiosJfK',
     'Elena',
-    'Sales',
+    'Supervisor',
     '+639170000006',
     r.id,
     TRUE,
     FALSE,
     FALSE
 FROM roles r
-WHERE r.name = 'Sales Manager'
+WHERE r.name = 'Sales Supervisor'
 ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     phone = EXCLUDED.phone,
+    role_id = EXCLUDED.role_id,
     must_change_password = FALSE;
 
 
@@ -438,5 +467,73 @@ ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     phone = EXCLUDED.phone,
     must_change_password = FALSE;
+
+
+-- ============================================================
+-- 15. SAMPLE PLANT SUPERVISOR ACCOUNT
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'plant_user',
+    '$2b$10$0axa4jTJYzHFEpL2wKKOq.HDDez0ahaSATrPZJIhdD2LM7M.w2yFy',
+    'Pedro',
+    'Plant',
+    '+639170000007',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Plant Supervisor'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
+
+-- ============================================================
+-- 16. SAMPLE MULTI-ROLE SUPERVISOR ACCOUNT (Samantha Doe)
+-- Holds both Sales Supervisor (primary) and Logistics Supervisor
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'samantha_supervisor',
+    '$2b$10$4VxKnRqkfjC2yZMkE4/BzONuL6vYN20ySY2UQi.iQ2qvbruHbj0Rq',
+    'Samantha',
+    'Doe',
+    '+639170000008',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Sales Supervisor'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
+
+-- ============================================================
+-- 17. SYNC USER_ROLES JUNCTION TABLE
+-- ============================================================
+
+-- Backfill / sync all primary roles
+INSERT INTO user_roles (user_id, role_id, is_primary)
+SELECT u.id, u.role_id, TRUE
+FROM users u
+ON CONFLICT (user_id, role_id) DO UPDATE SET is_primary = EXCLUDED.is_primary;
+
+-- Assign Logistics Supervisor as secondary role for samantha_supervisor
+INSERT INTO user_roles (user_id, role_id, is_primary)
+SELECT u.id, r.id, FALSE
+FROM users u
+CROSS JOIN roles r
+WHERE u.username = 'samantha_supervisor'
+  AND r.name = 'Logistics Supervisor'
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
 
 
