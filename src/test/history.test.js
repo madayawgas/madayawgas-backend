@@ -444,5 +444,61 @@ test('System Event History Log Subsystem Tests', async (t) => {
     assert.equal(logged.module, 'Inventory Management');
     assert.equal(logged.actionType, 'Created');
     assert.equal(logged.details, `Created new inventory product '${PREFIX}Test Tank 11kg' (LPG Cylinder)`);
+
+    // E. Verify Fleet Maintenance Subsystem Event Definitions
+    const odoResolved = resolveEvent(EVENTS.MAINTENANCE_ODOMETER_LOGGED, {
+      plateNumber: 'ABC-1001',
+      odometerKm: 45200,
+    });
+    assert.equal(odoResolved.module, 'Fleet Management');
+    assert.equal(odoResolved.actionType, 'Updated');
+    assert.equal(odoResolved.targetType, 'TRUCK');
+    assert.equal(odoResolved.details, 'Recorded odometer reading for truck ABC-1001: 45200 km');
+
+    const inspResolved = resolveEvent(EVENTS.MAINTENANCE_INSPECTION_RECORDED, {
+      plateNumber: 'ABC-1003',
+      result: 'NEEDS_ATTENTION',
+    });
+    assert.equal(inspResolved.module, 'Fleet Management');
+    assert.equal(inspResolved.actionType, 'Created');
+    assert.equal(inspResolved.targetType, 'INSPECTION');
+    assert.equal(inspResolved.details, 'Recorded vehicle inspection for ABC-1003 with result: NEEDS_ATTENTION');
+
+    const incResolved = resolveEvent(EVENTS.MAINTENANCE_INCIDENT_REPORTED, {
+      severity: 'HIGH',
+      plateNumber: 'ABC-1003',
+      description: 'Brake fluid leakage on descent',
+    });
+    assert.equal(incResolved.module, 'Fleet Management');
+    assert.equal(incResolved.actionType, 'Created');
+    assert.equal(incResolved.targetType, 'INCIDENT');
+    assert.equal(incResolved.details, 'Reported HIGH incident for truck ABC-1003: Brake fluid leakage on descent');
+
+    const woResolved = resolveEvent(EVENTS.MAINTENANCE_WORK_ORDER_CREATED, {
+      workOrderId: 'WO-2026-001',
+      plateNumber: 'ABC-1003',
+    });
+    assert.equal(woResolved.module, 'Fleet Management');
+    assert.equal(woResolved.actionType, 'Created');
+    assert.equal(woResolved.targetType, 'WORK_ORDER');
+    assert.equal(woResolved.details, 'Created work order #WO-2026-001 for truck ABC-1003');
+
+    const appResolved = resolveEvent(EVENTS.MAINTENANCE_APPROVAL_DECIDED, {
+      workOrderId: 'WO-2026-001',
+      decision: 'APPROVED',
+    });
+    assert.equal(appResolved.module, 'Fleet Management');
+    assert.equal(appResolved.actionType, 'Updated');
+    assert.equal(appResolved.targetType, 'WORK_ORDER');
+    assert.equal(appResolved.details, 'Work order #WO-2026-001 approval decision: APPROVED');
+
+    const logResolved = resolveEvent(EVENTS.MAINTENANCE_LOG_FINALIZED, {
+      workOrderId: 'WO-2026-001',
+      receiptNumber: 'OR-2026-00891',
+    });
+    assert.equal(logResolved.module, 'Fleet Management');
+    assert.equal(logResolved.actionType, 'Created');
+    assert.equal(logResolved.targetType, 'MAINTENANCE_LOG');
+    assert.equal(logResolved.details, 'Finalized maintenance log for work order #WO-2026-001 (OR #OR-2026-00891)');
   });
 });

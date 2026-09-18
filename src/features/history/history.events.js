@@ -7,6 +7,7 @@
 const MODULES = Object.freeze({
   USER_MANAGEMENT: 'User Management',
   FLEET_MANAGEMENT: 'Fleet Management',
+  FLEET: 'Fleet Management',
   INVENTORY_MANAGEMENT: 'Inventory Management',
   SALES_DELIVERY: 'Sales & Delivery',
   ROUTE_DISPATCH: 'Route Dispatch',
@@ -163,6 +164,48 @@ const EVENT_DEFINITIONS = {
     targetType: 'truck',
     template: (p) =>
       `Recorded odometer update for truck '${p.plateNumber}' (${p.odometer} km)`,
+  },
+  MAINTENANCE_ODOMETER_LOGGED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'TRUCK',
+    template: (p) =>
+      `Recorded odometer reading for truck ${p.plateNumber}: ${p.odometerKm} km`,
+  },
+  MAINTENANCE_INSPECTION_RECORDED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'INSPECTION',
+    template: (p) =>
+      `Recorded vehicle inspection for ${p.plateNumber} with result: ${p.result}`,
+  },
+  MAINTENANCE_INCIDENT_REPORTED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'INCIDENT',
+    template: (p) =>
+      `Reported ${p.severity} incident for truck ${p.plateNumber}: ${p.description}`,
+  },
+  MAINTENANCE_WORK_ORDER_CREATED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'WORK_ORDER',
+    template: (p) =>
+      `Created work order #${p.workOrderId} for truck ${p.plateNumber}`,
+  },
+  MAINTENANCE_APPROVAL_DECIDED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'WORK_ORDER',
+    template: (p) =>
+      `Work order #${p.workOrderId} approval decision: ${p.decision}`,
+  },
+  MAINTENANCE_LOG_FINALIZED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'MAINTENANCE_LOG',
+    template: (p) =>
+      `Finalized maintenance log for work order #${p.workOrderId} (OR #${p.receiptNumber})`,
   },
 
   // ============================================================

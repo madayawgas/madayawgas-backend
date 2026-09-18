@@ -46,7 +46,8 @@ madayawgas-backend/
 │   │   ├── 004_customers.sql                # Sales customers schema
 │   │   ├── 005_history_logs.sql             # System event history logs schema
 │   │   ├── 006_roles_and_permissions_expansion.sql # Roles matrix expansion schema
-│   │   └── 007_multi_role_and_org_chart_roles.sql # Multi-role junction & org chart roles schema
+│   │   ├── 007_multi_role_and_org_chart_roles.sql # Multi-role junction & org chart roles schema
+│   │   └── 008_maintenance_and_work_orders.sql # Maintenance, odometer logs, inspections, work orders schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -286,6 +287,21 @@ madayawgas-backend/
     * Fleet driver checks (`findDriverUserById`, `getAllDrivers`) check `user_roles` so multi-role users holding the `Driver` role are recognized as eligible drivers.
     * Expanded role deletion safeguards in `management.service.js` to protect all core system default roles (`Super Admin`, `Admin`, `Plant Supervisor`, `Logistics Supervisor`, `Sales Supervisor`, `Fleet Manager`, `Sales Manager`, `Sales Person`, `Driver`).
     * Added comprehensive Subtest 7 in `src/test/management.test.js` verifying multi-role creation, credential initialization, endpoint authorization unions, 403 route blocking, and role modifications. All 62 project tests passing with 100% success across 9 test files.
+16. **Fleet & Maintenance Subsystem - Part 1: Schema Migration & History Events Foundation**:
+    * Created migration `008_maintenance_and_work_orders.sql` establishing the relational schema, constraints, foreign keys, cascade deletes, and performance indexes for:
+      - `maintenance_types` (`id SERIAL PRIMARY KEY`, `type_name VARCHAR(50) UNIQUE NOT NULL`).
+      - `incident_types` (`id SERIAL PRIMARY KEY`, `type_name VARCHAR(50) UNIQUE NOT NULL`).
+      - `vehicle_odometer_logs` for single-point post-dispatch return logging driving 5,000-km PM threshold alerts (`(current_odometer - last_pm_odometer) >= 5000`).
+      - `vehicle_inspections` implementing the **No Checklist** rule (strictly issue-reporting records with `findings TEXT NOT NULL` and `issue_detected BOOLEAN DEFAULT TRUE NOT NULL`).
+      - `incident_reports` for mid-route breakdowns/accidents (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+      - `work_orders` with status transitions (`PENDING`, `APPROVED`, `SCHEDULED`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`) and `BEFORE UPDATE` timestamp trigger.
+      - `approval_requests` supporting executive cost approvals.
+      - `maintenance_logs` tracking financial closure, parts/labor breakdown, and downtime.
+    * Streamlined `002_fleet_and_maintenance.sql` to isolate fleet vehicle management (`truck_status`, `trucks` table, trigger, and index).
+    * Registered all 6 maintenance events in `src/features/history/history.events.js` (`MAINTENANCE_ODOMETER_LOGGED`, `MAINTENANCE_INSPECTION_RECORDED`, `MAINTENANCE_INCIDENT_REPORTED`, `MAINTENANCE_WORK_ORDER_CREATED`, `MAINTENANCE_APPROVAL_DECIDED`, `MAINTENANCE_LOG_FINALIZED`) and added alias `MODULES.FLEET`.
+    * Updated `002_fleet_and_maintenance_seed.sql` with standardized lookup types, delivery trucks with odometer threshold deltas, and sample operational records across all entities.
+    * Synchronized `docs/ERD_mermaid/fleet_and_maintenance_erd.md` with `vehicle_odometer_logs` and operational workflow annotations.
+    * Added comprehensive unit test assertions under Subtest 7 of `src/test/history.test.js`. Full test suite passing with 100% success across all 62 tests in 9 files.
 
 ---
 
