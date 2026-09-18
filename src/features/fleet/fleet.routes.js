@@ -3,8 +3,14 @@ const router = express.Router();
 
 const trucksController = require('./trucks/trucks.controller');
 const availabilityController = require('./availability/availability.controller');
+const maintenanceRoutes = require('./maintenance/maintenance.routes');
 const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
+
+// ============================================================
+// 0. Sub-Module Routes (Mounted first for clean namespace isolation)
+// ============================================================
+router.use('/maintenance', maintenanceRoutes);
 
 // ============================================================
 // 1. Static Routes (Declared first to avoid routing conflicts)

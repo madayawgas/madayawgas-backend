@@ -94,6 +94,7 @@ madayawgas-backend/
 │   │   │   └── permission.service.js        # RBAC helpers (can, canAll, canAny, isScopedToOwn)
 │   │   ├── fleet/
 │   │   │   ├── availability/                # Availability metrics and status transitions
+│   │   │   ├── maintenance/                 # Odometer logging & distance-based PM engine
 │   │   │   ├── trucks/                      # Vehicle CRUD and driver assignments
 │   │   │   ├── fleet.routes.js              # Express fleet route definitions
 │   │   │   └── index.js                     # Fleet barrel export
@@ -118,6 +119,7 @@ madayawgas-backend/
 │   ├── test/                                # Modular domain test suites (node:test)
 │   │   ├── auth.test.js                     # Authentication & session tests (prefix: test_auth_)
 │   │   ├── customer.test.js                 # Sales customer CRUD tests (prefix: test_cust_)
+│   │   ├── fleet.maintenance.test.js        # Fleet odometer & PM tests (prefix: test_maint_odo_)
 │   │   ├── fleet.test.js                    # Fleet subsystem tests (prefix: test_fleet_)
 │   │   ├── history.test.js                  # System event history log tests (prefix: test_hist_)
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
@@ -302,6 +304,15 @@ madayawgas-backend/
     * Updated `002_fleet_and_maintenance_seed.sql` with standardized lookup types, delivery trucks with odometer threshold deltas, and sample operational records across all entities.
     * Synchronized `docs/ERD_mermaid/fleet_and_maintenance_erd.md` with `vehicle_odometer_logs` and operational workflow annotations.
     * Added comprehensive unit test assertions under Subtest 7 of `src/test/history.test.js`. Full test suite passing with 100% success across all 62 tests in 9 files.
+17. **Fleet & Maintenance Subsystem - Part 2: Odometer Engine & Distance-Based PM Tracking**:
+    * Implemented complete 3-layer slice under `src/features/fleet/maintenance/`:
+      - `maintenance.repository.js`: Parameterized queries with transaction support (`insertOdometerLog`, `updateTruckOdometer`, `getTruckOdometerState`, `getOdometerHistory`, `countOdometerLogs`, `getFleetPmStatusOverview`).
+      - `maintenance.service.js`: Enforces monotonic integrity check (`odometerReading >= currentOdometer`, rejects decreasing values with `400 Bad Request`), computes 5,000-km PM threshold indicators (`distanceSinceLastPm >= 5000`), wraps database operations in atomic transactions, and emits centralized history events (`MAINTENANCE_ODOMETER_LOGGED`).
+      - `maintenance.controller.js`: Handles HTTP extraction, response code formatting (`201 Created`, `200 OK`, `400 Bad Request`, `404 Not Found`).
+      - `maintenance.routes.js`: Exposes REST endpoints mounted under `/api/fleet/maintenance` (`POST /odometer`, `GET /pm-overview`, `GET /odometer/truck/:truckId`).
+    * Mounted sub-router in `src/features/fleet/fleet.routes.js` and barrel-exported in `src/features/fleet/index.js`.
+    * Updated formal API contract in `docs/API Contract/fleet-and-maintenance.api.md`.
+    * Built comprehensive integration test suite `src/test/fleet.maintenance.test.js` covering RBAC route protection, monotonic integrity, distance calculations, threshold alert flags, audit trail validation, and overview retrieval (10 test suites, 68 tests passing with 100% success across the repository).
 
 ---
 
