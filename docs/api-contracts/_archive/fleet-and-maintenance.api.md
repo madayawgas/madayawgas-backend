@@ -949,11 +949,14 @@ Retrieves a summary of all fleet trucks with computed 5,000-km preventive mainte
 
 ## Safety Inspections (Issue-Reporting Only — No Checklists)
 
-Safety inspections allow supervisors or authorized personnel to log physical vehicle inspections without cumbersome checklist schemas. If an inspection fails (`result === 'FAILED'`), the vehicle asset is immediately and automatically grounded (`status -> 'UNDER_MAINTENANCE'`) in an atomic transaction while retaining the assigned driver.
+Safety inspections allow supervisors or authorized personnel to log physical vehicle inspections without cumbersome checklist schemas.
+- If an inspection fails (`result === 'FAILED'`), the vehicle asset is immediately and automatically grounded (`status -> 'UNDER_MAINTENANCE'`) in an atomic transaction regardless of the `allowDispatch` flag, while retaining the assigned driver.
+- For minor or advisory findings (`result === 'NEEDS_ATTENTION'`), the supervisor explicitly controls whether the vehicle should be grounded via the `allowDispatch` toggle (`allowDispatch: false` grounds the vehicle to `'UNDER_MAINTENANCE'`; `allowDispatch: true` allows the vehicle to remain in its current operational status e.g. `'ACTIVE'`).
+- Passing inspections (`result === 'PASSED'`) leave vehicle operational status unchanged.
 
 ### 5. Record Safety Inspection
 
-Records a vehicle safety inspection and automatically grounds the vehicle if failed.
+Records a vehicle safety inspection, optionally applies supervisor dispatch gating for advisory defects, and automatically grounds the vehicle if failed.
 
 - **HTTP Method**: `POST`
 - **URL**: `/api/fleet/maintenance/inspections`
@@ -965,12 +968,22 @@ Records a vehicle safety inspection and automatically grounds the vehicle if fai
 ```json
 {
   "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
-  "result": "FAILED",
-  "findings": "Brake line leaking fluid near rear axle; pedal spongey.",
+  "result": "NEEDS_ATTENTION",
+  "findings": "Minor oil weeping observed around valve cover gasket; safe for short local runs.",
+  "allowDispatch": true,
   "issueDetected": true,
   "inspectionDate": "2026-09-18T08:00:00.000Z"
 }
 ```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `truckId` | UUID | Yes | Target truck UUID |
+| `result` | String | Yes | Inspection outcome: `'PASSED'`, `'NEEDS_ATTENTION'`, or `'FAILED'` |
+| `findings` | String | Yes | Non-empty text report describing inspection observations and findings |
+| `allowDispatch` | Boolean | No | Supervisor dispatch decision toggle (defaults to `true`). For `'NEEDS_ATTENTION'`, `false` grounds the vehicle to `'UNDER_MAINTENANCE'`; `true` allows it to remain `'ACTIVE'`. For `'FAILED'`, vehicle is ALWAYS grounded regardless of this flag. |
+| `issueDetected` | Boolean | No | Indicates whether defects were found (defaults to `true` on `'FAILED'` or `'NEEDS_ATTENTION'`, `false` on `'PASSED'`) |
+| `inspectionDate` | ISO 8601 | No | Optional timestamp of inspection (defaults to `NOW()`) |
 
 #### Response: `201 Created` (Success)
 
@@ -1707,5 +1720,79 @@ Retrieves paginated historical maintenance logs with search across receipt numbe
 }
 ```
 
+---
 
+## Maintenance Fleet Analytics
 
+### 21. Get Recurring Issues Fleet Analytics
+
+Identifies vehicle reliability trends and problem areas across the fleet by aggregating repeated incident reports grouped by truck asset and incident classification.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/analytics/recurring-issues`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `truckId` | UUID | No | Optional vehicle asset UUID filter |
+| `days` | Integer | No | Analysis lookback window in days (default: `90`, min: `1`) |
+| `minOccurrences` | Integer | No | Minimum occurrence threshold to flag as recurring (default: `2`, min: `1`) |
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "filter": {
+      "days": 90,
+      "minOccurrences": 2,
+      "truckId": null
+    },
+    "count": 2,
+    "recurringIssues": [
+      {
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "truckModel": "Isuzu Elf N-Series",
+        "incidentTypeId": 1,
+        "incidentTypeName": "ENGINE_OVERHEAT",
+        "occurrenceCount": 3,
+        "latestSeverity": "HIGH",
+        "latestIncidentDate": "2026-09-18T14:30:00.000Z",
+        "descriptions": [
+          "Coolant reservoir cracked and boiling over.",
+          "Radiator cap valve failure.",
+          "Auxiliary radiator fan intermittent failure."
+        ]
+      },
+      {
+        "truckId": "8f3b2a19-5432-4e01-9cde-9876543210ab",
+        "plateNumber": "MNO-9012",
+        "truckModel": "Hino 300 Series",
+        "incidentTypeId": 3,
+        "incidentTypeName": "ELECTRICAL_FAILURE",
+        "occurrenceCount": 2,
+        "latestSeverity": "MEDIUM",
+        "latestIncidentDate": "2026-09-15T09:15:00.000Z",
+        "descriptions": [
+          "Alternator warning lamp blinking under load.",
+          "Dead battery after overnight staging."
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Response: `404 Not Found` (Truck Filter Not Found)
+
+```json
+{
+  "status": "fail",
+  "message": "Vehicle not found"
+}
+```

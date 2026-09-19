@@ -271,6 +271,14 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     });
     assert.equal(unauthLogsGet.statusCode, 401);
 
+    const unauthAnalyticsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/analytics/recurring-issues',
+      method: 'GET',
+    });
+    assert.equal(unauthAnalyticsGet.statusCode, 401);
+
     // B. Sales Person (Forbidden on fleet.manage and fleet.view) -> 403
     const salesPost = await makeRequest(server, {
       hostname: '127.0.0.1',
@@ -326,6 +334,15 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     });
     assert.equal(salesLogsGet.statusCode, 403);
 
+    const salesAnalyticsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/analytics/recurring-issues',
+      method: 'GET',
+      headers: { Cookie: salesCookie },
+    });
+    assert.equal(salesAnalyticsGet.statusCode, 403);
+
     // C. Driver (Forbidden on fleet.manage and fleet.view) -> 403
     const driverPost = await makeRequest(server, {
       hostname: '127.0.0.1',
@@ -365,6 +382,16 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     });
     assert.equal(supIncTypes.statusCode, 200);
     assert.equal(supIncTypes.body.status, 'success');
+
+    const supAnalyticsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/analytics/recurring-issues',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(supAnalyticsGet.statusCode, 200);
+    assert.equal(supAnalyticsGet.body.status, 'success');
 
     // E. Admin -> 200 on GET truck history
     const adminHistory = await makeRequest(server, {
@@ -1527,5 +1554,185 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     assert.equal(logsRes.body.data.logs[0].officialReceiptNumber, `${PREFIX}OR-10001`);
     assert.equal(logsRes.body.data.logs[0].plateNumber, `${TRUCK_PREFIX}505`);
     assert.equal(logsRes.body.data.logs[0].totalCost, 4700.50);
+  });
+
+  await t.test('11. Operational Gap Refinements - Supervisor Dispatch Decision & Recurring Issues Analytics', async () => {
+    const GAP_PREFIX = `${PREFIX}gap_`;
+    const TRUCK_GAP_PREFIX = `${TRUCK_PREFIX}60`;
+
+    // 1. Setup dedicated trucks for gap tests
+    const truckGap1Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+       VALUES ($1, 'Isuzu Forward Gap 1', 2023, 15000, 15000, 'ACTIVE')
+       RETURNING id`,
+      [`${TRUCK_GAP_PREFIX}1`]
+    );
+    const truckGap1Id = truckGap1Res.rows[0].id;
+
+    const truckGap2Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+       VALUES ($1, 'Isuzu Forward Gap 2', 2023, 16000, 15000, 'ACTIVE')
+       RETURNING id`,
+      [`${TRUCK_GAP_PREFIX}2`]
+    );
+    const truckGap2Id = truckGap2Res.rows[0].id;
+
+    const truckGap3Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+       VALUES ($1, 'Isuzu Forward Gap 3', 2023, 17000, 15000, 'ACTIVE')
+       RETURNING id`,
+      [`${TRUCK_GAP_PREFIX}3`]
+    );
+    const truckGap3Id = truckGap3Res.rows[0].id;
+
+    // Test Scenario 1: Needs Attention with allowDispatch: false
+    // -> Truck status must be transitioned to 'UNDER_MAINTENANCE'
+    const needsAttnGroundRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: truckGap1Id,
+      result: 'NEEDS_ATTENTION',
+      findings: `${GAP_PREFIX}Minor oil leak around oil pan; supervisor decided to hold vehicle.`,
+      allowDispatch: false,
+    });
+
+    assert.equal(needsAttnGroundRes.statusCode, 201);
+    assert.equal(needsAttnGroundRes.body.status, 'success');
+    assert.equal(needsAttnGroundRes.body.data.inspection.result, 'NEEDS_ATTENTION');
+    assert.equal(needsAttnGroundRes.body.data.inspection.allowDispatch, false);
+    assert.equal(needsAttnGroundRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+    assert.equal(needsAttnGroundRes.body.data.truck.isGrounded, true);
+
+    const truck1Db = await query('SELECT status FROM trucks WHERE id = $1', [truckGap1Id]);
+    assert.equal(truck1Db.rows[0].status, 'UNDER_MAINTENANCE');
+
+    // Test Scenario 2: Needs Attention with allowDispatch: true
+    // -> Truck status must remain 'ACTIVE'
+    const needsAttnActiveRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: truckGap2Id,
+      result: 'NEEDS_ATTENTION',
+      findings: `${GAP_PREFIX}Slight wiper wear; safe for short local delivery.`,
+      allowDispatch: true,
+    });
+
+    assert.equal(needsAttnActiveRes.statusCode, 201);
+    assert.equal(needsAttnActiveRes.body.status, 'success');
+    assert.equal(needsAttnActiveRes.body.data.inspection.result, 'NEEDS_ATTENTION');
+    assert.equal(needsAttnActiveRes.body.data.inspection.allowDispatch, true);
+    assert.equal(needsAttnActiveRes.body.data.truck.currentStatus, 'ACTIVE');
+    assert.equal(needsAttnActiveRes.body.data.truck.isGrounded, false);
+
+    const truck2Db = await query('SELECT status FROM trucks WHERE id = $1', [truckGap2Id]);
+    assert.equal(truck2Db.rows[0].status, 'ACTIVE');
+
+    // Test Scenario 3: Failed Inspection Grounding Invariant
+    // -> Result 'FAILED' with allowDispatch: true -> Truck MUST still be grounded to 'UNDER_MAINTENANCE'
+    const failedOverrideRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: truckGap3Id,
+      result: 'FAILED',
+      findings: `${GAP_PREFIX}Critical brake line leak detected during morning yard check.`,
+      allowDispatch: true,
+    });
+
+    assert.equal(failedOverrideRes.statusCode, 201);
+    assert.equal(failedOverrideRes.body.status, 'success');
+    assert.equal(failedOverrideRes.body.data.inspection.result, 'FAILED');
+    assert.equal(failedOverrideRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+    assert.equal(failedOverrideRes.body.data.truck.isGrounded, true);
+
+    const truck3Db = await query('SELECT status FROM trucks WHERE id = $1', [truckGap3Id]);
+    assert.equal(truck3Db.rows[0].status, 'UNDER_MAINTENANCE');
+
+    // Test Scenario 4: Recurring Issues Analytics (GET /api/fleet/maintenance/analytics/recurring-issues)
+    const incTypes = (await query('SELECT id, type_name FROM incident_types ORDER BY id ASC')).rows;
+    const type1 = incTypes[0];
+
+    const now = new Date();
+    const d1 = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const d2 = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const d3 = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString();
+
+    await query(
+      `INSERT INTO incident_reports (truck_id, reporter_id, incident_type_id, severity, incident_location, description, report_date)
+       VALUES 
+         ($1, $2, $3, 'MEDIUM', 'Davao Yard', '${GAP_PREFIX}Incident 1: coolant leak', $4),
+         ($1, $2, $3, 'HIGH', 'Buhangin Flyover', '${GAP_PREFIX}Incident 2: coolant overheating', $5),
+         ($1, $2, $3, 'CRITICAL', 'Panacan Highway', '${GAP_PREFIX}Incident 3: radiator hose burst', $6)`,
+      [truckGap1Id, supervisorId, type1.id, d1, d2, d3]
+    );
+
+    await query(
+      `INSERT INTO incident_reports (truck_id, reporter_id, incident_type_id, severity, incident_location, description, report_date)
+       VALUES ($1, $2, $3, 'LOW', 'Toril', '${GAP_PREFIX}Single incident', $4)`,
+      [truckGap2Id, supervisorId, type1.id, d1]
+    );
+
+    // Call analytics endpoint with minOccurrences=2 and days=90
+    const analyticsRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/analytics/recurring-issues?minOccurrences=2&days=90`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+
+    assert.equal(analyticsRes.statusCode, 200);
+    assert.equal(analyticsRes.body.status, 'success');
+    assert.equal(analyticsRes.body.data.days, 90);
+    assert.equal(analyticsRes.body.data.minOccurrences, 2);
+
+    const recurringList = analyticsRes.body.data.recurringIssues;
+    assert.ok(Array.isArray(recurringList));
+    const truck1Issues = recurringList.filter((item) => item.truckId === truckGap1Id);
+    assert.equal(truck1Issues.length, 1);
+    assert.equal(truck1Issues[0].plateNumber, `${TRUCK_GAP_PREFIX}1`);
+    assert.equal(truck1Issues[0].incidentTypeId, type1.id);
+    assert.equal(truck1Issues[0].incidentTypeName, type1.type_name);
+    assert.equal(truck1Issues[0].occurrenceCount, 3);
+    assert.equal(truck1Issues[0].latestSeverity, 'MEDIUM');
+    assert.equal(truck1Issues[0].descriptions.length, 3);
+
+    // Verify truckGap2 with only 1 incident is excluded
+    const truck2Issues = recurringList.filter((item) => item.truckId === truckGap2Id);
+    assert.equal(truck2Issues.length, 0);
+
+    // Test truckId filter
+    const filteredRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/analytics/recurring-issues?truckId=${truckGap1Id}&minOccurrences=2`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(filteredRes.statusCode, 200);
+    assert.equal(filteredRes.body.data.recurringIssues.length, 1);
+    assert.equal(filteredRes.body.data.recurringIssues[0].truckId, truckGap1Id);
+
+    // Test high threshold exclusion (minOccurrences=4 excludes truckGap1 since count is 3)
+    const highThresholdRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/analytics/recurring-issues?truckId=${truckGap1Id}&minOccurrences=4`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(highThresholdRes.statusCode, 200);
+    assert.equal(highThresholdRes.body.data.recurringIssues.length, 0);
   });
 });

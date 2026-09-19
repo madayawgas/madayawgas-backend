@@ -237,4 +237,19 @@ router.post(
   asyncHandler(maintenanceController.finalizeMaintenanceLog.bind(maintenanceController))
 );
 
+// ============================================================
+// Fleet Maintenance Analytics Routes
+// ============================================================
+
+/**
+ * GET /api/fleet/maintenance/analytics/recurring-issues
+ * Aggregates recurring vehicle incident history within a given time window.
+ */
+router.get(
+  '/analytics/recurring-issues',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getRecurringIssues.bind(maintenanceController))
+);
+
 module.exports = router;

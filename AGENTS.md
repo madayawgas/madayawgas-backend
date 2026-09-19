@@ -339,6 +339,19 @@ madayawgas-backend/
     * Added Subtests 8, 9, and 10 to `src/test/fleet.maintenance.test.js` covering creation, financial approval threshold, executive decider authorization, state machine progressions, manual completion rejection, PM reset, operational release, driver preservation, receipt uniqueness, audit trail verification, and historical logs querying.
     * Verified 100% test pass rate across all 73 tests in 10 test files (`npm test`).
     * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
+20. **Fleet & Maintenance Subsystem - Part 5: Operational Gap Refinements**:
+    * Implemented supervisor dispatch decision toggle (`allowDispatch`) on vehicle safety inspections (`POST /api/fleet/maintenance/inspections`):
+      - Allows logistics supervisors to evaluate minor/advisory findings (`result === 'NEEDS_ATTENTION'`) and decide whether the truck should be grounded (`allowDispatch: false` -> `status = 'UNDER_MAINTENANCE'`) or permitted to proceed with deliveries (`allowDispatch: true` -> truck remains operational, e.g. `'ACTIVE'`).
+      - Preserves failure grounding invariant: if `result === 'FAILED'`, the truck is ALWAYS grounded regardless of `allowDispatch`.
+      - Preserves assigned driver (`trucks.driver_id`) in all grounding cases.
+      - Includes `allowDispatch` and `isGrounded` in response DTO and centralized audit log metadata.
+    * Implemented Fleet Recurring Issues Analytics endpoint (`GET /api/fleet/maintenance/analytics/recurring-issues`):
+      - Guarded with `authenticate` and `requirePermission('fleet.view')`.
+      - Aggregates `incident_reports` grouped by `truck_id`, `plate_number`, `truck_model`, `incident_type_id`, and `incident_types.type_name`.
+      - Computes `occurrenceCount`, `latestSeverity`, `latestIncidentDate`, and aggregates descriptive notes array.
+      - Supports lookback window filtering (`days`, default 90), occurrence thresholding (`minOccurrences`, default 2), and vehicle asset filtering (`truckId`).
+    * Added Subtest 11 to `src/test/fleet.maintenance.test.js` covering supervisor dispatch decisions on advisory inspections, failure grounding invariant enforcement, driver preservation, and recurring issues aggregation. Full test suite passing with 100% success across all 74 tests in 10 test files (`npm test`).
+    * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
 
 ---
 

@@ -1266,6 +1266,60 @@ class MaintenanceRepository {
     const res = await query(sql, params);
     return res.rows[0]?.count || 0;
   }
+
+  // ============================================================
+  // FLEET ANALYTICS
+  // ============================================================
+
+  /**
+   * Aggregates recurring vehicle incidents grouped by vehicle and incident type.
+   * Filters by time interval (days) and recurrence threshold (minOccurrences).
+   * 
+   * @param {Object} options - { truckId, days, minOccurrences }
+   * @param {Object} [client] - Optional transactional client
+   * @returns {Promise<Array<Object>>} Grouped recurring incident defects
+   */
+  async getRecurringIssues({ truckId = null, days = 90, minOccurrences = 2 } = {}, client = null) {
+    const db = client || { query };
+    const numDays = Math.max(1, parseInt(days) || 90);
+    const numMin = Math.max(1, parseInt(minOccurrences) || 2);
+
+    const conditions = [
+      `ir.report_date >= NOW() - ($1 || ' days')::interval`
+    ];
+    const params = [String(numDays)];
+    let paramIndex = 2;
+
+    if (truckId && typeof truckId === 'string' && truckId.trim().length > 0) {
+      conditions.push(`ir.truck_id = $${paramIndex++}`);
+      params.push(truckId.trim());
+    }
+
+    params.push(numMin);
+
+    const sql = `
+      SELECT 
+        ir.truck_id,
+        t.plate_number,
+        t.model AS truck_model,
+        ir.incident_type_id,
+        it.type_name AS incident_type_name,
+        COUNT(*)::int AS occurrence_count,
+        (ARRAY_AGG(ir.severity ORDER BY ir.report_date DESC))[1] AS latest_severity,
+        MAX(ir.report_date) AS latest_incident_date,
+        ARRAY_AGG(ir.description ORDER BY ir.report_date DESC) AS descriptions
+      FROM incident_reports ir
+      JOIN incident_types it ON ir.incident_type_id = it.id
+      JOIN trucks t ON ir.truck_id = t.id
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY ir.truck_id, t.plate_number, t.model, ir.incident_type_id, it.type_name
+      HAVING COUNT(*) >= $${paramIndex}
+      ORDER BY occurrence_count DESC, latest_incident_date DESC
+    `;
+
+    const res = await db.query(sql, params);
+    return res.rows;
+  }
 }
 
 module.exports = new MaintenanceRepository();

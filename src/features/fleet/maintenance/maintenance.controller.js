@@ -430,6 +430,26 @@ class MaintenanceController {
       });
     }
   }
+
+  /**
+   * GET /api/fleet/maintenance/analytics/recurring-issues
+   * Aggregates recurring vehicle defects and incident analytics.
+   */
+  async getRecurringIssues(req, res) {
+    try {
+      const data = await maintenanceService.getRecurringIssuesAnalytics(req.query);
+      return res.status(200).json({
+        status: 'success',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
 }
 
 module.exports = new MaintenanceController();

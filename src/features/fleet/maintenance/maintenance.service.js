@@ -252,7 +252,7 @@ class MaintenanceService {
    * @returns {Promise<Object>} Inspection record and truck operational status update
    */
   async recordInspection(actorUser, payload = {}) {
-    const { truckId, result, findings, issueDetected, inspectionDate } = payload;
+    const { truckId, result, findings, issueDetected, inspectionDate, allowDispatch } = payload;
 
     // 1. Validation: Truck ID
     if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
@@ -294,6 +294,12 @@ class MaintenanceService {
       cleanIssueDetected = cleanResult === 'FAILED' || cleanResult === 'NEEDS_ATTENTION';
     }
 
+    // Supervisor Dispatch Decision toggle (defaults to true)
+    let shouldAllowDispatch = true;
+    if (allowDispatch !== undefined && allowDispatch !== null) {
+      shouldAllowDispatch = Boolean(allowDispatch);
+    }
+
     let parsedDate = null;
     if (inspectionDate) {
       parsedDate = new Date(inspectionDate);
@@ -303,6 +309,12 @@ class MaintenanceService {
         throw err;
       }
     }
+
+    // Grounding Invariant:
+    // - FAILED: ALWAYS grounded, regardless of allowDispatch.
+    // - NEEDS_ATTENTION: Grounded ONLY IF allowDispatch === false.
+    // - PASSED: Never grounded.
+    const shouldGround = cleanResult === 'FAILED' || (cleanResult === 'NEEDS_ATTENTION' && !shouldAllowDispatch);
 
     // 6. Atomic Database Transaction
     const client = await pool.connect();
@@ -324,8 +336,8 @@ class MaintenanceService {
         client
       );
 
-      // Automated Grounding on Inspection Failure
-      if (cleanResult === 'FAILED') {
+      // Automated or Supervisor-Initiated Grounding
+      if (shouldGround) {
         await maintenanceRepository.updateTruckStatus(
           {
             truckId: truck.id,
@@ -357,9 +369,10 @@ class MaintenanceService {
           truckId: truck.id,
           findings: createdInspection.findings,
           issueDetected: createdInspection.issue_detected,
+          allowDispatch: shouldAllowDispatch,
           previousStatus: truck.status,
           currentStatus: truckStatusAfter,
-          isGrounded: cleanResult === 'FAILED',
+          isGrounded: shouldGround,
         },
       });
     } catch (histErr) {
@@ -377,6 +390,7 @@ class MaintenanceService {
         result: createdInspection.result,
         findings: createdInspection.findings,
         issueDetected: createdInspection.issue_detected,
+        allowDispatch: shouldAllowDispatch,
         inspectionDate: createdInspection.inspection_date,
       },
       truck: {
@@ -384,7 +398,7 @@ class MaintenanceService {
         plateNumber: truck.plate_number,
         previousStatus: truck.status,
         currentStatus: truckStatusAfter,
-        isGrounded: cleanResult === 'FAILED',
+        isGrounded: shouldGround,
       },
     };
   }
@@ -1856,6 +1870,59 @@ class MaintenanceService {
       page,
       limit,
       logs,
+    };
+  }
+
+  // ============================================================
+  // FLEET ANALYTICS
+  // ============================================================
+
+  /**
+   * Retrieves recurring vehicle defects and incident analytics.
+   * Groups reported mid-route incidents by truck and defect category within a time window.
+   *
+   * @param {Object} [queryParams] - { truckId, days, minOccurrences }
+   * @returns {Promise<Object>} Aggregated recurring defects
+   */
+  async getRecurringIssuesAnalytics(queryParams = {}) {
+    const days = Math.max(1, Math.min(3650, parseInt(queryParams.days) || 90));
+    const minOccurrences = Math.max(1, parseInt(queryParams.minOccurrences) || 2);
+    const truckId = queryParams.truckId && typeof queryParams.truckId === 'string' && queryParams.truckId.trim().length > 0
+      ? queryParams.truckId.trim()
+      : null;
+
+    if (truckId) {
+      const truck = await maintenanceRepository.getTruckOdometerState(truckId);
+      if (!truck) {
+        const err = new Error('Vehicle not found');
+        err.statusCode = 404;
+        throw err;
+      }
+    }
+
+    const rows = await maintenanceRepository.getRecurringIssues({
+      truckId,
+      days,
+      minOccurrences,
+    });
+
+    const recurringIssues = rows.map((r) => ({
+      truckId: r.truck_id,
+      plateNumber: r.plate_number,
+      truckModel: r.truck_model,
+      incidentTypeId: r.incident_type_id,
+      incidentTypeName: r.incident_type_name,
+      occurrenceCount: Number(r.occurrence_count),
+      latestSeverity: r.latest_severity,
+      latestIncidentDate: r.latest_incident_date,
+      descriptions: Array.isArray(r.descriptions) ? r.descriptions : [],
+    }));
+
+    return {
+      days,
+      minOccurrences,
+      count: recurringIssues.length,
+      recurringIssues,
     };
   }
 }
