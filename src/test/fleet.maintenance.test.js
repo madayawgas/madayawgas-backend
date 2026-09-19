@@ -65,6 +65,33 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
 
   async function cleanupTestData() {
     await query(`
+      DELETE FROM maintenance_logs
+      WHERE work_order_id IN (
+        SELECT id FROM work_orders WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
+      ) OR official_receipt_number LIKE '%${PREFIX}%'
+    `);
+    await query(`
+      DELETE FROM approval_requests
+      WHERE work_order_id IN (
+        SELECT id FROM work_orders WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
+      )
+    `);
+    await query(`
+      DELETE FROM work_orders
+      WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
+         OR description LIKE '%${PREFIX}%'
+    `);
+    await query(`
+      DELETE FROM vehicle_inspections
+      WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
+         OR findings LIKE '%${PREFIX}%'
+    `);
+    await query(`
+      DELETE FROM incident_reports
+      WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
+         OR description LIKE '%${PREFIX}%'
+    `);
+    await query(`
       DELETE FROM vehicle_odometer_logs 
       WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
          OR notes LIKE '%${PREFIX}%'
@@ -76,6 +103,7 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
          OR user_name LIKE '${PREFIX}%'
          OR user_id IN (SELECT id FROM users WHERE username LIKE '${PREFIX}%')
          OR target_id IN (SELECT id::text FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%')
+         OR target_id IN (SELECT id::text FROM work_orders WHERE truck_id IN (SELECT id FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%'))
     `);
     await query(`DELETE FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%'`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE '${PREFIX}%')`);
@@ -208,6 +236,49 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     });
     assert.equal(unauthGetTruck.statusCode, 401);
 
+    // Unauth inspections & incidents -> 401
+    const unauthInspectionPost = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, { truckId: testTruck1Id, result: 'PASSED', findings: 'All good' });
+    assert.equal(unauthInspectionPost.statusCode, 401);
+
+    const unauthIncidentsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'GET',
+    });
+    assert.equal(unauthIncidentsGet.statusCode, 401);
+
+    const unauthWorkOrdersPost = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, { truckId: testTruck1Id, maintenanceTypeId: 1, description: 'Test' });
+    assert.equal(unauthWorkOrdersPost.statusCode, 401);
+
+    const unauthLogsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/logs',
+      method: 'GET',
+    });
+    assert.equal(unauthLogsGet.statusCode, 401);
+
+    const unauthAnalyticsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/analytics/recurring-issues',
+      method: 'GET',
+    });
+    assert.equal(unauthAnalyticsGet.statusCode, 401);
+
     // B. Sales Person (Forbidden on fleet.manage and fleet.view) -> 403
     const salesPost = await makeRequest(server, {
       hostname: '127.0.0.1',
@@ -226,6 +297,51 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       headers: { Cookie: salesCookie },
     });
     assert.equal(salesOverview.statusCode, 403);
+
+    const salesInspectionPost = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: salesCookie },
+    }, { truckId: testTruck1Id, result: 'PASSED', findings: 'All good' });
+    assert.equal(salesInspectionPost.statusCode, 403);
+
+    const salesIncidentsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'GET',
+      headers: { Cookie: salesCookie },
+    });
+    assert.equal(salesIncidentsGet.statusCode, 403);
+
+    const salesWorkOrdersPost = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: salesCookie },
+    }, { truckId: testTruck1Id, maintenanceTypeId: 1, description: 'Test' });
+    assert.equal(salesWorkOrdersPost.statusCode, 403);
+
+    const salesLogsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/logs',
+      method: 'GET',
+      headers: { Cookie: salesCookie },
+    });
+    assert.equal(salesLogsGet.statusCode, 403);
+
+    const salesAnalyticsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/analytics/recurring-issues',
+      method: 'GET',
+      headers: { Cookie: salesCookie },
+    });
+    assert.equal(salesAnalyticsGet.statusCode, 403);
 
     // C. Driver (Forbidden on fleet.manage and fleet.view) -> 403
     const driverPost = await makeRequest(server, {
@@ -256,6 +372,26 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       headers: { Cookie: supervisorCookie },
     });
     assert.equal(supOverview.statusCode, 200);
+
+    const supIncTypes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents/types',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(supIncTypes.statusCode, 200);
+    assert.equal(supIncTypes.body.status, 'success');
+
+    const supAnalyticsGet = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/analytics/recurring-issues',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(supAnalyticsGet.statusCode, 200);
+    assert.equal(supAnalyticsGet.body.status, 'success');
 
     // E. Admin -> 200 on GET truck history
     const adminHistory = await makeRequest(server, {
@@ -525,5 +661,1078 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     assert.equal(truck1Overview.distanceSinceLastPm, 2500);
     assert.equal(truck1Overview.isPmDue, false);
     assert.equal(truck1Overview.remainingKmBeforePm, 2500);
+  });
+
+  await t.test('6. Safety Inspection Operations - Issue Reporting, Automated Grounding & Invariants', async () => {
+    // A. Validation Checks
+    // 1. Missing truckId -> 400
+    const noTruckRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { result: 'PASSED', findings: 'All good' });
+    assert.equal(noTruckRes.statusCode, 400);
+    assert.match(noTruckRes.body.message, /truck id is required/i);
+
+    // 2. Non-existent truckId -> 404
+    const notFoundTruckRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: '00000000-0000-0000-0000-000000000000', result: 'PASSED', findings: 'All good' });
+    assert.equal(notFoundTruckRes.statusCode, 404);
+
+    // 3. Invalid result enum -> 400
+    const badResultRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck1Id, result: 'EXCELLENT', findings: 'All good' });
+    assert.equal(badResultRes.statusCode, 400);
+    assert.match(badResultRes.body.message, /must be one of: PASSED, NEEDS_ATTENTION, FAILED/i);
+
+    // 4. Missing findings -> 400
+    const noFindingsRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck1Id, result: 'PASSED' });
+    assert.equal(noFindingsRes.statusCode, 400);
+    assert.match(noFindingsRes.body.message, /findings are required/i);
+
+    // 5. Invalid inspectionDate -> 400
+    const badDateRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck1Id, result: 'PASSED', findings: 'All good', inspectionDate: 'invalid-date' });
+    assert.equal(badDateRes.statusCode, 400);
+    assert.match(badDateRes.body.message, /invalid inspection date format/i);
+
+    // B. Record PASSED inspection -> truck remains ACTIVE, issueDetected = false
+    const passedRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck1Id,
+      result: 'PASSED',
+      findings: `${PREFIX}All clear, engine, brakes and tire pressure normal`,
+    });
+
+    assert.equal(passedRes.statusCode, 201);
+    assert.equal(passedRes.body.status, 'success');
+    assert.equal(passedRes.body.data.inspection.result, 'PASSED');
+    assert.equal(passedRes.body.data.inspection.issueDetected, false);
+    assert.equal(passedRes.body.data.truck.currentStatus, 'ACTIVE');
+    assert.equal(passedRes.body.data.truck.isGrounded, false);
+
+    const passedInspectionId = passedRes.body.data.inspection.id;
+
+    // C. Record NEEDS_ATTENTION inspection -> truck remains ACTIVE, issueDetected = true
+    const needsAttnRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck1Id,
+      result: 'NEEDS_ATTENTION',
+      findings: `${PREFIX}Wiper blade rubber degraded, slight cabin AC odor`,
+    });
+
+    assert.equal(needsAttnRes.statusCode, 201);
+    assert.equal(needsAttnRes.body.data.inspection.result, 'NEEDS_ATTENTION');
+    assert.equal(needsAttnRes.body.data.inspection.issueDetected, true);
+    assert.equal(needsAttnRes.body.data.truck.currentStatus, 'ACTIVE');
+    assert.equal(needsAttnRes.body.data.truck.isGrounded, false);
+
+    // D. Record FAILED inspection -> Automated Grounding (status -> UNDER_MAINTENANCE) + Driver Retention
+    const driverUserRes = await query(`SELECT id FROM users WHERE username = '${PREFIX}driver'`);
+    const assignedDriverId = driverUserRes.rows[0].id;
+
+    const truck3Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status, driver_id)
+       VALUES ($1, 'Isuzu NPR', 2021, 50000, 50000, 'ACTIVE', $2)
+       RETURNING id`,
+      [`${TRUCK_PREFIX}303`, assignedDriverId]
+    );
+    const testTruck3Id = truck3Res.rows[0].id;
+
+    const failedRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck3Id,
+      result: 'FAILED',
+      findings: `${PREFIX}Critical brake fluid leak under master cylinder`,
+    });
+
+    assert.equal(failedRes.statusCode, 201);
+    assert.equal(failedRes.body.data.inspection.result, 'FAILED');
+    assert.equal(failedRes.body.data.inspection.issueDetected, true);
+    assert.equal(failedRes.body.data.truck.previousStatus, 'ACTIVE');
+    assert.equal(failedRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+    assert.equal(failedRes.body.data.truck.isGrounded, true);
+
+    const failedInspectionId = failedRes.body.data.inspection.id;
+
+    // Verify DB state for truck3: status is UNDER_MAINTENANCE, driver_id is STILL intact
+    const truck3Db = await query('SELECT status, driver_id FROM trucks WHERE id = $1', [testTruck3Id]);
+    assert.equal(truck3Db.rows[0].status, 'UNDER_MAINTENANCE');
+    assert.equal(truck3Db.rows[0].driver_id, assignedDriverId);
+
+    // E. Query inspections for truck 1 (paginated & filtered)
+    const truck1Inspections = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/inspections/truck/${testTruck1Id}?page=1&limit=10`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(truck1Inspections.statusCode, 200);
+    assert.equal(truck1Inspections.body.status, 'success');
+    assert.equal(truck1Inspections.body.data.truckId, testTruck1Id);
+    assert.equal(truck1Inspections.body.data.count, 2);
+    assert.equal(truck1Inspections.body.data.total, 2);
+
+    // Filter by result=PASSED
+    const filteredPassed = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/inspections/truck/${testTruck1Id}?result=PASSED`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(filteredPassed.statusCode, 200);
+    assert.equal(filteredPassed.body.data.count, 1);
+    assert.equal(filteredPassed.body.data.inspections[0].result, 'PASSED');
+
+    // Non-existent truck inspections query -> 404
+    const notFoundTruckQuery = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections/truck/00000000-0000-0000-0000-000000000000',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(notFoundTruckQuery.statusCode, 404);
+
+    // F. Query single inspection by ID
+    const singleInspection = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/inspections/${passedInspectionId}`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(singleInspection.statusCode, 200);
+    assert.equal(singleInspection.body.status, 'success');
+    assert.equal(singleInspection.body.data.inspection.id, passedInspectionId);
+    assert.equal(singleInspection.body.data.inspection.plateNumber, `${TRUCK_PREFIX}101`);
+    assert.equal(singleInspection.body.data.inspection.result, 'PASSED');
+    assert.ok(singleInspection.body.data.inspection.inspectorName);
+
+    // Non-existent inspection ID -> 404
+    const notFoundInspection = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections/00000000-0000-0000-0000-000000000000',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(notFoundInspection.statusCode, 404);
+
+    // G. Centralized History Audit Logging for Inspection
+    const inspectionHistory = await query(
+      `SELECT * FROM history_logs WHERE target_id = $1 AND details LIKE '%${TRUCK_PREFIX}303%'`,
+      [failedInspectionId]
+    );
+    assert.equal(inspectionHistory.rows.length, 1);
+    const inspLogRow = inspectionHistory.rows[0];
+    assert.equal(inspLogRow.module, 'Fleet Management');
+    assert.equal(inspLogRow.action_type, 'Created');
+    assert.equal(inspLogRow.target_type, 'INSPECTION');
+    assert.equal(
+      inspLogRow.details,
+      `Recorded vehicle inspection for ${TRUCK_PREFIX}303 with result: FAILED`
+    );
+    const inspMeta = typeof inspLogRow.metadata === 'string' ? JSON.parse(inspLogRow.metadata) : inspLogRow.metadata;
+    assert.equal(inspMeta.isGrounded, true);
+    assert.equal(inspMeta.previousStatus, 'ACTIVE');
+    assert.equal(inspMeta.currentStatus, 'UNDER_MAINTENANCE');
+  });
+
+  await t.test('7. Incident & Breakdown Reporting - Classification, Critical Grounding & Retrieval', async () => {
+    // A. Incident Types Catalog
+    const typesRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents/types',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(typesRes.statusCode, 200);
+    assert.equal(typesRes.body.status, 'success');
+    assert.ok(Array.isArray(typesRes.body.data.types));
+    assert.ok(typesRes.body.data.types.length >= 4);
+
+    const mechDefectType = typesRes.body.data.types.find((t) => t.typeName === 'MECHANICAL_DEFECT') || typesRes.body.data.types[0];
+    const tireFailureType = typesRes.body.data.types.find((t) => t.typeName === 'TIRE_FAILURE') || typesRes.body.data.types[1];
+
+    // B. Validation Checks
+    // 1. Missing truckId -> 400
+    const noTruckInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { incidentTypeId: mechDefectType.id, severity: 'LOW', description: 'Small issue' });
+    assert.equal(noTruckInc.statusCode, 400);
+
+    // 2. Non-existent truckId -> 404
+    const notFoundTruckInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: '00000000-0000-0000-0000-000000000000', incidentTypeId: mechDefectType.id, severity: 'LOW', description: 'Small issue' });
+    assert.equal(notFoundTruckInc.statusCode, 404);
+
+    // 3. Missing incidentTypeId -> 400
+    const noTypeIdInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck2Id, severity: 'LOW', description: 'Small issue' });
+    assert.equal(noTypeIdInc.statusCode, 400);
+
+    // 4. Invalid incidentTypeId -> 400
+    const badTypeIdInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck2Id, incidentTypeId: 999999, severity: 'LOW', description: 'Small issue' });
+    assert.equal(badTypeIdInc.statusCode, 400);
+
+    // 5. Invalid severity enum -> 400
+    const badSeverityInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck2Id, incidentTypeId: mechDefectType.id, severity: 'CATASTROPHIC', description: 'Small issue' });
+    assert.equal(badSeverityInc.statusCode, 400);
+
+    // 6. Missing description -> 400
+    const noDescInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck2Id, incidentTypeId: mechDefectType.id, severity: 'LOW' });
+    assert.equal(noDescInc.statusCode, 400);
+
+    // 7. Invalid reportDate format -> 400
+    const badDateInc = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck2Id, incidentTypeId: mechDefectType.id, severity: 'LOW', description: 'Small issue', reportDate: 'not-a-date' });
+    assert.equal(badDateInc.statusCode, 400);
+
+    // C. Record LOW / MEDIUM / HIGH incident -> truck status stays ACTIVE, isGrounded = false
+    const medRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck2Id,
+      incidentTypeId: tireFailureType.id,
+      severity: 'MEDIUM',
+      incidentLocation: 'Buhangin Underpass, Davao City',
+      description: `${PREFIX}Rear right tire punctured by road debris; replaced with spare`,
+    });
+
+    assert.equal(medRes.statusCode, 201);
+    assert.equal(medRes.body.status, 'success');
+    assert.equal(medRes.body.data.incident.severity, 'MEDIUM');
+    assert.equal(medRes.body.data.truck.currentStatus, 'ACTIVE');
+    assert.equal(medRes.body.data.truck.isGrounded, false);
+
+    const medIncidentId = medRes.body.data.incident.id;
+
+    // D. Record CRITICAL incident -> Automated Grounding (status -> UNDER_MAINTENANCE) + Driver Retention
+    const driverUserRes = await query(`SELECT id FROM users WHERE username = '${PREFIX}driver'`);
+    const assignedDriverId = driverUserRes.rows[0].id;
+
+    const truck4Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status, driver_id)
+       VALUES ($1, 'Fuso Fighter', 2020, 80000, 80000, 'ACTIVE', $2)
+       RETURNING id`,
+      [`${TRUCK_PREFIX}404`, assignedDriverId]
+    );
+    const testTruck4Id = truck4Res.rows[0].id;
+
+    const critRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck4Id,
+      incidentTypeId: mechDefectType.id,
+      severity: 'CRITICAL',
+      incidentLocation: 'Panacan Highway Km 13',
+      description: `${PREFIX}Transmission locked up and coolant burst; vehicle immobilized`,
+    });
+
+    assert.equal(critRes.statusCode, 201);
+    assert.equal(critRes.body.status, 'success');
+    assert.equal(critRes.body.data.incident.severity, 'CRITICAL');
+    assert.equal(critRes.body.data.truck.previousStatus, 'ACTIVE');
+    assert.equal(critRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+    assert.equal(critRes.body.data.truck.isGrounded, true);
+
+    const critIncidentId = critRes.body.data.incident.id;
+
+    // Verify DB state for truck4: status UNDER_MAINTENANCE and driver_id intact
+    const truck4Db = await query('SELECT status, driver_id FROM trucks WHERE id = $1', [testTruck4Id]);
+    assert.equal(truck4Db.rows[0].status, 'UNDER_MAINTENANCE');
+    assert.equal(truck4Db.rows[0].driver_id, assignedDriverId);
+
+    // E. Query Fleet Incidents with Filters
+    // 1. Filter by severity=CRITICAL
+    const critFleetRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents?severity=CRITICAL',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(critFleetRes.statusCode, 200);
+    assert.ok(critFleetRes.body.data.incidents.some((i) => i.id === critIncidentId));
+
+    // 2. Filter by search keyword
+    const searchFleetRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/incidents?search=${PREFIX}`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(searchFleetRes.statusCode, 200);
+    assert.ok(searchFleetRes.body.data.count >= 2);
+
+    // F. Query Incidents for Specific Truck
+    const truck2Incidents = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/incidents/truck/${testTruck2Id}`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(truck2Incidents.statusCode, 200);
+    assert.equal(truck2Incidents.body.data.truckId, testTruck2Id);
+    assert.ok(truck2Incidents.body.data.count >= 1);
+    assert.equal(truck2Incidents.body.data.incidents[0].id, medIncidentId);
+
+    // Non-existent truck query -> 404
+    const notFoundTruckQuery = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents/truck/00000000-0000-0000-0000-000000000000',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(notFoundTruckQuery.statusCode, 404);
+
+    // G. Query Single Incident by ID
+    const singleIncRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/incidents/${critIncidentId}`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(singleIncRes.statusCode, 200);
+    assert.equal(singleIncRes.body.status, 'success');
+    assert.equal(singleIncRes.body.data.incident.id, critIncidentId);
+    assert.equal(singleIncRes.body.data.incident.plateNumber, `${TRUCK_PREFIX}404`);
+    assert.equal(singleIncRes.body.data.incident.severity, 'CRITICAL');
+    assert.ok(singleIncRes.body.data.incident.reporterName);
+    assert.ok(singleIncRes.body.data.incident.incidentTypeName);
+
+    // Non-existent incident UUID -> 404
+    const notFoundIncident = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/incidents/00000000-0000-0000-0000-000000000000',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(notFoundIncident.statusCode, 404);
+
+    // H. Centralized History Audit Logging for Incident Report
+    const incidentHistory = await query(
+      `SELECT * FROM history_logs WHERE target_id = $1 AND details LIKE '%${TRUCK_PREFIX}404%'`,
+      [critIncidentId]
+    );
+    assert.equal(incidentHistory.rows.length, 1);
+    const incLogRow = incidentHistory.rows[0];
+    assert.equal(incLogRow.module, 'Fleet Management');
+    assert.equal(incLogRow.action_type, 'Created');
+    assert.equal(incLogRow.target_type, 'INCIDENT');
+    assert.equal(
+      incLogRow.details,
+      `Reported CRITICAL incident for truck ${TRUCK_PREFIX}404: ${PREFIX}Transmission locked up and coolant burst; vehicle immobilized`
+    );
+    const incMeta = typeof incLogRow.metadata === 'string' ? JSON.parse(incLogRow.metadata) : incLogRow.metadata;
+    assert.equal(incMeta.isGrounded, true);
+    assert.equal(incMeta.previousStatus, 'ACTIVE');
+    assert.equal(incMeta.currentStatus, 'UNDER_MAINTENANCE');
+  });
+
+  await t.test('8. Work Order Creation, Categorization & Cost Approval Gatekeeping', async () => {
+    // A. Catalog of Maintenance Types
+    const typesRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders/types',
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(typesRes.statusCode, 200);
+    assert.equal(typesRes.body.status, 'success');
+    assert.ok(Array.isArray(typesRes.body.data.types));
+    assert.ok(typesRes.body.data.types.length >= 4);
+
+    const prevType = typesRes.body.data.types.find((t) => t.typeName === 'PREVENTIVE') || typesRes.body.data.types[0];
+    const corrType = typesRes.body.data.types.find((t) => t.typeName === 'CORRECTIVE') || typesRes.body.data.types[1];
+
+    // B. Validation Checks
+    // 1. Missing truckId -> 400
+    const noTruckRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { maintenanceTypeId: prevType.id, description: 'Service' });
+    assert.equal(noTruckRes.statusCode, 400);
+
+    // 2. Non-existent truckId -> 404
+    const notFoundTruck = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: '00000000-0000-0000-0000-000000000000', maintenanceTypeId: prevType.id, description: 'Service' });
+    assert.equal(notFoundTruck.statusCode, 404);
+
+    // 3. Missing maintenanceTypeId -> 400
+    const noTypeRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck1Id, description: 'Service' });
+    assert.equal(noTypeRes.statusCode, 400);
+
+    // 4. Missing description -> 400
+    const noDescRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck1Id, maintenanceTypeId: prevType.id });
+    assert.equal(noDescRes.statusCode, 400);
+
+    // 5. Negative estimatedCost -> 400
+    const negCostRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { truckId: testTruck1Id, maintenanceTypeId: prevType.id, description: 'Service', estimatedCost: -500 });
+    assert.equal(negCostRes.statusCode, 400);
+
+    // C. Create Low-Cost Work Order (< ₱5,000.00) -> Auto-Approved / Scheduled, No Approval Request
+    const lowCostRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck1Id,
+      maintenanceTypeId: prevType.id,
+      shopName: 'Bunawan Yard Shop',
+      estimatedCost: 3500.00,
+      description: `${PREFIX}5,000-km routine oil change and lubrication`,
+    });
+
+    assert.equal(lowCostRes.statusCode, 201);
+    assert.equal(lowCostRes.body.status, 'success');
+    assert.equal(lowCostRes.body.data.workOrder.status, 'APPROVED');
+    assert.equal(lowCostRes.body.data.workOrder.requiresApproval, false);
+    assert.equal(lowCostRes.body.data.approvalRequest, null);
+    assert.equal(lowCostRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+
+    // D. Create High-Cost Work Order (>= ₱5,000.00) -> PENDING, creates approval_requests
+    const highCostRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck2Id,
+      maintenanceTypeId: corrType.id,
+      shopName: 'Davao Heavy Motors Corp',
+      estimatedCost: 14500.00,
+      description: `${PREFIX}Engine clutch replacement and transmission rebuild`,
+    });
+
+    assert.equal(highCostRes.statusCode, 201);
+    assert.equal(highCostRes.body.data.workOrder.status, 'PENDING');
+    assert.equal(highCostRes.body.data.workOrder.requiresApproval, true);
+    assert.ok(highCostRes.body.data.approvalRequest);
+    assert.equal(highCostRes.body.data.approvalRequest.amountRequested, 14500);
+    assert.equal(highCostRes.body.data.approvalRequest.status, 'PENDING_REVIEW');
+    assert.equal(highCostRes.body.data.approvalRequest.isApproved, null);
+
+    const pendingWorkOrderId = highCostRes.body.data.workOrder.id;
+
+    // E. Cost Approval Gatekeeping: Logistics Supervisor cannot approve (403 Forbidden)
+    const supApprovalAttempt = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${pendingWorkOrderId}/approve`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { isApproved: true, remarks: 'Supervisor self-approval attempt' });
+
+    assert.equal(supApprovalAttempt.statusCode, 403);
+    assert.match(supApprovalAttempt.body.message, /only super admin or admin/i);
+
+    // F. Admin Approves High-Cost Work Order -> Status becomes APPROVED
+    const adminApproveRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${pendingWorkOrderId}/approve`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    }, { isApproved: true, remarks: `${PREFIX}Approved for urgent heavy overhaul` });
+
+    assert.equal(adminApproveRes.statusCode, 200);
+    assert.equal(adminApproveRes.body.data.workOrder.status, 'APPROVED');
+    assert.equal(adminApproveRes.body.data.approvalRequest.isApproved, true);
+    assert.equal(adminApproveRes.body.data.approvalRequest.status, 'APPROVED');
+    assert.ok(adminApproveRes.body.data.approvalRequest.deciderName);
+
+    // G. Create another high-cost work order and Admin Rejects -> Status becomes CANCELLED
+    const rejectTargetRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck2Id,
+      maintenanceTypeId: corrType.id,
+      estimatedCost: 25000.00,
+      description: `${PREFIX}Non-essential cabin body upgrade`,
+    });
+    const rejectOrderId = rejectTargetRes.body.data.workOrder.id;
+
+    const adminRejectRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${rejectOrderId}/approve`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    }, { isApproved: false, remarks: `${PREFIX}Rejected due to quarterly budget caps` });
+
+    assert.equal(adminRejectRes.statusCode, 200);
+    assert.equal(adminRejectRes.body.data.workOrder.status, 'CANCELLED');
+    assert.equal(adminRejectRes.body.data.approvalRequest.isApproved, false);
+    assert.equal(adminRejectRes.body.data.approvalRequest.status, 'REJECTED');
+
+    // H. History Audit Log Verification
+    const createLog = await query(
+      `SELECT * FROM history_logs WHERE target_id = $1 AND details LIKE '%${testTruck1Id.slice(0, 8)}%' OR details LIKE '%${TRUCK_PREFIX}101%'`,
+      [lowCostRes.body.data.workOrder.id]
+    );
+    assert.ok(createLog.rows.length >= 1);
+    assert.equal(createLog.rows[0].module, 'Fleet Management');
+    assert.equal(createLog.rows[0].action_type, 'Created');
+    assert.equal(createLog.rows[0].target_type, 'WORK_ORDER');
+
+    const approveLog = await query(
+      `SELECT * FROM history_logs WHERE target_id = $1 AND action_type = 'Updated'`,
+      [pendingWorkOrderId]
+    );
+    assert.equal(approveLog.rows.length, 1);
+    assert.equal(approveLog.rows[0].module, 'Fleet Management');
+    assert.equal(
+      approveLog.rows[0].details,
+      `Work order #${pendingWorkOrderId} approval decision: APPROVED`
+    );
+  });
+
+  await t.test('9. Work Order State Progression & Operational Grounding Invariants', async () => {
+    // 1. Create an approved work order
+    const prevType = (await query(`SELECT id FROM maintenance_types WHERE type_name = 'PREVENTIVE'`)).rows[0];
+    const orderRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck1Id,
+      maintenanceTypeId: prevType.id,
+      shopName: 'Bunawan Express Service',
+      estimatedCost: 2000.00,
+      description: `${PREFIX}Brake pad inspection and adjustment`,
+    });
+    assert.equal(orderRes.statusCode, 201);
+    const orderId = orderRes.body.data.workOrder.id;
+
+    // 2. Advance APPROVED -> SCHEDULED
+    const schedRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${orderId}/status`,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { status: 'SCHEDULED' });
+    assert.equal(schedRes.statusCode, 200);
+    assert.equal(schedRes.body.data.workOrder.status, 'SCHEDULED');
+
+    // 3. Advance SCHEDULED -> IN_PROGRESS
+    const inProgRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${orderId}/status`,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { status: 'IN_PROGRESS' });
+    assert.equal(inProgRes.statusCode, 200);
+    assert.equal(inProgRes.body.data.workOrder.status, 'IN_PROGRESS');
+
+    // Verify truck status is confirmed as UNDER_MAINTENANCE
+    const truckDb = await query('SELECT status FROM trucks WHERE id = $1', [testTruck1Id]);
+    assert.equal(truckDb.rows[0].status, 'UNDER_MAINTENANCE');
+
+    // 4. Attempt manual direct completion via /status -> 400 Bad Request
+    const directCompleteRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${orderId}/status`,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { status: 'COMPLETED' });
+    assert.equal(directCompleteRes.statusCode, 400);
+    assert.match(directCompleteRes.body.message, /finalizing the maintenance log/i);
+
+    // 5. Attempt invalid transition (IN_PROGRESS -> APPROVED) -> 400 Bad Request
+    const invalidTransRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${orderId}/status`,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { status: 'APPROVED' });
+    assert.equal(invalidTransRes.statusCode, 400);
+    assert.match(invalidTransRes.body.message, /invalid status transition/i);
+  });
+
+  await t.test('10. Maintenance Log Finalization, PM Reset & Operational Release', async () => {
+    // 1. Setup truck with assigned driver and PM due delta
+    const driverUser = (await query(`SELECT id FROM users WHERE username = '${PREFIX}driver'`)).rows[0];
+    const prevType = (await query(`SELECT id FROM maintenance_types WHERE type_name = 'PREVENTIVE'`)).rows[0];
+
+    const truck5Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status, driver_id)
+       VALUES ($1, 'Hino 500 Heavy', 2021, 25500, 20000, 'ACTIVE', $2)
+       RETURNING id`,
+      [`${TRUCK_PREFIX}505`, driverUser.id]
+    );
+    const testTruck5Id = truck5Res.rows[0].id;
+
+    // 2. Create PREVENTIVE work order for truck5
+    const woRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck5Id,
+      maintenanceTypeId: prevType.id,
+      shopName: 'Bunawan Heavy Service Center',
+      estimatedCost: 4500.00,
+      description: `${PREFIX}5,000-km preventive overhaul and fuel filter replacement`,
+    });
+    assert.equal(woRes.statusCode, 201);
+    const workOrderId = woRes.body.data.workOrder.id;
+
+    // Advance to IN_PROGRESS
+    await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/status`,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, { status: 'IN_PROGRESS' });
+
+    // 3. Validation on Finalize:
+    // Missing receipt number -> 400
+    const noOrRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/finalize`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      severity: 'MEDIUM',
+      dateStarted: '2026-09-18T08:00:00Z',
+      dateResolved: '2026-09-18T16:00:00Z',
+      odometerAtService: 25600,
+    });
+    assert.equal(noOrRes.statusCode, 400);
+
+    // dateResolved earlier than dateStarted -> 400
+    const badDatesRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/finalize`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      officialReceiptNumber: `${PREFIX}OR-10001`,
+      severity: 'MEDIUM',
+      dateStarted: '2026-09-18T16:00:00Z',
+      dateResolved: '2026-09-18T08:00:00Z',
+      odometerAtService: 25600,
+    });
+    assert.equal(badDatesRes.statusCode, 400);
+
+    // 4. Finalize Maintenance Log (Success)
+    const finalizeRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/finalize`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      officialReceiptNumber: `${PREFIX}OR-10001`,
+      severity: 'MEDIUM',
+      dateStarted: '2026-09-17T08:00:00Z',
+      dateResolved: '2026-09-18T17:00:00Z',
+      partsCost: 3200.50,
+      laborCost: 1500.00,
+      downtimeDays: 1,
+      odometerAtService: 25600,
+    });
+
+    assert.equal(finalizeRes.statusCode, 201);
+    assert.equal(finalizeRes.body.status, 'success');
+    assert.equal(finalizeRes.body.data.workOrder.status, 'COMPLETED');
+    assert.equal(finalizeRes.body.data.maintenanceLog.officialReceiptNumber, `${PREFIX}OR-10001`);
+    assert.equal(finalizeRes.body.data.maintenanceLog.totalCost, 4700.50);
+    assert.equal(finalizeRes.body.data.truck.status, 'ACTIVE');
+    assert.equal(finalizeRes.body.data.truck.isPmReset, true);
+    assert.equal(finalizeRes.body.data.truck.lastPmOdometer, 25600);
+
+    // 5. Database State Verification:
+    // - Truck status is ACTIVE
+    // - Driver assignment is STILL intact
+    // - last_pm_odometer updated to 25600
+    // - current_odometer updated to 25600
+    // - PM delta reset to 0
+    const truckDb = await query('SELECT * FROM trucks WHERE id = $1', [testTruck5Id]);
+    const finalTruck = truckDb.rows[0];
+    assert.equal(finalTruck.status, 'ACTIVE');
+    assert.equal(finalTruck.driver_id, driverUser.id);
+    assert.equal(finalTruck.last_pm_odometer, 25600);
+    assert.equal(finalTruck.current_odometer, 25600);
+    assert.equal(finalTruck.current_odometer - finalTruck.last_pm_odometer, 0);
+
+    // 6. Duplicate Official Receipt Number Rejection (409 Conflict)
+    // Create another work order on truck1 and attempt same receipt number
+    const duplicateTargetRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: testTruck1Id,
+      maintenanceTypeId: prevType.id,
+      estimatedCost: 1000.00,
+      description: `${PREFIX}Duplicate test`,
+    });
+    const dupOrderId = duplicateTargetRes.body.data.workOrder.id;
+
+    const duplicateOrRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${dupOrderId}/finalize`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      officialReceiptNumber: `${PREFIX}OR-10001`,
+      severity: 'LOW',
+      dateStarted: '2026-09-18T08:00:00Z',
+      dateResolved: '2026-09-18T10:00:00Z',
+      odometerAtService: 13000,
+    });
+    assert.equal(duplicateOrRes.statusCode, 409);
+    assert.match(duplicateOrRes.body.message, /already been registered/i);
+
+    // 7. Centralized History Audit Logging for Finalization
+    const logHistory = await query(
+      `SELECT * FROM history_logs WHERE details LIKE '%${PREFIX}OR-10001%'`,
+    );
+    assert.equal(logHistory.rows.length, 1);
+    const histRow = logHistory.rows[0];
+    assert.equal(histRow.module, 'Fleet Management');
+    assert.equal(histRow.action_type, 'Created');
+    assert.equal(histRow.target_type, 'MAINTENANCE_LOG');
+    assert.equal(
+      histRow.details,
+      `Finalized maintenance log for work order #${workOrderId} (OR #${PREFIX}OR-10001)`
+    );
+
+    // 8. Query Historical Maintenance Logs (GET /api/fleet/maintenance/logs)
+    const logsRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/logs?search=${PREFIX}OR-10001`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(logsRes.statusCode, 200);
+    assert.equal(logsRes.body.status, 'success');
+    assert.equal(logsRes.body.data.count, 1);
+    assert.equal(logsRes.body.data.logs[0].officialReceiptNumber, `${PREFIX}OR-10001`);
+    assert.equal(logsRes.body.data.logs[0].plateNumber, `${TRUCK_PREFIX}505`);
+    assert.equal(logsRes.body.data.logs[0].totalCost, 4700.50);
+  });
+
+  await t.test('11. Operational Gap Refinements - Supervisor Dispatch Decision & Recurring Issues Analytics', async () => {
+    const GAP_PREFIX = `${PREFIX}gap_`;
+    const TRUCK_GAP_PREFIX = `${TRUCK_PREFIX}60`;
+
+    // 1. Setup dedicated trucks for gap tests
+    const truckGap1Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+       VALUES ($1, 'Isuzu Forward Gap 1', 2023, 15000, 15000, 'ACTIVE')
+       RETURNING id`,
+      [`${TRUCK_GAP_PREFIX}1`]
+    );
+    const truckGap1Id = truckGap1Res.rows[0].id;
+
+    const truckGap2Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+       VALUES ($1, 'Isuzu Forward Gap 2', 2023, 16000, 15000, 'ACTIVE')
+       RETURNING id`,
+      [`${TRUCK_GAP_PREFIX}2`]
+    );
+    const truckGap2Id = truckGap2Res.rows[0].id;
+
+    const truckGap3Res = await query(
+      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+       VALUES ($1, 'Isuzu Forward Gap 3', 2023, 17000, 15000, 'ACTIVE')
+       RETURNING id`,
+      [`${TRUCK_GAP_PREFIX}3`]
+    );
+    const truckGap3Id = truckGap3Res.rows[0].id;
+
+    // Test Scenario 1: Needs Attention with allowDispatch: false
+    // -> Truck status must be transitioned to 'UNDER_MAINTENANCE'
+    const needsAttnGroundRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: truckGap1Id,
+      result: 'NEEDS_ATTENTION',
+      findings: `${GAP_PREFIX}Minor oil leak around oil pan; supervisor decided to hold vehicle.`,
+      allowDispatch: false,
+    });
+
+    assert.equal(needsAttnGroundRes.statusCode, 201);
+    assert.equal(needsAttnGroundRes.body.status, 'success');
+    assert.equal(needsAttnGroundRes.body.data.inspection.result, 'NEEDS_ATTENTION');
+    assert.equal(needsAttnGroundRes.body.data.inspection.allowDispatch, false);
+    assert.equal(needsAttnGroundRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+    assert.equal(needsAttnGroundRes.body.data.truck.isGrounded, true);
+
+    const truck1Db = await query('SELECT status FROM trucks WHERE id = $1', [truckGap1Id]);
+    assert.equal(truck1Db.rows[0].status, 'UNDER_MAINTENANCE');
+
+    // Test Scenario 2: Needs Attention with allowDispatch: true
+    // -> Truck status must remain 'ACTIVE'
+    const needsAttnActiveRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: truckGap2Id,
+      result: 'NEEDS_ATTENTION',
+      findings: `${GAP_PREFIX}Slight wiper wear; safe for short local delivery.`,
+      allowDispatch: true,
+    });
+
+    assert.equal(needsAttnActiveRes.statusCode, 201);
+    assert.equal(needsAttnActiveRes.body.status, 'success');
+    assert.equal(needsAttnActiveRes.body.data.inspection.result, 'NEEDS_ATTENTION');
+    assert.equal(needsAttnActiveRes.body.data.inspection.allowDispatch, true);
+    assert.equal(needsAttnActiveRes.body.data.truck.currentStatus, 'ACTIVE');
+    assert.equal(needsAttnActiveRes.body.data.truck.isGrounded, false);
+
+    const truck2Db = await query('SELECT status FROM trucks WHERE id = $1', [truckGap2Id]);
+    assert.equal(truck2Db.rows[0].status, 'ACTIVE');
+
+    // Test Scenario 3: Failed Inspection Grounding Invariant
+    // -> Result 'FAILED' with allowDispatch: true -> Truck MUST still be grounded to 'UNDER_MAINTENANCE'
+    const failedOverrideRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/inspections',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: truckGap3Id,
+      result: 'FAILED',
+      findings: `${GAP_PREFIX}Critical brake line leak detected during morning yard check.`,
+      allowDispatch: true,
+    });
+
+    assert.equal(failedOverrideRes.statusCode, 201);
+    assert.equal(failedOverrideRes.body.status, 'success');
+    assert.equal(failedOverrideRes.body.data.inspection.result, 'FAILED');
+    assert.equal(failedOverrideRes.body.data.truck.currentStatus, 'UNDER_MAINTENANCE');
+    assert.equal(failedOverrideRes.body.data.truck.isGrounded, true);
+
+    const truck3Db = await query('SELECT status FROM trucks WHERE id = $1', [truckGap3Id]);
+    assert.equal(truck3Db.rows[0].status, 'UNDER_MAINTENANCE');
+
+    // Test Scenario 4: Recurring Issues Analytics (GET /api/fleet/maintenance/analytics/recurring-issues)
+    const incTypes = (await query('SELECT id, type_name FROM incident_types ORDER BY id ASC')).rows;
+    const type1 = incTypes[0];
+
+    const now = new Date();
+    const d1 = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const d2 = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const d3 = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString();
+
+    await query(
+      `INSERT INTO incident_reports (truck_id, reporter_id, incident_type_id, severity, incident_location, description, report_date)
+       VALUES 
+         ($1, $2, $3, 'MEDIUM', 'Davao Yard', '${GAP_PREFIX}Incident 1: coolant leak', $4),
+         ($1, $2, $3, 'HIGH', 'Buhangin Flyover', '${GAP_PREFIX}Incident 2: coolant overheating', $5),
+         ($1, $2, $3, 'CRITICAL', 'Panacan Highway', '${GAP_PREFIX}Incident 3: radiator hose burst', $6)`,
+      [truckGap1Id, supervisorId, type1.id, d1, d2, d3]
+    );
+
+    await query(
+      `INSERT INTO incident_reports (truck_id, reporter_id, incident_type_id, severity, incident_location, description, report_date)
+       VALUES ($1, $2, $3, 'LOW', 'Toril', '${GAP_PREFIX}Single incident', $4)`,
+      [truckGap2Id, supervisorId, type1.id, d1]
+    );
+
+    // Call analytics endpoint with minOccurrences=2 and days=90
+    const analyticsRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/analytics/recurring-issues?minOccurrences=2&days=90`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+
+    assert.equal(analyticsRes.statusCode, 200);
+    assert.equal(analyticsRes.body.status, 'success');
+    assert.equal(analyticsRes.body.data.days, 90);
+    assert.equal(analyticsRes.body.data.minOccurrences, 2);
+
+    const recurringList = analyticsRes.body.data.recurringIssues;
+    assert.ok(Array.isArray(recurringList));
+    const truck1Issues = recurringList.filter((item) => item.truckId === truckGap1Id);
+    assert.equal(truck1Issues.length, 1);
+    assert.equal(truck1Issues[0].plateNumber, `${TRUCK_GAP_PREFIX}1`);
+    assert.equal(truck1Issues[0].incidentTypeId, type1.id);
+    assert.equal(truck1Issues[0].incidentTypeName, type1.type_name);
+    assert.equal(truck1Issues[0].occurrenceCount, 3);
+    assert.equal(truck1Issues[0].latestSeverity, 'MEDIUM');
+    assert.equal(truck1Issues[0].descriptions.length, 3);
+
+    // Verify truckGap2 with only 1 incident is excluded
+    const truck2Issues = recurringList.filter((item) => item.truckId === truckGap2Id);
+    assert.equal(truck2Issues.length, 0);
+
+    // Test truckId filter
+    const filteredRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/analytics/recurring-issues?truckId=${truckGap1Id}&minOccurrences=2`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(filteredRes.statusCode, 200);
+    assert.equal(filteredRes.body.data.recurringIssues.length, 1);
+    assert.equal(filteredRes.body.data.recurringIssues[0].truckId, truckGap1Id);
+
+    // Test high threshold exclusion (minOccurrences=4 excludes truckGap1 since count is 3)
+    const highThresholdRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/analytics/recurring-issues?truckId=${truckGap1Id}&minOccurrences=4`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(highThresholdRes.statusCode, 200);
+    assert.equal(highThresholdRes.body.data.recurringIssues.length, 0);
   });
 });

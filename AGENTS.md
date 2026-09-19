@@ -61,12 +61,14 @@ madayawgas-backend/
 │       ├── 004_sales_customers_seed.sql     # Seed customer profiles
 │       └── 005_history_logs_seed.sql        # Seed system event historical logs
 ├── docs/
-│   ├── API Contract/
-│   │   ├── fleet-and-maintenance.api.md     # Fleet and maintenance endpoints contract
-│   │   ├── history-log.api.md               # System event history log endpoints contract
-│   │   ├── inventory-products.api.md        # Inventory products endpoints contract
-│   │   ├── sales-customer.api.md            # Sales customer profile endpoints contract
-│   │   └── user-management.api.md           # Formal HTTP API contract and schemas
+│   ├── api-contracts/
+│   │   ├── README.md                        # Master directory & route matrix
+│   │   ├── fleet/                           # Fleet availability, trucks, drivers, maintenance
+│   │   ├── history/                         # System event history logs
+│   │   ├── inventory/                       # Inventory product CRUD
+│   │   ├── sales/                           # Sales customer profile CRUD
+│   │   ├── users/                           # Auth, profile, management, roles & permissions
+│   │   └── _archive/                        # Preserved original monolithic contract files
 │   ├── ERD_mermaid/
 │   │   ├── fleet_and_maintenance_erd.md     # Fleet ERD diagram
 │   │   └── sales_and_delivery_erd.md        # Sales and delivery ERD diagram
@@ -313,6 +315,43 @@ madayawgas-backend/
     * Mounted sub-router in `src/features/fleet/fleet.routes.js` and barrel-exported in `src/features/fleet/index.js`.
     * Updated formal API contract in `docs/API Contract/fleet-and-maintenance.api.md`.
     * Built comprehensive integration test suite `src/test/fleet.maintenance.test.js` covering RBAC route protection, monotonic integrity, distance calculations, threshold alert flags, audit trail validation, and overview retrieval (10 test suites, 68 tests passing with 100% success across the repository).
+18. **Fleet & Maintenance Subsystem - Part 3: Safety Inspections & Incident Reporting**:
+    * Implemented complete 3-layer architecture for vehicle safety inspections and roadside incidents under `src/features/fleet/maintenance/`:
+      - `maintenance.repository.js`: Parameterized queries with transaction client support (`insertInspection`, `getInspectionsByTruck`, `countInspectionsByTruck`, `getInspectionById`, `getIncidentTypes`, `getIncidentTypeById`, `insertIncidentReport`, `getIncidentsByTruck`, `countIncidentsByTruck`, `getAllIncidents`, `countAllIncidents`, `getIncidentById`, `updateTruckStatus`).
+      - `maintenance.service.js`:
+        - Safety Inspections: Enforces the **No Checklists Rule** (strictly issue-reporting records with mandatory text `findings` and `issueDetected` boolean). If `result === 'FAILED'`, atomically transitions the vehicle operational status to `'UNDER_MAINTENANCE'` while preserving the assigned driver (`driver_id`). Emits centralized history event `MAINTENANCE_INSPECTION_RECORDED`.
+        - Incident & Breakdown Reporting: Retrieves reference types (`GET /incidents/types`). Supports severity classification (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`). If `severity === 'CRITICAL'`, atomically grounds the vehicle to `'UNDER_MAINTENANCE'` while preserving driver assignment. Emits centralized history event `MAINTENANCE_INCIDENT_REPORTED`.
+      - `maintenance.controller.js`: Parameter validation, error handling with standard HTTP status codes (`201`, `200`, `400`, `404`), and formatted camelCase DTOs.
+      - `maintenance.routes.js`: Mounted 8 new endpoints under `/api/fleet/maintenance` guarded with `fleet.manage` (recording inspections & incidents) and `fleet.view` (viewing lists, catalogs, and single records). Declared static routes before parameterized routes to eliminate routing collisions.
+    * Expanded integration test suite `src/test/fleet.maintenance.test.js` with Subtests 6 and 7 covering RBAC, input validation, automated grounding on failure, automated grounding on critical incident, driver retention invariants, search & severity filtering, single detail lookups, and audit log verification. Full test suite passing with 100% success (70 tests across 10 test files).
+    * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
+19. **Fleet & Maintenance Subsystem - Part 4: Work Orders, Cost Approvals & Repair Lifecycles**:
+    * Implemented complete operational lifecycle for vehicle repair management across the 3-layer architecture:
+      - `maintenance.repository.js`: Added methods for maintenance types lookup (`getMaintenanceTypes`, `getMaintenanceTypeById`), work order management (`insertWorkOrder`, `getWorkOrderById`, `getWorkOrders`, `countWorkOrders`, `updateWorkOrderStatus`), approval requests (`insertApprovalRequest`, `updateApprovalRequest`, `getApprovalRequestByWorkOrderId`), receipt validation & completion (`checkReceiptNumberExists`, `insertMaintenanceLog`, `getMaintenanceLogByWorkOrderId`, `resetTruckPmOdometer`, `getMaintenanceLogs`, `countMaintenanceLogs`).
+      - `maintenance.service.js`:
+        - **Work Order Creation & Grounding**: Accepts `truckId`, `maintenanceTypeId`, optional `inspectionId`, `incidentReportId`, `shopName`, `estimatedCost`, `description`, `scheduledDate`. Work orders automatically ground the vehicle (`status -> UNDER_MAINTENANCE`) while preserving assigned drivers. If `estimatedCost >= 5000.00` or `requiresApproval: true`, work order initiates in `'PENDING'` status and creates an automatic entry in `approval_requests`. Otherwise initiates in `'APPROVED'`. Emits centralized history log `MAINTENANCE_WORK_ORDER_CREATED`.
+        - **Executive Cost Approval Gate**: Endpoint `POST /api/fleet/maintenance/work-orders/:id/approve` restricted to executive administrators (`Super Admin` or `Admin`). Supervisors receive `403 Forbidden`. If approved, transitions to `'APPROVED'`; if rejected, transitions to `'CANCELLED'`. Emits `MAINTENANCE_APPROVAL_DECIDED`.
+        - **Work Order State Machine**: Permitted state transitions (`APPROVED -> SCHEDULED/IN_PROGRESS`, `SCHEDULED -> IN_PROGRESS`, any -> `CANCELLED`). Direct manual transition to `COMPLETED` is strictly prohibited (`400 Bad Request`) to enforce finalization through maintenance logs.
+        - **Maintenance Finalization & PM Reset**: Endpoint `POST /api/fleet/maintenance/work-orders/:id/finalize` requires unique `officialReceiptNumber` (duplicate receipt returns `409 Conflict`), `severity`, start/end dates, costs, downtime, and `odometerAtService`. Transitions work order to `'COMPLETED'`. If maintenance type is `'PREVENTIVE'`, updates `trucks.last_pm_odometer = odometerAtService`, resetting the 5,000-km PM delta. Restores vehicle operational status to `'ACTIVE'` while preserving driver assignment. Emits `MAINTENANCE_LOG_FINALIZED`.
+        - **Maintenance Logs Querying**: Endpoint `GET /api/fleet/maintenance/logs` supports filtering by truck, type, date ranges, and full-text search across receipt numbers, plate numbers, and shops.
+      - `maintenance.controller.js`: Request extraction, validation, error mapping, and camelCase response formatting.
+      - `maintenance.routes.js`: Mounted 8 new routes under `/api/fleet/maintenance` guarded with `fleet.manage`, `fleet.view`, and executive approval decider checks.
+    * Added Subtests 8, 9, and 10 to `src/test/fleet.maintenance.test.js` covering creation, financial approval threshold, executive decider authorization, state machine progressions, manual completion rejection, PM reset, operational release, driver preservation, receipt uniqueness, audit trail verification, and historical logs querying.
+    * Verified 100% test pass rate across all 73 tests in 10 test files (`npm test`).
+    * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
+20. **Fleet & Maintenance Subsystem - Part 5: Operational Gap Refinements**:
+    * Implemented supervisor dispatch decision toggle (`allowDispatch`) on vehicle safety inspections (`POST /api/fleet/maintenance/inspections`):
+      - Allows logistics supervisors to evaluate minor/advisory findings (`result === 'NEEDS_ATTENTION'`) and decide whether the truck should be grounded (`allowDispatch: false` -> `status = 'UNDER_MAINTENANCE'`) or permitted to proceed with deliveries (`allowDispatch: true` -> truck remains operational, e.g. `'ACTIVE'`).
+      - Preserves failure grounding invariant: if `result === 'FAILED'`, the truck is ALWAYS grounded regardless of `allowDispatch`.
+      - Preserves assigned driver (`trucks.driver_id`) in all grounding cases.
+      - Includes `allowDispatch` and `isGrounded` in response DTO and centralized audit log metadata.
+    * Implemented Fleet Recurring Issues Analytics endpoint (`GET /api/fleet/maintenance/analytics/recurring-issues`):
+      - Guarded with `authenticate` and `requirePermission('fleet.view')`.
+      - Aggregates `incident_reports` grouped by `truck_id`, `plate_number`, `truck_model`, `incident_type_id`, and `incident_types.type_name`.
+      - Computes `occurrenceCount`, `latestSeverity`, `latestIncidentDate`, and aggregates descriptive notes array.
+      - Supports lookback window filtering (`days`, default 90), occurrence thresholding (`minOccurrences`, default 2), and vehicle asset filtering (`truckId`).
+    * Added Subtest 11 to `src/test/fleet.maintenance.test.js` covering supervisor dispatch decisions on advisory inspections, failure grounding invariant enforcement, driver preservation, and recurring issues aggregation. Full test suite passing with 100% success across all 74 tests in 10 test files (`npm test`).
+    * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
 
 ---
 
@@ -335,11 +374,9 @@ The database seed provides permanent accounts for system testing (`must_change_p
 
 ## 6. Next Steps & Roadmap
 
-1. **Maintenance Logs & Work Orders Module (`src/features/fleet/maintenance/`)**:
-   - Vehicle inspections, incident reporting, work orders, repair approvals, and maintenance logs when requested.
-2. **Sales & Orders Feature Implementation (`src/features/sales/orders/`)**:
+1. **Sales & Orders Feature Implementation (`src/features/sales/orders/`)**:
    - Build 3-layer architecture for Orders and Sales Transactions with ownership scoping (`sales.view_own` vs `sales.view`).
-3. **Inventory & Cylinder Tracking Module**:
+2. **Inventory & Cylinder Tracking Module**:
    - Track LPG tank types (11kg, 22kg, 50kg), filled vs empty inventory, and refill logs.
-4. **Optional In-App Password Reset Queue**:
+3. **Optional In-App Password Reset Queue**:
    - If requested, implement `password_reset_requests` table and `POST /api/users/forgot-password` endpoint.
