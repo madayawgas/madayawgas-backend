@@ -1277,4 +1277,435 @@ Retrieves a single incident report by its UUID.
 }
 ```
 
+---
+
+### 13. List Maintenance Types
+
+Retrieves the catalog of maintenance service types (e.g. `PREVENTIVE`, `CORRECTIVE`, `EMERGENCY`).
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/work-orders/types`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 3,
+    "types": [
+      {
+        "id": 1,
+        "typeName": "PREVENTIVE",
+        "description": "Routine scheduled service (5,000-km intervals, oil, filters, tune-up)"
+      },
+      {
+        "id": 2,
+        "typeName": "CORRECTIVE",
+        "description": "Unscheduled repairs discovered during daily inspection or operations"
+      },
+      {
+        "id": 3,
+        "typeName": "EMERGENCY",
+        "description": "Critical road breakdowns requiring roadside towing or urgent repairs"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 14. Create Maintenance Work Order
+
+Creates a new work order for vehicle maintenance. If `estimatedCost >= 5000.00` or `requiresApproval: true`, the work order is automatically placed in `'PENDING'` status and creates an entry in `approval_requests`. Otherwise, it initiates in `'APPROVED'`. The vehicle is automatically grounded to `'UNDER_MAINTENANCE'`.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/work-orders`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+```json
+{
+  "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+  "maintenanceTypeId": 1,
+  "inspectionId": null,
+  "incidentReportId": null,
+  "shopName": "Bunawan Heavy Repair Center",
+  "estimatedCost": 7500.00,
+  "description": "5,000-km preventive maintenance overhaul and brake pad replacement",
+  "scheduledDate": "2026-09-20T08:00:00.000Z"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `truckId` | UUID | Yes | Target truck UUID |
+| `maintenanceTypeId` | Integer | Yes | Foreign key to `maintenance_types.id` |
+| `inspectionId` | UUID | No | Optional reference to triggered `safety_inspections.id` |
+| `incidentReportId` | UUID | No | Optional reference to triggered `incident_reports.id` |
+| `shopName` | String | No | Repair shop or service center name |
+| `estimatedCost` | Number | No | Estimated cost in PHP (if >= 5000.00, triggers approval gate) |
+| `description` | String | Yes | Scope of work or diagnosis |
+| `scheduledDate` | ISO 8601 | No | Scheduled date for service execution |
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Work order created successfully.",
+  "data": {
+    "workOrder": {
+      "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "truckModel": "Isuzu Elf N-Series",
+      "maintenanceTypeId": 1,
+      "maintenanceTypeName": "PREVENTIVE",
+      "inspectionId": null,
+      "incidentReportId": null,
+      "shopName": "Bunawan Heavy Repair Center",
+      "estimatedCost": 7500.00,
+      "description": "5,000-km preventive maintenance overhaul and brake pad replacement",
+      "status": "PENDING",
+      "scheduledDate": "2026-09-20T08:00:00.000Z",
+      "createdAt": "2026-09-18T09:00:00.000Z"
+    },
+    "requiresApproval": true,
+    "approvalRequest": {
+      "id": "f5b6e90c-01a2-54dc-c102-778899aabbcc",
+      "status": "PENDING",
+      "estimatedCost": 7500.00
+    },
+    "truck": {
+      "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "status": "UNDER_MAINTENANCE",
+      "isGrounded": true
+    }
+  }
+}
+```
+
+---
+
+### 15. List Fleet Work Orders
+
+Retrieves paginated work orders with filtering across vehicle, status, maintenance type, and date range.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/work-orders`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "workOrders": [
+      {
+        "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "truckModel": "Isuzu Elf N-Series",
+        "truckStatus": "UNDER_MAINTENANCE",
+        "maintenanceTypeId": 1,
+        "maintenanceTypeName": "PREVENTIVE",
+        "inspectionId": null,
+        "incidentReportId": null,
+        "shopName": "Bunawan Heavy Repair Center",
+        "estimatedCost": 7500.00,
+        "description": "5,000-km preventive maintenance overhaul and brake pad replacement",
+        "status": "PENDING",
+        "scheduledDate": "2026-09-20T08:00:00.000Z",
+        "approvalStatus": "PENDING",
+        "createdAt": "2026-09-18T09:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 16. Get Work Order Details by ID
+
+Retrieves single work order details including linked approval requests, inspections, and incidents.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/work-orders/:id`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "workOrder": {
+      "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "truckModel": "Isuzu Elf N-Series",
+      "truckStatus": "UNDER_MAINTENANCE",
+      "maintenanceTypeId": 1,
+      "maintenanceTypeName": "PREVENTIVE",
+      "inspectionId": null,
+      "incidentReportId": null,
+      "shopName": "Bunawan Heavy Repair Center",
+      "estimatedCost": 7500.00,
+      "description": "5,000-km preventive maintenance overhaul and brake pad replacement",
+      "status": "PENDING",
+      "scheduledDate": "2026-09-20T08:00:00.000Z",
+      "approvalStatus": "PENDING",
+      "createdAt": "2026-09-18T09:00:00.000Z",
+      "approvalRequest": {
+        "id": "f5b6e90c-01a2-54dc-c102-778899aabbcc",
+        "status": "PENDING",
+        "estimatedCost": 7500.00,
+        "decidedBy": null,
+        "decisionDate": null,
+        "remarks": null
+      }
+    }
+  }
+}
+```
+
+---
+
+### 17. Update Work Order Status
+
+Updates operational progress of a work order through allowed state transitions. Direct completion to `COMPLETED` via this endpoint is strictly prohibited and returns `400 Bad Request`.
+
+- **HTTP Method**: `PATCH`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/status`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+```json
+{
+  "status": "IN_PROGRESS"
+}
+```
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Work order status updated to IN_PROGRESS.",
+  "data": {
+    "workOrder": {
+      "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "previousStatus": "APPROVED",
+      "currentStatus": "IN_PROGRESS",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "updatedAt": "2026-09-18T10:00:00.000Z"
+    }
+  }
+}
+```
+
+#### Response: `400 Bad Request` (Attempting Manual Completion)
+
+```json
+{
+  "status": "fail",
+  "message": "Work order can only be completed by finalizing the maintenance log via /api/fleet/maintenance/work-orders/:id/finalize"
+}
+```
+
+---
+
+### 18. Executive Cost Approval Decision
+
+Approves or rejects a high-cost repair work order exceeding the ₱5,000.00 threshold. Restricted to executive administrators (`Super Admin` or `Admin`).
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/approve`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission / Role Required**: `users.manage` or role `Super Admin` / `Admin` (Supervisors receive `403 Forbidden`)
+
+#### Request Body
+
+```json
+{
+  "isApproved": true,
+  "remarks": "Approved. Schedule repair with Bunawan Heavy Repair Center immediately."
+}
+```
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Work order cost approval request decided successfully.",
+  "data": {
+    "workOrder": {
+      "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "status": "APPROVED",
+      "updatedAt": "2026-09-18T09:30:00.000Z"
+    },
+    "approvalRequest": {
+      "id": "f5b6e90c-01a2-54dc-c102-778899aabbcc",
+      "status": "APPROVED",
+      "decidedBy": "00000000-0000-0000-0000-000000000001",
+      "decisionDate": "2026-09-18T09:30:00.000Z",
+      "remarks": "Approved. Schedule repair with Bunawan Heavy Repair Center immediately."
+    }
+  }
+}
+```
+
+---
+
+### 19. Finalize Maintenance Log & Release Vehicle
+
+Completes the repair lifecycle by logging official parts/labor costs, receipt number, downtime, and odometer reading. Updates the work order status to `'COMPLETED'`, resets the 5,000-km PM baseline if the work order was `PREVENTIVE`, and restores the vehicle operational condition to `'ACTIVE'` while preserving driver assignment.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/finalize`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+```json
+{
+  "officialReceiptNumber": "OR-2026-88991",
+  "severity": "MEDIUM",
+  "dateStarted": "2026-09-18T08:00:00.000Z",
+  "dateResolved": "2026-09-19T17:00:00.000Z",
+  "partsCost": 4500.00,
+  "laborCost": 2200.50,
+  "downtimeDays": 1,
+  "odometerAtService": 46200
+}
+```
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Maintenance log finalized and vehicle operational status restored.",
+  "data": {
+    "maintenanceLog": {
+      "id": "c3b2a109-8765-4321-fedc-ba9876543210",
+      "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "maintenanceTypeId": 1,
+      "maintenanceTypeName": "PREVENTIVE",
+      "severity": "MEDIUM",
+      "dateStarted": "2026-09-18T08:00:00.000Z",
+      "dateResolved": "2026-09-19T17:00:00.000Z",
+      "partsCost": 4500.00,
+      "laborCost": 2200.50,
+      "totalCost": 6700.50,
+      "downtimeDays": 1,
+      "odometerAtService": 46200,
+      "officialReceiptNumber": "OR-2026-88991",
+      "createdAt": "2026-09-19T17:05:00.000Z"
+    },
+    "workOrder": {
+      "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "status": "COMPLETED",
+      "shopName": "Bunawan Heavy Repair Center",
+      "description": "5,000-km preventive maintenance overhaul and brake pad replacement"
+    },
+    "truck": {
+      "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "status": "ACTIVE",
+      "currentOdometer": 46200,
+      "lastPmOdometer": 46200,
+      "isPmReset": true
+    }
+  }
+}
+```
+
+#### Response: `409 Conflict` (Duplicate Receipt Number)
+
+```json
+{
+  "status": "fail",
+  "message": "Official receipt number 'OR-2026-88991' has already been registered in maintenance logs"
+}
+```
+
+---
+
+### 20. Query Historical Maintenance Logs
+
+Retrieves paginated historical maintenance logs with search across receipt numbers, plate numbers, and repair shops.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/logs`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "logs": [
+      {
+        "id": "c3b2a109-8765-4321-fedc-ba9876543210",
+        "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+        "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+        "plateNumber": "ABC-1001",
+        "maintenanceTypeId": 1,
+        "maintenanceTypeName": "PREVENTIVE",
+        "severity": "MEDIUM",
+        "dateStarted": "2026-09-18T08:00:00.000Z",
+        "dateResolved": "2026-09-19T17:00:00.000Z",
+        "partsCost": 4500.00,
+        "laborCost": 2200.50,
+        "totalCost": 6700.50,
+        "downtimeDays": 1,
+        "odometerAtService": 46200,
+        "officialReceiptNumber": "OR-2026-88991",
+        "createdAt": "2026-09-19T17:05:00.000Z",
+        "truck": {
+          "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+          "plateNumber": "ABC-1001",
+          "model": "Isuzu Elf N-Series",
+          "status": "ACTIVE"
+        },
+        "workOrder": {
+          "shopName": "Bunawan Heavy Repair Center",
+          "description": "5,000-km preventive maintenance overhaul and brake pad replacement"
+        }
+      }
+    ]
+  }
+}
+```
+
+
 

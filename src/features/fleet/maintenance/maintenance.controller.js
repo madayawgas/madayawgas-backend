@@ -249,6 +249,187 @@ class MaintenanceController {
       });
     }
   }
+
+  // ============================================================
+  // WORK ORDERS & REPAIR LIFECYCLE HANDLERS
+  // ============================================================
+
+  /**
+   * GET /api/fleet/maintenance/work-orders/types
+   * Retrieves list of available maintenance categories.
+   */
+  async getMaintenanceTypes(req, res) {
+    try {
+      const data = await maintenanceService.getMaintenanceTypesList();
+      return res.status(200).json({
+        status: 'success',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/fleet/maintenance/work-orders
+   * Creates a new vehicle work order with optional cost review gatekeeping.
+   */
+  async createWorkOrder(req, res) {
+    try {
+      const data = await maintenanceService.createWorkOrder(req.user, req.body || {});
+      return res.status(201).json({
+        status: 'success',
+        message: 'Work order created successfully.',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/fleet/maintenance/work-orders
+   * Retrieves paginated work orders with filtering.
+   */
+  async getWorkOrders(req, res) {
+    try {
+      const data = await maintenanceService.getWorkOrders(req.query);
+      return res.status(200).json({
+        status: 'success',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/fleet/maintenance/work-orders/:id
+   * Retrieves single work order with joined truck and approval context.
+   */
+  async getWorkOrderById(req, res) {
+    try {
+      const data = await maintenanceService.getWorkOrderById(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/fleet/maintenance/work-orders/:id/status
+   * Advances repair status progression (e.g. APPROVED -> SCHEDULED -> IN_PROGRESS or CANCELLED).
+   */
+  async updateWorkOrderStatus(req, res) {
+    try {
+      const data = await maintenanceService.updateWorkOrderStatus(
+        req.user,
+        req.params.id,
+        req.body || {}
+      );
+      return res.status(200).json({
+        status: 'success',
+        message: 'Work order status updated successfully.',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/fleet/maintenance/work-orders/:id/approve
+   * Executive cost approval decision on PENDING work orders (Admin/Super Admin only).
+   */
+  async decideApproval(req, res) {
+    try {
+      const data = await maintenanceService.decideApprovalRequest(
+        req.user,
+        req.params.id,
+        req.body || {}
+      );
+      return res.status(200).json({
+        status: 'success',
+        message: 'Work order approval decision recorded.',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/fleet/maintenance/work-orders/:id/finalize
+   * Finalizes maintenance servicing, creates permanent maintenance_logs entry,
+   * resets PM baseline if PREVENTIVE type, and releases truck back to ACTIVE.
+   */
+  async finalizeMaintenanceLog(req, res) {
+    try {
+      const data = await maintenanceService.finalizeMaintenanceLog(
+        req.user,
+        req.params.id,
+        req.body || {}
+      );
+      return res.status(201).json({
+        status: 'success',
+        message: 'Maintenance log finalized and vehicle operational status restored.',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/fleet/maintenance/logs
+   * Retrieves paginated historical maintenance logs with filtering.
+   */
+  async getMaintenanceLogs(req, res) {
+    try {
+      const data = await maintenanceService.getMaintenanceLogs(req.query);
+      return res.status(200).json({
+        status: 'success',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
 }
 
 module.exports = new MaintenanceController();

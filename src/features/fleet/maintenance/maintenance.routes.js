@@ -141,4 +141,100 @@ router.get(
   asyncHandler(maintenanceController.getIncidentById.bind(maintenanceController))
 );
 
+// ============================================================
+// Historical Maintenance Logs Routes
+// ============================================================
+
+/**
+ * GET /api/fleet/maintenance/logs
+ * Retrieves paginated historical maintenance logs with filtering.
+ */
+router.get(
+  '/logs',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getMaintenanceLogs.bind(maintenanceController))
+);
+
+// ============================================================
+// Work Orders & Cost Approvals Routes
+// ============================================================
+
+/**
+ * GET /api/fleet/maintenance/work-orders/types
+ * Retrieves list of available maintenance categories (PREVENTIVE, CORRECTIVE, etc.).
+ * (Declared before parameterized :id routes to prevent routing collisions)
+ */
+router.get(
+  '/work-orders/types',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getMaintenanceTypes.bind(maintenanceController))
+);
+
+/**
+ * POST /api/fleet/maintenance/work-orders
+ * Creates a vehicle work order; initiates cost approval review if cost >= ₱5,000.00.
+ */
+router.post(
+  '/work-orders',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(maintenanceController.createWorkOrder.bind(maintenanceController))
+);
+
+/**
+ * GET /api/fleet/maintenance/work-orders
+ * Retrieves fleet-wide work orders with status, truck, and search filters.
+ */
+router.get(
+  '/work-orders',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getWorkOrders.bind(maintenanceController))
+);
+
+/**
+ * GET /api/fleet/maintenance/work-orders/:id
+ * Retrieves single work order with joined truck, creator, and approval context.
+ */
+router.get(
+  '/work-orders/:id',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getWorkOrderById.bind(maintenanceController))
+);
+
+/**
+ * PATCH /api/fleet/maintenance/work-orders/:id/status
+ * Advances repair execution status (e.g. APPROVED -> SCHEDULED -> IN_PROGRESS or CANCELLED).
+ */
+router.patch(
+  '/work-orders/:id/status',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(maintenanceController.updateWorkOrderStatus.bind(maintenanceController))
+);
+
+/**
+ * POST /api/fleet/maintenance/work-orders/:id/approve
+ * Executive cost approval decision on PENDING work order (Admin / Super Admin only).
+ */
+router.post(
+  '/work-orders/:id/approve',
+  authenticate,
+  asyncHandler(maintenanceController.decideApproval.bind(maintenanceController))
+);
+
+/**
+ * POST /api/fleet/maintenance/work-orders/:id/finalize
+ * Finalizes servicing, creates maintenance log, resets PM odometer if PREVENTIVE, and restores truck to ACTIVE.
+ */
+router.post(
+  '/work-orders/:id/finalize',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(maintenanceController.finalizeMaintenanceLog.bind(maintenanceController))
+);
+
 module.exports = router;

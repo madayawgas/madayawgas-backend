@@ -697,6 +697,575 @@ class MaintenanceRepository {
     const res = await query(sql, [id]);
     return res.rows[0] || null;
   }
+
+  // ============================================================
+  // WORK ORDERS & REPAIR LIFECYCLE QUERIES
+  // ============================================================
+
+  /**
+   * Retrieves all available maintenance types (e.g. PREVENTIVE, CORRECTIVE).
+   * @returns {Promise<Array<Object>>}
+   */
+  async getMaintenanceTypes() {
+    const sql = `
+      SELECT id, type_name, created_at
+      FROM maintenance_types
+      ORDER BY id ASC
+    `;
+    const res = await query(sql);
+    return res.rows;
+  }
+
+  /**
+   * Retrieves single maintenance type by ID.
+   * @param {number} id
+   * @returns {Promise<Object|null>}
+   */
+  async getMaintenanceTypeById(id) {
+    const sql = `
+      SELECT id, type_name, created_at
+      FROM maintenance_types
+      WHERE id = $1
+    `;
+    const res = await query(sql, [id]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Inserts a new work order record.
+   * Supports transactional execution.
+   */
+  async insertWorkOrder(
+    {
+      truckId,
+      creatorId,
+      maintenanceTypeId,
+      status = 'PENDING',
+      inspectionId = null,
+      incidentReportId = null,
+      scheduledDate = null,
+      shopName = null,
+      estimatedCost = 0.0,
+      description,
+    },
+    client = null
+  ) {
+    const db = client || { query };
+    const sql = `
+      INSERT INTO work_orders (
+        truck_id,
+        creator_id,
+        maintenance_type_id,
+        status,
+        inspection_id,
+        incident_report_id,
+        scheduled_date,
+        shop_name,
+        estimated_cost,
+        description
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING 
+        id,
+        truck_id,
+        creator_id,
+        maintenance_type_id,
+        status,
+        inspection_id,
+        incident_report_id,
+        request_date,
+        scheduled_date,
+        shop_name,
+        estimated_cost,
+        description,
+        created_at,
+        updated_at
+    `;
+    const res = await db.query(sql, [
+      truckId,
+      creatorId || null,
+      maintenanceTypeId,
+      status,
+      inspectionId || null,
+      incidentReportId || null,
+      scheduledDate || null,
+      shopName || null,
+      estimatedCost,
+      description,
+    ]);
+    return res.rows[0];
+  }
+
+  /**
+   * Retrieves single work order by UUID with joined truck, type, and approval details.
+   */
+  async getWorkOrderById(id, client = null) {
+    const db = client || { query };
+    const sql = `
+      SELECT 
+        wo.id,
+        wo.truck_id,
+        wo.creator_id,
+        wo.maintenance_type_id,
+        mt.type_name AS maintenance_type_name,
+        wo.status,
+        wo.inspection_id,
+        wo.incident_report_id,
+        wo.request_date,
+        wo.scheduled_date,
+        wo.shop_name,
+        wo.estimated_cost,
+        wo.description,
+        wo.created_at,
+        wo.updated_at,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status,
+        t.current_odometer,
+        t.last_pm_odometer,
+        u.username AS creator_username,
+        u.first_name AS creator_first_name,
+        u.last_name AS creator_last_name,
+        ar.id AS approval_request_id,
+        ar.amount_requested AS approval_amount_requested,
+        ar.is_approved AS approval_is_approved,
+        ar.remarks AS approval_remarks,
+        ar.requested_date AS approval_requested_date,
+        ar.decided_date AS approval_decided_date,
+        ar.decider_id AS approval_decider_id,
+        du.username AS decider_username,
+        du.first_name AS decider_first_name,
+        du.last_name AS decider_last_name,
+        ml.id AS maintenance_log_id,
+        ml.official_receipt_number
+      FROM work_orders wo
+      JOIN trucks t ON wo.truck_id = t.id
+      JOIN maintenance_types mt ON wo.maintenance_type_id = mt.id
+      LEFT JOIN users u ON wo.creator_id = u.id
+      LEFT JOIN approval_requests ar ON wo.id = ar.work_order_id
+      LEFT JOIN users du ON ar.decider_id = du.id
+      LEFT JOIN maintenance_logs ml ON wo.id = ml.work_order_id
+      WHERE wo.id = $1
+    `;
+    const res = await db.query(sql, [id]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Retrieves paginated work orders with filtering.
+   */
+  async getWorkOrders(filters = {}, { limit = 50, offset = 0 } = {}) {
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (filters.truckId) {
+      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      params.push(filters.truckId);
+    }
+
+    if (filters.status) {
+      conditions.push(`wo.status = $${paramIndex++}`);
+      params.push(filters.status.toUpperCase());
+    }
+
+    if (filters.maintenanceTypeId) {
+      conditions.push(`wo.maintenance_type_id = $${paramIndex++}`);
+      params.push(filters.maintenanceTypeId);
+    }
+
+    if (filters.search) {
+      conditions.push(
+        `(t.plate_number ILIKE $${paramIndex} OR wo.description ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex})`
+      );
+      params.push(`%${filters.search}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    params.push(limit, offset);
+
+    const sql = `
+      SELECT 
+        wo.id,
+        wo.truck_id,
+        wo.creator_id,
+        wo.maintenance_type_id,
+        mt.type_name AS maintenance_type_name,
+        wo.status,
+        wo.inspection_id,
+        wo.incident_report_id,
+        wo.request_date,
+        wo.scheduled_date,
+        wo.shop_name,
+        wo.estimated_cost,
+        wo.description,
+        wo.created_at,
+        wo.updated_at,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status,
+        u.username AS creator_username,
+        u.first_name AS creator_first_name,
+        u.last_name AS creator_last_name,
+        ar.id AS approval_request_id,
+        ar.is_approved AS approval_is_approved
+      FROM work_orders wo
+      JOIN trucks t ON wo.truck_id = t.id
+      JOIN maintenance_types mt ON wo.maintenance_type_id = mt.id
+      LEFT JOIN users u ON wo.creator_id = u.id
+      LEFT JOIN approval_requests ar ON wo.id = ar.work_order_id
+      ${whereClause}
+      ORDER BY wo.created_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  /**
+   * Counts total work orders matching filters.
+   */
+  async countWorkOrders(filters = {}) {
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (filters.truckId) {
+      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      params.push(filters.truckId);
+    }
+
+    if (filters.status) {
+      conditions.push(`wo.status = $${paramIndex++}`);
+      params.push(filters.status.toUpperCase());
+    }
+
+    if (filters.maintenanceTypeId) {
+      conditions.push(`wo.maintenance_type_id = $${paramIndex++}`);
+      params.push(filters.maintenanceTypeId);
+    }
+
+    if (filters.search) {
+      conditions.push(
+        `(t.plate_number ILIKE $${paramIndex} OR wo.description ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex})`
+      );
+      params.push(`%${filters.search}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT COUNT(*)::int AS count
+      FROM work_orders wo
+      JOIN trucks t ON wo.truck_id = t.id
+      ${whereClause}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows[0]?.count || 0;
+  }
+
+  /**
+   * Updates work order status.
+   */
+  async updateWorkOrderStatus({ id, status }, client = null) {
+    const db = client || { query };
+    const sql = `
+      UPDATE work_orders
+      SET 
+        status = $1,
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `;
+    const res = await db.query(sql, [status, id]);
+    return res.rows[0] || null;
+  }
+
+  // ============================================================
+  // COST APPROVAL REQUEST QUERIES
+  // ============================================================
+
+  /**
+   * Inserts an approval request row for a work order.
+   */
+  async insertApprovalRequest({ workOrderId, amountRequested, remarks = null }, client = null) {
+    const db = client || { query };
+    const sql = `
+      INSERT INTO approval_requests (
+        work_order_id,
+        amount_requested,
+        remarks
+      )
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `;
+    const res = await db.query(sql, [workOrderId, amountRequested, remarks]);
+    return res.rows[0];
+  }
+
+  /**
+   * Updates approval request decision.
+   */
+  async updateApprovalRequest({ workOrderId, deciderId, isApproved, remarks = null }, client = null) {
+    const db = client || { query };
+    const sql = `
+      UPDATE approval_requests
+      SET 
+        decider_id = $1,
+        is_approved = $2,
+        remarks = $3,
+        decided_date = NOW()
+      WHERE work_order_id = $4
+      RETURNING *
+    `;
+    const res = await db.query(sql, [deciderId, isApproved, remarks, workOrderId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Retrieves approval request by work order ID.
+   */
+  async getApprovalRequestByWorkOrderId(workOrderId, client = null) {
+    const db = client || { query };
+    const sql = `
+      SELECT 
+        ar.*,
+        u.username AS decider_username,
+        u.first_name AS decider_first_name,
+        u.last_name AS decider_last_name
+      FROM approval_requests ar
+      LEFT JOIN users u ON ar.decider_id = u.id
+      WHERE ar.work_order_id = $1
+    `;
+    const res = await db.query(sql, [workOrderId]);
+    return res.rows[0] || null;
+  }
+
+  // ============================================================
+  // MAINTENANCE LOGS & FINALIZATION QUERIES
+  // ============================================================
+
+  /**
+   * Retrieves maintenance log associated with a work order ID if any.
+   */
+  async getMaintenanceLogByWorkOrderId(workOrderId, client = null) {
+    const db = client || { query };
+    const sql = `
+      SELECT * FROM maintenance_logs
+      WHERE work_order_id = $1
+    `;
+    const res = await db.query(sql, [workOrderId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Checks if an official receipt number already exists in maintenance_logs.
+   */
+  async checkReceiptNumberExists(receiptNumber, client = null) {
+    const db = client || { query };
+    const sql = `
+      SELECT id FROM maintenance_logs
+      WHERE LOWER(official_receipt_number) = LOWER($1)
+    `;
+    const res = await db.query(sql, [receiptNumber.trim()]);
+    return Boolean(res.rows[0]);
+  }
+
+  /**
+   * Inserts permanent maintenance log record.
+   */
+  async insertMaintenanceLog(
+    {
+      workOrderId,
+      maintenanceTypeId,
+      severity,
+      dateStarted,
+      dateResolved,
+      partsCost = 0.0,
+      laborCost = 0.0,
+      downtimeDays = 0,
+      odometerAtService,
+      officialReceiptNumber,
+    },
+    client = null
+  ) {
+    const db = client || { query };
+    const sql = `
+      INSERT INTO maintenance_logs (
+        work_order_id,
+        maintenance_type_id,
+        severity,
+        date_started,
+        date_resolved,
+        parts_cost,
+        labor_cost,
+        downtime_days,
+        odometer_at_service,
+        official_receipt_number
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `;
+    const res = await db.query(sql, [
+      workOrderId,
+      maintenanceTypeId,
+      severity,
+      dateStarted,
+      dateResolved,
+      partsCost,
+      laborCost,
+      downtimeDays,
+      odometerAtService,
+      officialReceiptNumber.trim(),
+    ]);
+    return res.rows[0];
+  }
+
+  /**
+   * Resets truck PM baseline odometer upon PREVENTIVE maintenance completion.
+   */
+  async resetTruckPmOdometer({ truckId, serviceOdometer }, client = null) {
+    const db = client || { query };
+    const sql = `
+      UPDATE trucks
+      SET 
+        last_pm_odometer = $1,
+        current_odometer = GREATEST(current_odometer, $1),
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `;
+    const res = await db.query(sql, [serviceOdometer, truckId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Retrieves paginated maintenance logs with joined work order and truck details.
+   */
+  async getMaintenanceLogs(filters = {}, { limit = 50, offset = 0 } = {}) {
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (filters.truckId) {
+      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      params.push(filters.truckId);
+    }
+
+    if (filters.maintenanceTypeId) {
+      conditions.push(`ml.maintenance_type_id = $${paramIndex++}`);
+      params.push(filters.maintenanceTypeId);
+    }
+
+    if (filters.startDate) {
+      conditions.push(`ml.date_resolved >= $${paramIndex++}`);
+      params.push(filters.startDate);
+    }
+
+    if (filters.endDate) {
+      conditions.push(`ml.date_resolved <= $${paramIndex++}`);
+      params.push(filters.endDate);
+    }
+
+    if (filters.search) {
+      conditions.push(
+        `(ml.official_receipt_number ILIKE $${paramIndex} OR t.plate_number ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex})`
+      );
+      params.push(`%${filters.search}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    params.push(limit, offset);
+
+    const sql = `
+      SELECT 
+        ml.id,
+        ml.work_order_id,
+        ml.maintenance_type_id,
+        mt.type_name AS maintenance_type_name,
+        ml.severity,
+        ml.date_started,
+        ml.date_resolved,
+        ml.parts_cost,
+        ml.labor_cost,
+        (ml.parts_cost + ml.labor_cost) AS total_cost,
+        ml.downtime_days,
+        ml.odometer_at_service,
+        ml.official_receipt_number,
+        ml.created_at,
+        wo.truck_id,
+        wo.shop_name,
+        wo.description AS work_order_description,
+        t.plate_number,
+        t.model AS truck_model,
+        t.status AS truck_status
+      FROM maintenance_logs ml
+      JOIN maintenance_types mt ON ml.maintenance_type_id = mt.id
+      JOIN work_orders wo ON ml.work_order_id = wo.id
+      JOIN trucks t ON wo.truck_id = t.id
+      ${whereClause}
+      ORDER BY ml.date_resolved DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  /**
+   * Counts total maintenance logs matching filters.
+   */
+  async countMaintenanceLogs(filters = {}) {
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (filters.truckId) {
+      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      params.push(filters.truckId);
+    }
+
+    if (filters.maintenanceTypeId) {
+      conditions.push(`ml.maintenance_type_id = $${paramIndex++}`);
+      params.push(filters.maintenanceTypeId);
+    }
+
+    if (filters.startDate) {
+      conditions.push(`ml.date_resolved >= $${paramIndex++}`);
+      params.push(filters.startDate);
+    }
+
+    if (filters.endDate) {
+      conditions.push(`ml.date_resolved <= $${paramIndex++}`);
+      params.push(filters.endDate);
+    }
+
+    if (filters.search) {
+      conditions.push(
+        `(ml.official_receipt_number ILIKE $${paramIndex} OR t.plate_number ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex})`
+      );
+      params.push(`%${filters.search}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT COUNT(*)::int AS count
+      FROM maintenance_logs ml
+      JOIN work_orders wo ON ml.work_order_id = wo.id
+      JOIN trucks t ON wo.truck_id = t.id
+      ${whereClause}
+    `;
+
+    const res = await query(sql, params);
+    return res.rows[0]?.count || 0;
+  }
 }
 
 module.exports = new MaintenanceRepository();

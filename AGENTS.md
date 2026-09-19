@@ -325,6 +325,20 @@ madayawgas-backend/
       - `maintenance.routes.js`: Mounted 8 new endpoints under `/api/fleet/maintenance` guarded with `fleet.manage` (recording inspections & incidents) and `fleet.view` (viewing lists, catalogs, and single records). Declared static routes before parameterized routes to eliminate routing collisions.
     * Expanded integration test suite `src/test/fleet.maintenance.test.js` with Subtests 6 and 7 covering RBAC, input validation, automated grounding on failure, automated grounding on critical incident, driver retention invariants, search & severity filtering, single detail lookups, and audit log verification. Full test suite passing with 100% success (70 tests across 10 test files).
     * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
+19. **Fleet & Maintenance Subsystem - Part 4: Work Orders, Cost Approvals & Repair Lifecycles**:
+    * Implemented complete operational lifecycle for vehicle repair management across the 3-layer architecture:
+      - `maintenance.repository.js`: Added methods for maintenance types lookup (`getMaintenanceTypes`, `getMaintenanceTypeById`), work order management (`insertWorkOrder`, `getWorkOrderById`, `getWorkOrders`, `countWorkOrders`, `updateWorkOrderStatus`), approval requests (`insertApprovalRequest`, `updateApprovalRequest`, `getApprovalRequestByWorkOrderId`), receipt validation & completion (`checkReceiptNumberExists`, `insertMaintenanceLog`, `getMaintenanceLogByWorkOrderId`, `resetTruckPmOdometer`, `getMaintenanceLogs`, `countMaintenanceLogs`).
+      - `maintenance.service.js`:
+        - **Work Order Creation & Grounding**: Accepts `truckId`, `maintenanceTypeId`, optional `inspectionId`, `incidentReportId`, `shopName`, `estimatedCost`, `description`, `scheduledDate`. Work orders automatically ground the vehicle (`status -> UNDER_MAINTENANCE`) while preserving assigned drivers. If `estimatedCost >= 5000.00` or `requiresApproval: true`, work order initiates in `'PENDING'` status and creates an automatic entry in `approval_requests`. Otherwise initiates in `'APPROVED'`. Emits centralized history log `MAINTENANCE_WORK_ORDER_CREATED`.
+        - **Executive Cost Approval Gate**: Endpoint `POST /api/fleet/maintenance/work-orders/:id/approve` restricted to executive administrators (`Super Admin` or `Admin`). Supervisors receive `403 Forbidden`. If approved, transitions to `'APPROVED'`; if rejected, transitions to `'CANCELLED'`. Emits `MAINTENANCE_APPROVAL_DECIDED`.
+        - **Work Order State Machine**: Permitted state transitions (`APPROVED -> SCHEDULED/IN_PROGRESS`, `SCHEDULED -> IN_PROGRESS`, any -> `CANCELLED`). Direct manual transition to `COMPLETED` is strictly prohibited (`400 Bad Request`) to enforce finalization through maintenance logs.
+        - **Maintenance Finalization & PM Reset**: Endpoint `POST /api/fleet/maintenance/work-orders/:id/finalize` requires unique `officialReceiptNumber` (duplicate receipt returns `409 Conflict`), `severity`, start/end dates, costs, downtime, and `odometerAtService`. Transitions work order to `'COMPLETED'`. If maintenance type is `'PREVENTIVE'`, updates `trucks.last_pm_odometer = odometerAtService`, resetting the 5,000-km PM delta. Restores vehicle operational status to `'ACTIVE'` while preserving driver assignment. Emits `MAINTENANCE_LOG_FINALIZED`.
+        - **Maintenance Logs Querying**: Endpoint `GET /api/fleet/maintenance/logs` supports filtering by truck, type, date ranges, and full-text search across receipt numbers, plate numbers, and shops.
+      - `maintenance.controller.js`: Request extraction, validation, error mapping, and camelCase response formatting.
+      - `maintenance.routes.js`: Mounted 8 new routes under `/api/fleet/maintenance` guarded with `fleet.manage`, `fleet.view`, and executive approval decider checks.
+    * Added Subtests 8, 9, and 10 to `src/test/fleet.maintenance.test.js` covering creation, financial approval threshold, executive decider authorization, state machine progressions, manual completion rejection, PM reset, operational release, driver preservation, receipt uniqueness, audit trail verification, and historical logs querying.
+    * Verified 100% test pass rate across all 73 tests in 10 test files (`npm test`).
+    * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
 
 ---
 
@@ -347,11 +361,9 @@ The database seed provides permanent accounts for system testing (`must_change_p
 
 ## 6. Next Steps & Roadmap
 
-1. **Fleet & Maintenance Subsystem - Part 4: Work Orders & Repair Approvals Engine**:
-   - Work order creation, scheduling, cost estimation, executive approval workflow, and financial closure maintenance logs.
-2. **Sales & Orders Feature Implementation (`src/features/sales/orders/`)**:
+1. **Sales & Orders Feature Implementation (`src/features/sales/orders/`)**:
    - Build 3-layer architecture for Orders and Sales Transactions with ownership scoping (`sales.view_own` vs `sales.view`).
-3. **Inventory & Cylinder Tracking Module**:
+2. **Inventory & Cylinder Tracking Module**:
    - Track LPG tank types (11kg, 22kg, 50kg), filled vs empty inventory, and refill logs.
-4. **Optional In-App Password Reset Queue**:
+3. **Optional In-App Password Reset Queue**:
    - If requested, implement `password_reset_requests` table and `POST /api/users/forgot-password` endpoint.
