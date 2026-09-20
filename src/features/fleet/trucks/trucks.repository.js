@@ -9,7 +9,7 @@ class TrucksRepository {
    * Retrieves all trucks with optional filtering and joined driver details.
    * @param {Object} filters - { status, search, driverAssigned }
    */
-  async getAllTrucks(filters = {}) {
+  async getAllTrucks(filters = {}, pagination = null) {
     const { status, search, driverAssigned } = filters;
     const conditions = [];
     const params = [];
@@ -20,9 +20,9 @@ class TrucksRepository {
       params.push(status.toUpperCase());
     }
 
-    if (search) {
+    if (search && typeof search === 'string' && search.trim() !== '') {
       conditions.push(`(t.plate_number ILIKE $${paramIndex} OR t.model ILIKE $${paramIndex})`);
-      params.push(`%${search}%`);
+      params.push(`%${search.trim()}%`);
       paramIndex++;
     }
 
@@ -36,7 +36,43 @@ class TrucksRepository {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const sql = `
+    if (!pagination) {
+      const sql = `
+        SELECT 
+          t.id,
+          t.plate_number,
+          t.model,
+          t.year_model,
+          t.current_odometer,
+          t.last_pm_odometer,
+          t.status,
+          t.driver_id,
+          t.created_at,
+          t.updated_at,
+          u.first_name AS driver_first_name,
+          u.last_name AS driver_last_name,
+          u.phone AS driver_phone,
+          u.username AS driver_username
+        FROM trucks t
+        LEFT JOIN users u ON t.driver_id = u.id
+        ${whereClause}
+        ORDER BY t.created_at DESC, t.id DESC
+      `;
+
+      const result = await query(sql, params);
+      return result.rows;
+    }
+
+    const sortColumn = pagination.sortColumn || 't.created_at';
+    const sortOrder = pagination.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+    const limit = pagination.limit || 20;
+    const offset = pagination.offset || 0;
+
+    const dataParams = [...params, limit, offset];
+    const limitPlaceholder = `$${params.length + 1}`;
+    const offsetPlaceholder = `$${params.length + 2}`;
+
+    const dataSql = `
       SELECT 
         t.id,
         t.plate_number,
@@ -55,11 +91,25 @@ class TrucksRepository {
       FROM trucks t
       LEFT JOIN users u ON t.driver_id = u.id
       ${whereClause}
-      ORDER BY t.created_at DESC
+      ORDER BY ${sortColumn} ${sortOrder}, t.id DESC
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
-    const result = await query(sql, params);
-    return result.rows;
+    const countSql = `
+      SELECT COUNT(*) AS count
+      FROM trucks t
+      ${whereClause}
+    `;
+
+    const [dataRes, countRes] = await Promise.all([
+      query(dataSql, dataParams),
+      query(countSql, params),
+    ]);
+
+    return {
+      rows: dataRes.rows,
+      total: parseInt(countRes.rows[0]?.count || 0, 10),
+    };
   }
 
   /**
@@ -312,7 +362,7 @@ class TrucksRepository {
    * Retrieves users holding the 'Driver' role with their live truck assignment information.
    * @param {Object} filters - { availableOnly, search }
    */
-  async getAllDrivers(filters = {}) {
+  async getAllDrivers(filters = {}, pagination = null) {
     const { availableOnly, search } = filters;
     const conditions = [
       'u.is_active = TRUE',
@@ -326,13 +376,47 @@ class TrucksRepository {
       conditions.push('t.id IS NULL');
     }
 
-    if (search) {
+    if (search && typeof search === 'string' && search.trim() !== '') {
       conditions.push(`(u.first_name ILIKE $${paramIndex} OR u.last_name ILIKE $${paramIndex} OR u.username ILIKE $${paramIndex})`);
-      params.push(`%${search}%`);
+      params.push(`%${search.trim()}%`);
       paramIndex++;
     }
 
-    const sql = `
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    if (!pagination) {
+      const sql = `
+        SELECT 
+          u.id,
+          u.username,
+          u.first_name,
+          u.last_name,
+          u.phone,
+          r.name AS role_name,
+          t.id AS assigned_truck_id,
+          t.plate_number AS assigned_truck_plate,
+          t.model AS assigned_truck_model
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        LEFT JOIN trucks t ON u.id = t.driver_id
+        ${whereClause}
+        ORDER BY u.first_name ASC, u.last_name ASC, u.id DESC
+      `;
+
+      const result = await query(sql, params);
+      return result.rows;
+    }
+
+    const sortColumn = pagination.sortColumn || 'u.first_name';
+    const sortOrder = pagination.sortOrder === 'DESC' ? 'DESC' : 'ASC';
+    const limit = pagination.limit || 20;
+    const offset = pagination.offset || 0;
+
+    const dataParams = [...params, limit, offset];
+    const limitPlaceholder = `$${params.length + 1}`;
+    const offsetPlaceholder = `$${params.length + 2}`;
+
+    const dataSql = `
       SELECT 
         u.id,
         u.username,
@@ -346,12 +430,28 @@ class TrucksRepository {
       FROM users u
       JOIN roles r ON u.role_id = r.id
       LEFT JOIN trucks t ON u.id = t.driver_id
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY u.first_name ASC, u.last_name ASC
+      ${whereClause}
+      ORDER BY ${sortColumn} ${sortOrder}, u.id DESC
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
-    const result = await query(sql, params);
-    return result.rows;
+    const countSql = `
+      SELECT COUNT(*) AS count
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      LEFT JOIN trucks t ON u.id = t.driver_id
+      ${whereClause}
+    `;
+
+    const [dataRes, countRes] = await Promise.all([
+      query(dataSql, dataParams),
+      query(countSql, params),
+    ]);
+
+    return {
+      rows: dataRes.rows,
+      total: parseInt(countRes.rows[0]?.count || 0, 10),
+    };
   }
 
   /**

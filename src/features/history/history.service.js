@@ -1,5 +1,6 @@
 const historyRepository = require('./history.repository');
 const { resolveEvent } = require('./history.events');
+const { calculateOffset, buildPaginationMeta } = require('../../utils/pagination');
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -162,6 +163,10 @@ class HistoryService {
 
   /**
    * Retrieves list of history logs with optional module, action type, search, and pagination.
+   *
+   * @param {Object} [filters={}]
+   * @param {Object} [pagination=null]
+   * @returns {Promise<Object>}
    */
   async getHistoryLogs({
     module = null,
@@ -171,16 +176,48 @@ class HistoryService {
     offset = 0,
     startDate = null,
     endDate = null,
-  } = {}) {
+  } = {}, pagination = null) {
+    if (!pagination) {
+      const [rows, total] = await Promise.all([
+        historyRepository.getLogs({
+          module,
+          actionType,
+          search,
+          limit,
+          offset,
+          startDate,
+          endDate,
+        }),
+        historyRepository.countLogs({
+          module,
+          actionType,
+          search,
+          startDate,
+          endDate,
+        }),
+      ]);
+
+      const formattedLogs = rows.map(formatLogItem);
+
+      return {
+        logs: formattedLogs,
+        count: formattedLogs.length,
+        total,
+      };
+    }
+
+    const calcOffset = calculateOffset(pagination.page, pagination.limit);
     const [rows, total] = await Promise.all([
       historyRepository.getLogs({
         module,
         actionType,
         search,
-        limit,
-        offset,
+        limit: pagination.limit,
+        offset: calcOffset,
         startDate,
         endDate,
+        sortColumn: pagination.sortColumn,
+        sortOrder: pagination.sortOrder,
       }),
       historyRepository.countLogs({
         module,
@@ -191,12 +228,12 @@ class HistoryService {
       }),
     ]);
 
-    const formattedLogs = rows.map(formatLogItem);
+    const items = rows.map(formatLogItem);
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
 
     return {
-      logs: formattedLogs,
-      count: formattedLogs.length,
-      total,
+      items,
+      meta,
     };
   }
 

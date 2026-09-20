@@ -1,5 +1,6 @@
 const productsRepository = require('./products.repository');
 const { historyService, EVENTS } = require('../../history');
+const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 
 const ALLOWED_CONTAINER_TYPES = ['CYLINDER', 'CANISTER'];
 
@@ -29,13 +30,31 @@ function formatProduct(row) {
  */
 class ProductsService {
   /**
-   * Retrieves all inventory products with optional filters.
-   * @param {Object} filters - { isActive, status, category, containerType, search }
-   * @returns {Promise<Array>}
+   * Retrieves all inventory products with optional filters and pagination.
+   *
+   * @param {Object} [filters={}] - { isActive, status, category, containerType, search }
+   * @param {Object} [pagination=null] - Optional pagination { page, limit, sortColumn, sortOrder }
+   * @returns {Promise<Array|Object>}
    */
-  async getAllProducts(filters = {}) {
-    const rows = await productsRepository.getAllProducts(filters);
-    return rows.map(formatProduct);
+  async getAllProducts(filters = {}, pagination = null) {
+    if (!pagination) {
+      const rows = await productsRepository.getAllProducts(filters);
+      return rows.map(formatProduct);
+    }
+
+    const offset = calculateOffset(pagination.page, pagination.limit);
+    const { rows, total } = await productsRepository.getAllProducts(filters, {
+      ...pagination,
+      offset,
+    });
+
+    const items = rows.map(formatProduct);
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+
+    return {
+      items,
+      meta,
+    };
   }
 
   /**

@@ -26,7 +26,7 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 
 ### 1. List All Vehicles
 
-Retrieves a list of fleet vehicles with optional search and filtering.
+Retrieves a list of fleet vehicles with optional search, filtering, deterministic sorting, and server-side pagination.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/fleet/trucks` (or `/api/fleet`)
@@ -35,13 +35,58 @@ Retrieves a list of fleet vehicles with optional search and filtering.
 
 #### Query Parameters
 
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `status` | String | No | Filter by status (`ACTIVE`, `INACTIVE`, `UNDER_MAINTENANCE`, `RETIRED`) |
-| `search` | String | No | Search query for plate number or model |
-| `driverAssigned` | Boolean | No | Filter vehicles by assignment status (`true` / `false`) |
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `page` | Integer | No | `1` | Page number (triggers standardized pagination envelope). Minimum `1`. |
+| `limit` / `pageSize` | Integer | No | `20` | Items per page (clamped between `1` and `100`). Triggers standardized envelope. |
+| `status` | String | No | None | Filter by status (`ACTIVE`, `INACTIVE`, `UNDER_MAINTENANCE`, `RETIRED`) |
+| `search` | String | No | None | Search query matching plate number or model |
+| `driverAssigned` | Boolean | No | None | Filter vehicles by assignment status (`true` / `false`) |
+| `sortBy` | String | No | `createdAt` | Sort field: `createdAt`, `plateNumber`, `model`, `yearModel`, `currentOdometer`, `lastPmOdometer`, `status`, `updatedAt`. |
+| `sortOrder` | String | No | `DESC` | Sort direction: `ASC` or `DESC`. |
 
-#### Response: `200 OK` (Success)
+#### Response: `200 OK` (Standardized Paginated Format)
+*Returned when `page`, `limit`, or `pageSize` query parameters are provided.*
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "plateNumber": "ABC-1001",
+      "model": "Isuzu Elf N-Series",
+      "yearModel": 2022,
+      "currentOdometer": 45000,
+      "lastPmOdometer": 40000,
+      "status": "ACTIVE",
+      "operationalStatus": "ACTIVE",
+      "isAvailable": true,
+      "driverId": "22222222-3333-4444-5555-666666666666",
+      "createdAt": "2026-08-20T10:00:00.000Z",
+      "updatedAt": "2026-08-20T10:00:00.000Z",
+      "driver": {
+        "id": "22222222-3333-4444-5555-666666666666",
+        "firstName": "Juan",
+        "lastName": "Sales",
+        "phone": "+639170000004",
+        "username": "sales_user"
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 1,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+#### Response: `200 OK` (Legacy Unpaginated Format)
+*Preserved for backward compatibility when pagination query parameters are omitted.*
 
 ```json
 {

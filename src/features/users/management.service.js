@@ -7,6 +7,7 @@ const { historyService, EVENTS } = require('../history');
 const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/usernameGenerator');
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
 const { parsePhoneNumber } = require('../../utils/phoneParser');
+const { calculateOffset, buildPaginationMeta } = require('../../utils/pagination');
 
 /**
  * Management Service
@@ -130,11 +131,39 @@ class ManagementService {
   }
 
   /**
-   * Returns list of all user accounts.
+   * Returns list of all user accounts, with optional filtering and pagination.
+   *
+   * @param {Object} [filters={}] - Optional filters { search, roleId, isActive, isBlocked }
+   * @param {Object} [pagination=null] - Optional pagination parameters { page, limit, sortColumn, sortOrder }
+   * @returns {Promise<Array|Object>} Array of users (legacy) or { items, meta } (paginated)
    */
-  async getAllUsers() {
-    const users = await usersRepository.findAllUsers();
-    return users.map((u) => ({
+  async getAllUsers(filters = {}, pagination = null) {
+    if (!pagination) {
+      const users = await usersRepository.findAllUsers(filters);
+      return users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        phone: u.phone,
+        birthdate: u.birthdate,
+        role: u.role_name,
+        roleId: u.role_id,
+        roles: u.roles || [],
+        isActive: u.is_active,
+        isBlocked: u.is_blocked,
+        mustChangePassword: u.must_change_password,
+        createdAt: u.created_at,
+      }));
+    }
+
+    const offset = calculateOffset(pagination.page, pagination.limit);
+    const { rows, total } = await usersRepository.findAllUsers(filters, {
+      ...pagination,
+      offset,
+    });
+
+    const items = rows.map((u) => ({
       id: u.id,
       username: u.username,
       firstName: u.first_name,
@@ -149,6 +178,13 @@ class ManagementService {
       mustChangePassword: u.must_change_password,
       createdAt: u.created_at,
     }));
+
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+
+    return {
+      items,
+      meta,
+    };
   }
 
   /**

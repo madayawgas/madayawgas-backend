@@ -1,6 +1,7 @@
 const customerRepository = require('./customer.repository');
 const { historyService, EVENTS } = require('../../history');
 const { parsePhoneNumber } = require('../../../utils/phoneParser');
+const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 
 const ALLOWED_CUSTOMER_TYPES = ['RETAIL', 'COMMERCIAL', 'WHOLESALE'];
 
@@ -30,13 +31,31 @@ function formatCustomer(row) {
  */
 class CustomerService {
   /**
-   * Retrieves all customers with optional filters.
-   * @param {Object} filters - { isActive, status, customerType, search }
-   * @returns {Promise<Array>}
+   * Retrieves all customers with optional filters and pagination.
+   *
+   * @param {Object} [filters={}] - { isActive, status, customerType, search }
+   * @param {Object} [pagination=null] - Optional pagination { page, limit, sortColumn, sortOrder }
+   * @returns {Promise<Array|Object>}
    */
-  async getAllCustomers(filters = {}) {
-    const rows = await customerRepository.getAllCustomers(filters);
-    return rows.map(formatCustomer);
+  async getAllCustomers(filters = {}, pagination = null) {
+    if (!pagination) {
+      const rows = await customerRepository.getAllCustomers(filters);
+      return rows.map(formatCustomer);
+    }
+
+    const offset = calculateOffset(pagination.page, pagination.limit);
+    const { rows, total } = await customerRepository.getAllCustomers(filters, {
+      ...pagination,
+      offset,
+    });
+
+    const items = rows.map(formatCustomer);
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+
+    return {
+      items,
+      meta,
+    };
   }
 
   /**

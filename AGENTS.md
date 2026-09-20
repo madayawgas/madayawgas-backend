@@ -352,6 +352,21 @@ madayawgas-backend/
       - Supports lookback window filtering (`days`, default 90), occurrence thresholding (`minOccurrences`, default 2), and vehicle asset filtering (`truckId`).
     * Added Subtest 11 to `src/test/fleet.maintenance.test.js` covering supervisor dispatch decisions on advisory inspections, failure grounding invariant enforcement, driver preservation, and recurring issues aggregation. Full test suite passing with 100% success across all 74 tests in 10 test files (`npm test`).
     * Updated formal API contracts in `docs/api-contracts/fleet/maintenance.api.md`, `docs/api-contracts/README.md`, and archive.
+20. **Standardized Server-Side Pagination Across Large-Dataset Endpoints (`src/utils/pagination.js`)**:
+    * Created centralized pagination utility `src/utils/pagination.js` providing `parsePaginationQuery`, `calculateOffset`, `buildPaginationMeta`, and `formatPaginatedEnvelope`.
+    * Implemented opt-in, non-breaking server-side slicing across all high-volume entities:
+      - **User Management**: `GET /api/users`
+      - **Fleet Vehicles**: `GET /api/fleet/trucks` and alias `GET /api/fleet`
+      - **Fleet Drivers**: `GET /api/fleet/drivers`
+      - **Inventory Products**: `GET /api/inventory/products`
+      - **Sales Customers**: `GET /api/sales/customers`
+      - **History Logs**: `GET /api/history` and alias `GET /api/history-logs`
+    * Enforced full-stack 3-layer architecture compliance:
+      - **Controller Layer**: Parses and clamps pagination parameters (`page >= 1`, `1 <= limit <= 100`, default limit `20`), validates `sortBy` against strict internal column whitelists to prevent SQL injection, and selectively formats the standardized pagination envelope (`{ status: 'success', data, meta }`) or preserves legacy envelopes when pagination parameters are omitted.
+      - **Service Layer**: Coordinates offset calculations (`offset = (page - 1) * limit`), passes sanitized criteria to repositories, formats DTOs, and constructs metadata (`totalItems`, `totalPages`, `hasNextPage`, `hasPrevPage`).
+      - **Repository Layer**: Applies dynamic `whereClause` identically to data and count queries, enforces deterministic tie-breaking sorting (`ORDER BY ${sortColumn} ${sortOrder}, id DESC`), and runs data slice and count queries concurrently via `Promise.all`.
+    * Created dedicated integration test suite `src/test/pagination.test.js` covering opt-in envelopes, page boundaries, out-of-bounds queries, limit clamping, sorting, SQL injection resistance, filter/search synchronization, and legacy fallbacks. Full test suite passing with 100% success across all 81 tests in 11 test files (`npm test`).
+    * Updated `docs/guides/backend-developer-guide.md` with Section 10 documenting the standardized pagination pattern and developer checklist.
 
 ---
 

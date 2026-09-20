@@ -10,7 +10,7 @@ class ProductsRepository {
    * @param {Object} filters - { isActive, status, category, containerType, search }
    * @returns {Promise<Array>} List of product database rows
    */
-  async getAllProducts(filters = {}) {
+  async getAllProducts(filters = {}, pagination = null) {
     const { isActive, status, category, containerType, search } = filters;
     const conditions = [];
     const params = [];
@@ -32,19 +32,19 @@ class ProductsRepository {
     }
 
     // Filter by category
-    if (category) {
+    if (category && typeof category === 'string' && category.trim() !== '') {
       conditions.push(`category ILIKE $${paramIndex++}`);
       params.push(category.trim());
     }
 
     // Filter by containerType (CYLINDER, CANISTER)
-    if (containerType) {
+    if (containerType && typeof containerType === 'string' && containerType.trim() !== '') {
       conditions.push(`container_type = $${paramIndex++}`);
       params.push(containerType.toUpperCase().trim());
     }
 
     // Search by name or category
-    if (search) {
+    if (search && typeof search === 'string' && search.trim() !== '') {
       conditions.push(`(name ILIKE $${paramIndex} OR category ILIKE $${paramIndex})`);
       params.push(`%${search.trim()}%`);
       paramIndex++;
@@ -52,7 +52,36 @@ class ProductsRepository {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const sql = `
+    if (!pagination) {
+      const sql = `
+        SELECT 
+          id,
+          name,
+          category,
+          container_type,
+          net_weight_kg,
+          is_active,
+          created_at,
+          updated_at
+        FROM products
+        ${whereClause}
+        ORDER BY created_at DESC, id DESC
+      `;
+
+      const result = await query(sql, params);
+      return result.rows;
+    }
+
+    const sortColumn = pagination.sortColumn || 'created_at';
+    const sortOrder = pagination.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+    const limit = pagination.limit || 20;
+    const offset = pagination.offset || 0;
+
+    const dataParams = [...params, limit, offset];
+    const limitPlaceholder = `$${params.length + 1}`;
+    const offsetPlaceholder = `$${params.length + 2}`;
+
+    const dataSql = `
       SELECT 
         id,
         name,
@@ -64,11 +93,25 @@ class ProductsRepository {
         updated_at
       FROM products
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY ${sortColumn} ${sortOrder}, id DESC
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
-    const result = await query(sql, params);
-    return result.rows;
+    const countSql = `
+      SELECT COUNT(*) AS count
+      FROM products
+      ${whereClause}
+    `;
+
+    const [dataRes, countRes] = await Promise.all([
+      query(dataSql, dataParams),
+      query(countSql, params),
+    ]);
+
+    return {
+      rows: dataRes.rows,
+      total: parseInt(countRes.rows[0]?.count || 0, 10),
+    };
   }
 
   /**

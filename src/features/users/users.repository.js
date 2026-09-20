@@ -50,25 +50,109 @@ class UsersRepository {
     return res.rows[0] || null;
   }
 
-  async findAllUsers() {
-    const res = await query(
-      `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name,
-              COALESCE(
-                JSON_AGG(
-                  JSON_BUILD_OBJECT('id', r2.id, 'name', r2.name, 'isPrimary', ur.is_primary)
-                  ORDER BY ur.is_primary DESC, r2.name ASC
-                ) FILTER (WHERE r2.id IS NOT NULL),
-                '[]'::json
-              ) as roles
-       FROM users u
-       JOIN roles r ON u.role_id = r.id
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
-       LEFT JOIN roles r2 ON ur.role_id = r2.id
-       GROUP BY u.id, r.name
-       ORDER BY u.created_at DESC`
-    );
-    return res.rows;
+  async findAllUsers(filters = {}, pagination = null) {
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    // Filter by isActive
+    if (filters.isActive !== undefined && filters.isActive !== null && filters.isActive !== '') {
+      const boolVal = filters.isActive === true || filters.isActive === 'true' || filters.isActive === 1 || filters.isActive === '1';
+      conditions.push(`u.is_active = $${paramIndex++}`);
+      params.push(boolVal);
+    }
+
+    // Filter by isBlocked
+    if (filters.isBlocked !== undefined && filters.isBlocked !== null && filters.isBlocked !== '') {
+      const boolVal = filters.isBlocked === true || filters.isBlocked === 'true' || filters.isBlocked === 1 || filters.isBlocked === '1';
+      conditions.push(`u.is_blocked = $${paramIndex++}`);
+      params.push(boolVal);
+    }
+
+    // Filter by roleId
+    if (filters.roleId) {
+      conditions.push(`(u.role_id = $${paramIndex} OR EXISTS (SELECT 1 FROM user_roles ur_f WHERE ur_f.user_id = u.id AND ur_f.role_id = $${paramIndex}))`);
+      params.push(filters.roleId);
+      paramIndex++;
+    }
+
+    // Filter by search across username, first_name, last_name, phone
+    if (filters.search && typeof filters.search === 'string' && filters.search.trim() !== '') {
+      conditions.push(`(u.username ILIKE $${paramIndex} OR u.first_name ILIKE $${paramIndex} OR u.last_name ILIKE $${paramIndex} OR u.phone ILIKE $${paramIndex})`);
+      params.push(`%${filters.search.trim()}%`);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    if (!pagination) {
+      const res = await query(
+        `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
+                u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name,
+                COALESCE(
+                  JSON_AGG(
+                    JSON_BUILD_OBJECT('id', r2.id, 'name', r2.name, 'isPrimary', ur.is_primary)
+                    ORDER BY ur.is_primary DESC, r2.name ASC
+                  ) FILTER (WHERE r2.id IS NOT NULL),
+                  '[]'::json
+                ) as roles
+         FROM users u
+         JOIN roles r ON u.role_id = r.id
+         LEFT JOIN user_roles ur ON ur.user_id = u.id
+         LEFT JOIN roles r2 ON ur.role_id = r2.id
+         ${whereClause}
+         GROUP BY u.id, r.name
+         ORDER BY u.created_at DESC, u.id DESC`,
+        params
+      );
+      return res.rows;
+    }
+
+    const sortColumn = pagination.sortColumn || 'u.created_at';
+    const sortOrder = pagination.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+    const limit = pagination.limit || 20;
+    const offset = pagination.offset || 0;
+
+    const dataParams = [...params, limit, offset];
+    const limitPlaceholder = `$${params.length + 1}`;
+    const offsetPlaceholder = `$${params.length + 2}`;
+
+    const dataSql = `
+      SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
+             u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name,
+             COALESCE(
+               JSON_AGG(
+                 JSON_BUILD_OBJECT('id', r2.id, 'name', r2.name, 'isPrimary', ur.is_primary)
+                 ORDER BY ur.is_primary DESC, r2.name ASC
+               ) FILTER (WHERE r2.id IS NOT NULL),
+               '[]'::json
+             ) as roles
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      LEFT JOIN user_roles ur ON ur.user_id = u.id
+      LEFT JOIN roles r2 ON ur.role_id = r2.id
+      ${whereClause}
+      GROUP BY u.id, r.name
+      ORDER BY ${sortColumn} ${sortOrder}, u.id DESC
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
+    `;
+
+    const countSql = `
+      SELECT COUNT(DISTINCT u.id) AS count
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      ${whereClause}
+    `;
+
+    const [dataRes, countRes] = await Promise.all([
+      query(dataSql, dataParams),
+      query(countSql, params),
+    ]);
+
+    return {
+      rows: dataRes.rows,
+      total: parseInt(countRes.rows[0]?.count || 0, 10),
+    };
   }
 
   async getUserRoles(userId) {

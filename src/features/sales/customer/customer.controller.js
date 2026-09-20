@@ -1,4 +1,16 @@
 const customerService = require('./customer.service');
+const { parsePaginationQuery, formatPaginatedEnvelope } = require('../../../utils/pagination');
+
+const ALLOWED_CUSTOMER_SORT_FIELDS = {
+  createdAt: 'created_at',
+  created_at: 'created_at',
+  name: 'name',
+  customerType: 'customer_type',
+  customer_type: 'customer_type',
+  isActive: 'is_active',
+  is_active: 'is_active',
+  address: 'address',
+};
 
 /**
  * Customer Controller
@@ -7,24 +19,41 @@ const customerService = require('./customer.service');
 class CustomerController {
   /**
    * GET /api/sales/customers
-   * List all customers with optional filters (overview).
+   * List all customers with optional filters (legacy) or paginated slice with metadata.
    */
   async getAllCustomers(req, res) {
     const { isActive, status, customerType, search } = req.query || {};
-    const customers = await customerService.getAllCustomers({
-      isActive,
-      status,
-      customerType,
-      search,
+    const pagination = parsePaginationQuery(req.query, {
+      defaultLimit: 20,
+      maxLimit: 100,
+      defaultSort: 'createdAt',
+      defaultOrder: 'DESC',
+      allowedSortFields: ALLOWED_CUSTOMER_SORT_FIELDS,
     });
 
-    return res.status(200).json({
-      status: 'success',
-      data: {
-        count: customers.length,
-        customers,
-      },
-    });
+    if (!pagination.isPaginated) {
+      const customers = await customerService.getAllCustomers({
+        isActive,
+        status,
+        customerType,
+        search,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: customers.length,
+          customers,
+        },
+      });
+    }
+
+    const { items, meta } = await customerService.getAllCustomers(
+      { isActive, status, customerType, search },
+      pagination
+    );
+
+    return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
 
   /**

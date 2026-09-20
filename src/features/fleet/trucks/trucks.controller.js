@@ -1,4 +1,29 @@
 const trucksService = require('./trucks.service');
+const { parsePaginationQuery, formatPaginatedEnvelope } = require('../../../utils/pagination');
+
+const ALLOWED_TRUCK_SORT_FIELDS = {
+  createdAt: 't.created_at',
+  created_at: 't.created_at',
+  plateNumber: 't.plate_number',
+  plate_number: 't.plate_number',
+  model: 't.model',
+  yearModel: 't.year_model',
+  year_model: 't.year_model',
+  currentOdometer: 't.current_odometer',
+  current_odometer: 't.current_odometer',
+  status: 't.status',
+};
+
+const ALLOWED_DRIVER_SORT_FIELDS = {
+  createdAt: 'u.created_at',
+  created_at: 'u.created_at',
+  firstName: 'u.first_name',
+  first_name: 'u.first_name',
+  lastName: 'u.last_name',
+  last_name: 'u.last_name',
+  username: 'u.username',
+  phone: 'u.phone',
+};
 
 /**
  * Trucks Controller
@@ -7,18 +32,35 @@ const trucksService = require('./trucks.service');
 class TrucksController {
   /**
    * GET /api/fleet/trucks
+   * Retrieves all trucks (legacy) or paginated slice with metadata.
    */
   async getAllTrucks(req, res) {
     const { status, search, driverAssigned } = req.query || {};
-    const trucks = await trucksService.getAllTrucks({ status, search, driverAssigned });
-
-    return res.status(200).json({
-      status: 'success',
-      data: {
-        count: trucks.length,
-        trucks,
-      },
+    const pagination = parsePaginationQuery(req.query, {
+      defaultLimit: 20,
+      maxLimit: 100,
+      defaultSort: 'createdAt',
+      defaultOrder: 'DESC',
+      allowedSortFields: ALLOWED_TRUCK_SORT_FIELDS,
     });
+
+    if (!pagination.isPaginated) {
+      const trucks = await trucksService.getAllTrucks({ status, search, driverAssigned });
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: trucks.length,
+          trucks,
+        },
+      });
+    }
+
+    const { items, meta } = await trucksService.getAllTrucks(
+      { status, search, driverAssigned },
+      pagination
+    );
+
+    return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
 
   /**
@@ -140,21 +182,40 @@ class TrucksController {
 
   /**
    * GET /api/fleet/drivers
+   * Retrieves all drivers (legacy) or paginated slice with metadata.
    */
   async getAllDrivers(req, res) {
     const { search, availableOnly } = req.query || {};
-    const drivers = await trucksService.getAllDrivers({
-      search,
-      availableOnly: availableOnly === 'true' || availableOnly === true,
+    const isAvailableOnly = availableOnly === 'true' || availableOnly === true;
+    const pagination = parsePaginationQuery(req.query, {
+      defaultLimit: 20,
+      maxLimit: 100,
+      defaultSort: 'firstName',
+      defaultOrder: 'ASC',
+      allowedSortFields: ALLOWED_DRIVER_SORT_FIELDS,
     });
 
-    return res.status(200).json({
-      status: 'success',
-      data: {
-        count: drivers.length,
-        drivers,
-      },
-    });
+    if (!pagination.isPaginated) {
+      const drivers = await trucksService.getAllDrivers({
+        search,
+        availableOnly: isAvailableOnly,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: drivers.length,
+          drivers,
+        },
+      });
+    }
+
+    const { items, meta } = await trucksService.getAllDrivers(
+      { search, availableOnly: isAvailableOnly },
+      pagination
+    );
+
+    return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
 
   /**

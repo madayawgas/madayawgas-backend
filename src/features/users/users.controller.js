@@ -2,6 +2,23 @@ const authService = require('./auth.service');
 const profileService = require('./profile.service');
 const managementService = require('./management.service');
 const permissionService = require('./permission.service');
+const { parsePaginationQuery, formatPaginatedEnvelope } = require('../../utils/pagination');
+
+const ALLOWED_USER_SORT_FIELDS = {
+  createdAt: 'u.created_at',
+  created_at: 'u.created_at',
+  username: 'u.username',
+  firstName: 'u.first_name',
+  first_name: 'u.first_name',
+  lastName: 'u.last_name',
+  last_name: 'u.last_name',
+  phone: 'u.phone',
+  role: 'r.name',
+  isActive: 'u.is_active',
+  is_active: 'u.is_active',
+  isBlocked: 'u.is_blocked',
+  is_blocked: 'u.is_blocked',
+};
 
 const COOKIE_NAME = 'mg_sid';
 
@@ -165,13 +182,32 @@ class UsersController {
 
   /**
    * GET /api/users
+   * Retrieves all users (legacy) or paginated slice with metadata.
    */
   async getAllUsers(req, res) {
-    const users = await managementService.getAllUsers();
-    return res.status(200).json({
-      status: 'success',
-      data: { users },
+    const { search, roleId, isActive, isBlocked } = req.query || {};
+    const pagination = parsePaginationQuery(req.query, {
+      defaultLimit: 20,
+      maxLimit: 100,
+      defaultSort: 'createdAt',
+      defaultOrder: 'DESC',
+      allowedSortFields: ALLOWED_USER_SORT_FIELDS,
     });
+
+    if (!pagination.isPaginated) {
+      const users = await managementService.getAllUsers({ search, roleId, isActive, isBlocked });
+      return res.status(200).json({
+        status: 'success',
+        data: { users },
+      });
+    }
+
+    const { items, meta } = await managementService.getAllUsers(
+      { search, roleId, isActive, isBlocked },
+      pagination
+    );
+
+    return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
 
   /**

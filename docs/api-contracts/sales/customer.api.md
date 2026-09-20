@@ -119,7 +119,7 @@ Content-Type: application/json
 
 ### 2. View Customer Overview (List & Search)
 
-Retrieves a list of customers with optional filtering by status, active flag, customer type, or text search across name, address, and contact number.
+Retrieves a list of customers with optional filtering by status, active flag, customer type, text search, deterministic sorting, and server-side pagination.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/sales/customers`
@@ -128,14 +128,58 @@ Retrieves a list of customers with optional filtering by status, active flag, cu
 
 #### Query Parameters
 
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `isActive` | Boolean / String | No | Filter by active flag (`true` / `false`) |
-| `status` | String | No | Filter by status string (`ACTIVE` / `INACTIVE`) |
-| `customerType` | String | No | Filter by customer type (`RETAIL` / `COMMERCIAL` / `WHOLESALE`) |
-| `search` | String | No | Case-insensitive substring search in `name`, `address`, or `contact_number` |
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `page` | Integer | No | `1` | Page number (triggers standardized pagination envelope). Minimum `1`. |
+| `limit` / `pageSize` | Integer | No | `20` | Items per page (clamped between `1` and `100`). Triggers standardized envelope. |
+| `isActive` | Boolean / String | No | None | Filter by active flag (`true` / `false`) |
+| `status` | String | No | None | Filter by status string (`ACTIVE` / `INACTIVE`) |
+| `customerType` | String | No | None | Filter by customer type (`RETAIL` / `COMMERCIAL` / `WHOLESALE`) |
+| `search` | String | No | None | Case-insensitive substring search in `name`, `address`, or `contact_number` |
+| `sortBy` | String | No | `createdAt` | Sort field: `name`, `customerType`, `contactNumber`, `address`, `isActive`, `createdAt`, `updatedAt`. |
+| `sortOrder` | String | No | `DESC` | Sort direction: `ASC` or `DESC`. |
 
-#### Response: `200 OK` (Success)
+#### Response: `200 OK` (Standardized Paginated Format)
+*Returned when `page`, `limit`, or `pageSize` query parameters are provided.*
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "7b8f9e6a-5432-41a9-83bc-9d0e12345678",
+      "name": "Davao Central Bakery",
+      "address": "Corner San Pedro St, Davao City",
+      "contactNumber": "+63822245678",
+      "customerType": "COMMERCIAL",
+      "isActive": true,
+      "createdAt": "2026-08-28T14:40:00.000Z",
+      "updatedAt": "2026-08-28T14:40:00.000Z"
+    },
+    {
+      "id": "c1a2b3c4-d5e6-7f80-1234-56789abcdef0",
+      "name": "Juan Dela Cruz",
+      "address": "123 Mabini St., Poblacion, Davao City",
+      "contactNumber": "+639171234567",
+      "customerType": "RETAIL",
+      "isActive": true,
+      "createdAt": "2026-08-28T14:00:00.000Z",
+      "updatedAt": "2026-08-28T14:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 3,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+#### Response: `200 OK` (Legacy Unpaginated Format)
+*Preserved for backward compatibility when pagination query parameters are omitted.*
 
 ```json
 {

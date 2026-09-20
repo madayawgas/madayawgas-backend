@@ -49,7 +49,7 @@ Each log entry is formatted for direct display in frontend tables and filters:
 
 ### 1. View History Logs (List, Filter, Search & Pagination)
 
-Retrieves a paginated list of system history logs with support for module filtering, action type filtering, keyword search, and pagination.
+Retrieves a list of system history logs with support for module filtering, action type filtering, keyword search, deterministic sorting, and pagination.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/history` (or `/api/history-logs`)
@@ -60,15 +60,57 @@ Retrieves a paginated list of system history logs with support for module filter
 
 | Parameter | Type | Required | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
+| `page` | Integer | No | `1` | Page number (triggers standardized pagination envelope). Minimum `1`. |
+| `pageSize` / `limit` | Integer | No | `20` / `100` | Records per page (clamped between `1` and `100`). Providing `pageSize` triggers standardized envelope. |
+| `paginate` | String | No | None | Set to `'true'` to explicitly trigger the standardized pagination envelope. |
 | `module` | String | No | `All Modules` | Filter by module name (e.g. `'User Management'`, `'Fleet Management'`, `'Inventory Management'`, `'Sales & Delivery'`) |
 | `actionType` | String | No | None | Filter by action type (e.g. `'Created'`, `'Updated'`, `'Deactivated'`, `'Assigned'`) |
 | `search` | String | No | None | Case-insensitive search across `userName`, `details`, `actionType`, `module`, and `action` |
-| `limit` | Number | No | `100` | Number of records to return per page |
-| `offset` | Number | No | `0` | Offset for pagination |
+| `sortBy` | String | No | `createdAt` | Sort field: `createdAt`, `date`, `userName`, `actionType`, `module`, `action`. |
+| `sortOrder` | String | No | `DESC` | Sort direction: `ASC` or `DESC`. |
 | `startDate` | String (ISO) | No | None | Filter records created on or after date |
 | `endDate` | String (ISO) | No | None | Filter records created on or before date |
+| `offset` | Number | No | `0` | Offset for legacy pagination |
 
-#### Response: `200 OK` (Success)
+#### Response: `200 OK` (Standardized Paginated Format)
+*Returned when `page`, `pageSize`, or `paginate=true` query parameters are provided.*
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "c1f725a3-7649-4eb5-8e5a-2cb7ea4c03b1",
+      "date": "Aug 24, 2026",
+      "time": "08:30 AM",
+      "userName": "Alejandro Doe",
+      "userRole": "System Admin",
+      "actionType": "Created",
+      "module": "User Management",
+      "details": "Created new user account for 'Juan Dela Cruz'",
+      "action": "USER_CREATED",
+      "targetId": "d522513f-3665-4f7a-b9c1-5bb7d825c0a1",
+      "targetType": "user",
+      "metadata": {
+        "username": "jcruz",
+        "role": "Sales Person"
+      },
+      "createdAt": "2026-08-24T08:30:00.000Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 12,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+#### Response: `200 OK` (Legacy Format)
+*Preserved for backward compatibility when only legacy `limit`/`offset` parameters are supplied.*
 
 ```json
 {

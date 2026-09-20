@@ -10,7 +10,7 @@ class CustomerRepository {
    * @param {Object} filters - { isActive, status, customerType, search }
    * @returns {Promise<Array>} List of customer database rows
    */
-  async getAllCustomers(filters = {}) {
+  async getAllCustomers(filters = {}, pagination = null) {
     const { isActive, status, customerType, search } = filters;
     const conditions = [];
     const params = [];
@@ -32,13 +32,13 @@ class CustomerRepository {
     }
 
     // Filter by customerType (RETAIL, COMMERCIAL, WHOLESALE)
-    if (customerType) {
+    if (customerType && typeof customerType === 'string' && customerType.trim() !== '') {
       conditions.push(`customer_type = $${paramIndex++}`);
       params.push(customerType.toUpperCase().trim());
     }
 
     // Search across name, address, or contact_number
-    if (search) {
+    if (search && typeof search === 'string' && search.trim() !== '') {
       conditions.push(`(name ILIKE $${paramIndex} OR address ILIKE $${paramIndex} OR contact_number ILIKE $${paramIndex})`);
       params.push(`%${search.trim()}%`);
       paramIndex++;
@@ -46,7 +46,36 @@ class CustomerRepository {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const sql = `
+    if (!pagination) {
+      const sql = `
+        SELECT 
+          id,
+          name,
+          address,
+          contact_number,
+          customer_type,
+          is_active,
+          created_at,
+          updated_at
+        FROM customers
+        ${whereClause}
+        ORDER BY created_at DESC, id DESC
+      `;
+
+      const result = await query(sql, params);
+      return result.rows;
+    }
+
+    const sortColumn = pagination.sortColumn || 'created_at';
+    const sortOrder = pagination.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+    const limit = pagination.limit || 20;
+    const offset = pagination.offset || 0;
+
+    const dataParams = [...params, limit, offset];
+    const limitPlaceholder = `$${params.length + 1}`;
+    const offsetPlaceholder = `$${params.length + 2}`;
+
+    const dataSql = `
       SELECT 
         id,
         name,
@@ -58,11 +87,25 @@ class CustomerRepository {
         updated_at
       FROM customers
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY ${sortColumn} ${sortOrder}, id DESC
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
-    const result = await query(sql, params);
-    return result.rows;
+    const countSql = `
+      SELECT COUNT(*) AS count
+      FROM customers
+      ${whereClause}
+    `;
+
+    const [dataRes, countRes] = await Promise.all([
+      query(dataSql, dataParams),
+      query(countSql, params),
+    ]);
+
+    return {
+      rows: dataRes.rows,
+      total: parseInt(countRes.rows[0]?.count || 0, 10),
+    };
   }
 
   /**

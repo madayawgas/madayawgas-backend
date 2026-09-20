@@ -71,6 +71,8 @@ class HistoryRepository {
     offset = 0,
     startDate = null,
     endDate = null,
+    sortColumn = 'created_at',
+    sortOrder = 'DESC',
   } = {}) {
     const conditions = [];
     const params = [];
@@ -116,11 +118,14 @@ class HistoryRepository {
       limitClause += ` OFFSET $${params.length}`;
     }
 
+    const orderCol = sortColumn || 'created_at';
+    const orderDir = sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
     const sql = `
       SELECT *
       FROM history_logs
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY ${orderCol} ${orderDir}, id DESC
       ${limitClause};
     `;
 

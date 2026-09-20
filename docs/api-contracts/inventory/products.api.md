@@ -125,7 +125,7 @@ Content-Type: application/json
 
 ### 2. View Item Profiles (List & Search)
 
-Retrieves a list of product items with optional filtering by status, container type, category, or search term.
+Retrieves a list of product items with optional filtering by status, container type, category, search term, deterministic sorting, and server-side pagination.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/inventory/products`
@@ -134,15 +134,59 @@ Retrieves a list of product items with optional filtering by status, container t
 
 #### Query Parameters
 
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `isActive` | Boolean / String | No | Filter by active flag (`true` / `false`) |
-| `status` | String | No | Filter by status string (`ACTIVE` / `INACTIVE`) |
-| `containerType` | String | No | Filter by container type (`CYLINDER` / `CANISTER`) |
-| `category` | String | No | Filter by category (case-insensitive substring match) |
-| `search` | String | No | Search across product `name` or `category` |
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `page` | Integer | No | `1` | Page number (triggers standardized pagination envelope). Minimum `1`. |
+| `limit` / `pageSize` | Integer | No | `20` | Items per page (clamped between `1` and `100`). Triggers standardized envelope. |
+| `isActive` | Boolean / String | No | None | Filter by active flag (`true` / `false`) |
+| `status` | String | No | None | Filter by status string (`ACTIVE` / `INACTIVE`) |
+| `containerType` | String | No | None | Filter by container type (`CYLINDER` / `CANISTER`) |
+| `category` | String | No | None | Filter by category (case-insensitive substring match) |
+| `search` | String | No | None | Search across product `name` or `category` |
+| `sortBy` | String | No | `createdAt` | Sort field: `name`, `category`, `containerType`, `netWeightKg`, `isActive`, `createdAt`, `updatedAt`. |
+| `sortOrder` | String | No | `DESC` | Sort direction: `ASC` or `DESC`. |
 
-#### Response: `200 OK` (Success)
+#### Response: `200 OK` (Standardized Paginated Format)
+*Returned when `page`, `limit`, or `pageSize` query parameters are provided.*
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "e9b21f37-142c-4f76-96f3-a3d8b02e7b91",
+      "name": "Butane Canister 250g",
+      "category": "Canister",
+      "containerType": "CANISTER",
+      "netWeightKg": 0.25,
+      "isActive": true,
+      "createdAt": "2026-08-28T12:20:00.000Z",
+      "updatedAt": "2026-08-28T12:20:00.000Z"
+    },
+    {
+      "id": "27d6365b-bfb0-4ca7-b286-63d1bcfa2520",
+      "name": "11kg LPG Cylinder",
+      "category": "LPG Cylinder",
+      "containerType": "CYLINDER",
+      "netWeightKg": 11,
+      "isActive": true,
+      "createdAt": "2026-08-28T12:20:00.000Z",
+      "updatedAt": "2026-08-28T12:20:00.000Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 3,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+#### Response: `200 OK` (Legacy Unpaginated Format)
+*Preserved for backward compatibility when pagination query parameters are omitted.*
 
 ```json
 {

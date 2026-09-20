@@ -1,5 +1,6 @@
 const trucksRepository = require('./trucks.repository');
 const { historyService, EVENTS } = require('../../history');
+const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 
 /**
  * Maps database row to camelCase DTO with soft-bounded driver details and availability.
@@ -72,20 +73,59 @@ function formatDriver(row) {
  */
 class TrucksService {
   /**
-   * Retrieves all fleet vehicles with optional filtering.
+   * Retrieves all fleet vehicles with optional filtering and pagination.
+   *
+   * @param {Object} [filters={}] - Optional filters { status, search, driverAssigned }
+   * @param {Object} [pagination=null] - Optional pagination { page, limit, sortColumn, sortOrder }
+   * @returns {Promise<Array|Object>}
    */
-  async getAllTrucks(filters = {}) {
-    const rows = await trucksRepository.getAllTrucks(filters);
-    return rows.map(formatTruck);
+  async getAllTrucks(filters = {}, pagination = null) {
+    if (!pagination) {
+      const rows = await trucksRepository.getAllTrucks(filters);
+      return rows.map(formatTruck);
+    }
+
+    const offset = calculateOffset(pagination.page, pagination.limit);
+    const { rows, total } = await trucksRepository.getAllTrucks(filters, {
+      ...pagination,
+      offset,
+    });
+
+    const items = rows.map(formatTruck);
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+
+    return {
+      items,
+      meta,
+    };
   }
 
   /**
-   * Retrieves all eligible drivers with their live assignment status.
-   * @param {Object} filters - { availableOnly, search }
+   * Retrieves all eligible drivers with their live assignment status and optional pagination.
+   *
+   * @param {Object} [filters={}] - { availableOnly, search }
+   * @param {Object} [pagination=null] - Optional pagination { page, limit, sortColumn, sortOrder }
+   * @returns {Promise<Array|Object>}
    */
-  async getAllDrivers(filters = {}) {
-    const rows = await trucksRepository.getAllDrivers(filters);
-    return rows.map(formatDriver);
+  async getAllDrivers(filters = {}, pagination = null) {
+    if (!pagination) {
+      const rows = await trucksRepository.getAllDrivers(filters);
+      return rows.map(formatDriver);
+    }
+
+    const offset = calculateOffset(pagination.page, pagination.limit);
+    const { rows, total } = await trucksRepository.getAllDrivers(filters, {
+      ...pagination,
+      offset,
+    });
+
+    const items = rows.map(formatDriver);
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+
+    return {
+      items,
+      meta,
+    };
   }
 
   /**

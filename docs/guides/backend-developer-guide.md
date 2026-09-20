@@ -283,11 +283,55 @@ When creating a new test file, use a unique prefix (e.g. `test_sales_*`, `test_f
 
 ---
 
-## 10. Summary Checklist for Developers
+## 10. Standardized Server-Side Pagination Pattern
+
+The backend enforces a unified, opt-in server-side pagination architecture across all large-dataset listing endpoints (`/api/users`, `/api/fleet/trucks`, `/api/fleet/drivers`, `/api/inventory/products`, `/api/sales/customers`, `/api/history`).
+
+### 1. Opt-in vs Legacy Fallback (100% Backward Compatibility)
+* **Paginated Mode**: Activated when a request supplies `page`, `limit`, or `pageSize` query parameters. Slices at the database level and wraps results in the standardized pagination envelope.
+* **Legacy Mode**: When pagination parameters are omitted, endpoints return their original unpaginated collection format (e.g. `{ data: { users: [...] } }` or `{ data: { count, products: [...] } }`), guaranteeing zero breakage for existing clients and automated tests.
+
+### 2. Standardized Response Envelope
+```json
+{
+  "status": "success",
+  "data": [ /* page slice items */ ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 156,
+    "totalPages": 8,
+    "hasNextPage": true,
+    "hasPrevPage": false
+  }
+}
+```
+
+### 3. Layer Responsibilities
+* **Controller Layer**:
+  * Calls `parsePaginationQuery(req.query, options)` from `src/utils/pagination.js`.
+  * Enforces safe bounds (default page `1`, default limit `20`, maximum limit `100`).
+  * Validates sort field against a strict internal dictionary whitelist (preventing SQL injection).
+  * Returns `formatPaginatedEnvelope(items, meta)` if paginated, or legacy envelope if omitted.
+* **Service Layer**:
+  * Receives sanitized `pagination` object `{ page, limit, sortColumn, sortOrder }`.
+  * Computes database offset via `calculateOffset(page, limit)` (`(page - 1) * limit`).
+  * Calls repository with offset and limits.
+  * Formats DTOs and constructs `meta` using `buildPaginationMeta(total, page, limit)`.
+* **Repository Layer**:
+  * Constructs unified `whereClause` applied identically to both slice and count queries.
+  * Parameterizes `LIMIT` and `OFFSET` in SQL (`$N`, `$N+1`).
+  * Enforces deterministic ordering (`ORDER BY ${sortColumn} ${sortOrder}, id DESC`).
+  * Executes data slice and count queries concurrently via `Promise.all([dataQuery, countQuery])`.
+
+---
+
+## 11. Summary Checklist for Developers
 
 - [ ] Is my code inside `src/features/<feature>/`?
 - [ ] Are SQL queries placed **only** in `*.repository.js` using parameterized `$1`, `$2` placeholders?
 - [ ] Is business logic placed in `*.service.js` free from Express `req` and `res` objects?
 - [ ] Are async route handlers wrapped in `asyncHandler`?
 - [ ] Are protected routes secured with `authenticate` and `requirePermission`?
+- [ ] Do listing endpoints support opt-in standardized pagination (`parsePaginationQuery`)?
 - [ ] Do all test files pass cleanly with `npm test`?

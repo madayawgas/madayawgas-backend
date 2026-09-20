@@ -1,4 +1,18 @@
 const historyService = require('./history.service');
+const { parsePaginationQuery, formatPaginatedEnvelope } = require('../../utils/pagination');
+
+const ALLOWED_HISTORY_SORT_FIELDS = {
+  createdAt: 'created_at',
+  created_at: 'created_at',
+  userName: 'user_name',
+  user_name: 'user_name',
+  userRole: 'user_role',
+  user_role: 'user_role',
+  actionType: 'action_type',
+  action_type: 'action_type',
+  module: 'module',
+  action: 'action',
+};
 
 /**
  * History Controller
@@ -19,7 +33,36 @@ class HistoryController {
         offset,
         startDate,
         endDate,
+        page,
+        pageSize,
+        paginate,
       } = req.query;
+
+      const hasStandardPagination =
+        page !== undefined || pageSize !== undefined || paginate === 'true';
+
+      if (hasStandardPagination) {
+        const pagination = parsePaginationQuery(req.query, {
+          defaultLimit: 20,
+          maxLimit: 100,
+          defaultSort: 'createdAt',
+          defaultOrder: 'DESC',
+          allowedSortFields: ALLOWED_HISTORY_SORT_FIELDS,
+        });
+
+        const { items, meta } = await historyService.getHistoryLogs(
+          {
+            module: module ? String(module) : undefined,
+            actionType: actionType ? String(actionType) : undefined,
+            search: search ? String(search) : undefined,
+            startDate: startDate ? String(startDate) : undefined,
+            endDate: endDate ? String(endDate) : undefined,
+          },
+          pagination
+        );
+
+        return res.status(200).json(formatPaginatedEnvelope(items, meta));
+      }
 
       const result = await historyService.getHistoryLogs({
         module: module ? String(module) : undefined,

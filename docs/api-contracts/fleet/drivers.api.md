@@ -137,7 +137,7 @@ Unassigns the driver currently attached to a vehicle, immediately transitioning 
 
 ### 3. Driver Directory (List All Drivers)
 
-Lists all eligible driver accounts with their live assignment status (`AVAILABLE` vs `ASSIGNED`) and attached truck details.
+Lists all eligible driver accounts with their live assignment status (`AVAILABLE` vs `ASSIGNED`), attached truck details, deterministic sorting, and server-side pagination.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/fleet/drivers`
@@ -146,12 +146,62 @@ Lists all eligible driver accounts with their live assignment status (`AVAILABLE
 
 #### Query Parameters
 
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `search` | String | No | Search keyword matching first name, last name, or username |
-| `availableOnly` | Boolean | No | Filter to only unassigned drivers (`true` / `false`) |
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `page` | Integer | No | `1` | Page number (triggers standardized pagination envelope). Minimum `1`. |
+| `limit` / `pageSize` | Integer | No | `20` | Items per page (clamped between `1` and `100`). Triggers standardized envelope. |
+| `search` | String | No | None | Search keyword matching first name, last name, or username |
+| `availableOnly` | Boolean | No | None | Filter to only unassigned drivers (`true` / `false`) |
+| `sortBy` | String | No | `createdAt` | Sort field: `createdAt`, `username`, `firstName`, `lastName`, `phone`. |
+| `sortOrder` | String | No | `DESC` | Sort direction: `ASC` or `DESC`. |
 
-#### Response: `200 OK` (Success)
+#### Response: `200 OK` (Standardized Paginated Format)
+*Returned when `page`, `limit`, or `pageSize` query parameters are provided.*
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "22222222-3333-4444-5555-666666666666",
+      "username": "sales_user",
+      "firstName": "Juan",
+      "lastName": "Sales",
+      "phone": "+639170000004",
+      "role": "Driver",
+      "isAssigned": true,
+      "status": "ASSIGNED",
+      "assignedTruck": {
+        "id": "33333333-4444-5555-6666-777777777777",
+        "plateNumber": "NGX-2045",
+        "model": "Isuzu Forward FVR 34P"
+      }
+    },
+    {
+      "id": "44444444-5555-6666-7777-888888888888",
+      "username": "driver_two",
+      "firstName": "Pedro",
+      "lastName": "Santos",
+      "phone": "+639170000009",
+      "role": "Driver",
+      "isAssigned": false,
+      "status": "AVAILABLE",
+      "assignedTruck": null
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 2,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+#### Response: `200 OK` (Legacy Unpaginated Format)
+*Preserved for backward compatibility when pagination query parameters are omitted.*
 
 ```json
 {

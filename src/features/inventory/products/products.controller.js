@@ -1,4 +1,18 @@
 const productsService = require('./products.service');
+const { parsePaginationQuery, formatPaginatedEnvelope } = require('../../../utils/pagination');
+
+const ALLOWED_PRODUCT_SORT_FIELDS = {
+  createdAt: 'created_at',
+  created_at: 'created_at',
+  name: 'name',
+  category: 'category',
+  containerType: 'container_type',
+  container_type: 'container_type',
+  netWeightKg: 'net_weight_kg',
+  net_weight_kg: 'net_weight_kg',
+  isActive: 'is_active',
+  is_active: 'is_active',
+};
 
 /**
  * Products Controller
@@ -7,25 +21,42 @@ const productsService = require('./products.service');
 class ProductsController {
   /**
    * GET /api/inventory/products
-   * List all products with optional filters.
+   * List all products with optional filters (legacy) or paginated slice with metadata.
    */
   async getAllProducts(req, res) {
     const { isActive, status, category, containerType, search } = req.query || {};
-    const products = await productsService.getAllProducts({
-      isActive,
-      status,
-      category,
-      containerType,
-      search,
+    const pagination = parsePaginationQuery(req.query, {
+      defaultLimit: 20,
+      maxLimit: 100,
+      defaultSort: 'createdAt',
+      defaultOrder: 'DESC',
+      allowedSortFields: ALLOWED_PRODUCT_SORT_FIELDS,
     });
 
-    return res.status(200).json({
-      status: 'success',
-      data: {
-        count: products.length,
-        products,
-      },
-    });
+    if (!pagination.isPaginated) {
+      const products = await productsService.getAllProducts({
+        isActive,
+        status,
+        category,
+        containerType,
+        search,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: products.length,
+          products,
+        },
+      });
+    }
+
+    const { items, meta } = await productsService.getAllProducts(
+      { isActive, status, category, containerType, search },
+      pagination
+    );
+
+    return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
 
   /**

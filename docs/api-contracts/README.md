@@ -36,6 +36,26 @@ Welcome to the MadayawGas Backend RESTful API documentation. This directory prov
 }
 ```
 
+#### Standard Paginated Envelope (`200 OK`)
+When opt-in pagination parameters (`page`, `limit`, or `pageSize`) are provided on high-volume listing endpoints:
+```json
+{
+  "status": "success",
+  "data": [
+    { "...": "Entity item 1" },
+    { "...": "Entity item 2" }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 45,
+    "totalPages": 3,
+    "hasNextPage": true,
+    "hasPrevPage": false
+  }
+}
+```
+
 #### Error Envelope (`400`, `401`, `403`, `404`, `409`, `500`)
 ```json
 {

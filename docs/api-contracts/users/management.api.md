@@ -29,14 +29,68 @@ If the password is invalid, the API rejects with `401 Unauthorized` (`code: 'INV
 
 ### 1. List All Users
 
-Returns a list of all user accounts.
+Returns a list of all user accounts with support for server-side pagination, search, role filtering, status filtering, and sorting.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/users`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission**: `users.view` or `users.manage`
 
-#### Response: `200 OK` (Success)
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `page` | Integer | No | `1` | Page number (triggers standardized pagination envelope). Minimum `1`. |
+| `limit` / `pageSize` | Integer | No | `20` | Items per page (clamped between `1` and `100`). Triggers standardized envelope. |
+| `search` | String | No | None | Case-insensitive substring search matching `username`, `first_name`, or `last_name`. |
+| `roleId` | UUID | No | None | Filter users assigned to a specific role UUID. |
+| `isActive` | Boolean | No | None | Filter by active account status (`true` / `false`). |
+| `isBlocked` | Boolean | No | None | Filter by blocked status (`true` / `false`). |
+| `sortBy` | String | No | `createdAt` | Sort field: `createdAt`, `username`, `firstName`, `lastName`, `role`, `isActive`, `isBlocked`. |
+| `sortOrder` | String | No | `DESC` | Sort direction: `ASC` or `DESC`. |
+
+#### Response: `200 OK` (Standardized Paginated Format)
+*Returned when `page`, `limit`, or `pageSize` query parameters are provided.*
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "08df2719-0473-4a31-8b5c-dc977d6006c5",
+      "username": "superadmin",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "phone": "+639170000001",
+      "birthdate": null,
+      "role": "Super Admin",
+      "roleId": "d710521e-2549-43dd-a890-470fc0988ef8",
+      "roles": [
+        {
+          "id": "d710521e-2549-43dd-a890-470fc0988ef8",
+          "name": "Super Admin",
+          "isPrimary": true
+        }
+      ],
+      "isActive": true,
+      "isBlocked": false,
+      "mustChangePassword": false,
+      "createdAt": "2026-08-25T08:37:47.789Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 15,
+    "totalPages": 1,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
+}
+```
+
+#### Response: `200 OK` (Legacy Unpaginated Format)
+*Preserved for backward compatibility when pagination query parameters are omitted.*
 
 ```json
 {
