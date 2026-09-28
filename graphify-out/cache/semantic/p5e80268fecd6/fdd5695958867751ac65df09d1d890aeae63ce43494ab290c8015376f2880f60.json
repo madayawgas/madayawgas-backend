@@ -1,0 +1,1 @@
+{"nodes": [{"id": "docs_api_contracts_users_auth_api_md", "label": "Auth API", "file_type": "document", "source_file": "docs/api-contracts/users/auth.api.md", "rationale": "Defines session management and authentication flows."}], "edges": [], "hyperedges": []}

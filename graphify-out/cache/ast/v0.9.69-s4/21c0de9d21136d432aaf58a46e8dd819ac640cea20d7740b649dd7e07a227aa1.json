@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_database_migrations_006_roles_and_permissions_expansion_sql", "label": "006_roles_and_permissions_expansion.sql", "file_type": "code", "source_file": "database/migrations/006_roles_and_permissions_expansion.sql", "source_location": null}], "edges": []}

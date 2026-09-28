@@ -1,0 +1,1 @@
+{"nodes": [{"id": "docs_erd_mermaid_fleet_and_maintenance_erd_md", "label": "Fleet ERD", "file_type": "document", "source_file": "docs/ERD_mermaid/fleet_and_maintenance_erd.md", "rationale": "Database schema for trucks, inspections, incidents, and work orders."}], "edges": [], "hyperedges": []}
