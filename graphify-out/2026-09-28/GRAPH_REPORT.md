@@ -1,13 +1,13 @@
 # Graph Report - madayawgas-backend  (2026-09-28)
 
 ## Corpus Check
-- 115 files · ~117,884 words
+- 115 files · ~119,017 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 8, .example 1)
 
 ## Summary
-- 1295 nodes · 1973 edges · 109 communities (80 shown, 29 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 97 edges (avg confidence: 0.9)
+- 1295 nodes · 1974 edges · 109 communities (80 shown, 29 thin omitted)
+- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 98 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
@@ -123,7 +123,7 @@
 ## God Nodes (most connected - your core abstractions)
 1. `query()` - 134 edges
 2. `MaintenanceRepository` - 44 edges
-3. `4. Recent Work Completed` - 36 edges
+3. `4. Recent Work Completed` - 37 edges
 4. `UsersRepository` - 34 edges
 5. `MaintenanceController` - 26 edges
 6. `MaintenanceService` - 26 edges
@@ -485,7 +485,7 @@ Nodes (3): generateBaseUsername(), resolveUniqueUsername(), sanitizeName()
 
 ## Knowledge Gaps
 - **553 isolated node(s):** `"products"`, `{ execFileSync }`, `fs`, `path`, `fs` (+548 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 634 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 633 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **29 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
@@ -493,14 +493,14 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `query()` connect `query` to `customer.service.js`, `maintenance.service.js`, `MaintenanceRepository`, `auth.service.js`, `fleet.maintenance.test.js`, `history.test.js`, `connection.js`, `ProductsRepository`, `CustomerRepository`, `auth.test.js`, `pagination.test.js`, `permission.test.js`, `availability.repository.js`, `fleet.test.js`, `management.test.js`, `profile.test.js`, `HistoryRepository`, `VehiclesRepository`, `AGENTS.md — MadayawGas Backend System Context & Engineering Handbook`, `history.service.js`?**
   _High betweenness centrality (0.098) - this node is a cross-community bridge._
+- **Why does `4. Recent Work Completed` connect `MaintenanceRepository` to `VehiclesRepository`, `customer.service.js`, `AGENTS.md — MadayawGas Backend System Context & Engineering Handbook`, `maintenance.routes.js`, `history/index.js`, `MaintenanceController`, `ManagementService`, `inventory.routes.js`, `pagination.js`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
 - **Why does `bcrypt` connect `auth.service.js` to `fleet.test.js`, `management.test.js`, `package.json`, `profile.test.js`, `management.service.js`, `fleet.maintenance.test.js`, `auth.test.js`, `pagination.test.js`, `permission.test.js`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
-- **Why does `UsersController` connect `UsersController` to `users.controller.js`, `pagination.js`?**
   _High betweenness centrality (0.031) - this node is a cross-community bridge._
 - **Are the 24 inferred relationships involving `query()` (e.g. with `1. Overview & Tech Stack` and `connection.js`) actually correct?**
   _`query()` has 24 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 35 inferred relationships involving `4. Recent Work Completed` (e.g. with `.checkReceiptNumberExists()` and `.countAllIncidents()`) actually correct?**
-  _`4. Recent Work Completed` has 35 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 36 inferred relationships involving `4. Recent Work Completed` (e.g. with `.getPmOverview()` and `.checkReceiptNumberExists()`) actually correct?**
+  _`4. Recent Work Completed` has 36 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `"products"`, `{ execFileSync }`, `fs` to the rest of the system?**
   _553 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `customer.service.js` be split into smaller, more focused modules?**

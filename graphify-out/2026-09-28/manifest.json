@@ -144,21 +144,21 @@
     "semantic_hash": "e5ae9ce8b6f520e5df4daaf1d3e94b3d"
   },
   "src/features/fleet/availability/availability.controller.js": {
-    "mtime": 1790603192.1209264,
-    "seen": 1790604025.5442092,
-    "ast_hash": "f92fd30b248066be8493ace6849f7026",
+    "mtime": 1790604609.9403682,
+    "seen": 1790604850.4415848,
+    "ast_hash": "b90d900a88efd79aca1d8f8a27f83de3",
     "semantic_hash": ""
   },
   "src/features/fleet/availability/availability.repository.js": {
-    "mtime": 1790598334.5343814,
-    "seen": 1790602334.8425293,
-    "ast_hash": "616e1bae26e8751e8a9fd33064c9bdf5",
+    "mtime": 1790604591.8576086,
+    "seen": 1790604850.4415886,
+    "ast_hash": "db9ecedc3761acab21b4dd008eda9b92",
     "semantic_hash": ""
   },
   "src/features/fleet/availability/availability.service.js": {
-    "mtime": 1790603528.7057297,
-    "seen": 1790604025.5442123,
-    "ast_hash": "c65830d9f093d6b79ce681d67cdc30bd",
+    "mtime": 1790604619.7213802,
+    "seen": 1790604850.441591,
+    "ast_hash": "a0c7a66f2a1ef6f9efae8a1f39b10fc0",
     "semantic_hash": ""
   },
   "src/features/fleet/fleet.routes.js": {
@@ -396,9 +396,9 @@
     "semantic_hash": ""
   },
   "src/test/fleet.test.js": {
-    "mtime": 1790603192.3704264,
-    "seen": 1790604025.544265,
-    "ast_hash": "326ba4bc908e478c9e8f5806915fc6b4",
+    "mtime": 1790604643.9732046,
+    "seen": 1790604850.4417014,
+    "ast_hash": "b1458db7c874fd7dfeed32a51a156c6c",
     "semantic_hash": ""
   },
   "src/test/history.test.js": {
@@ -486,9 +486,9 @@
     "semantic_hash": "687cafd9076ef22a028ab4fbf2247519"
   },
   "docs/api-contracts/fleet/maintenance.api.md": {
-    "mtime": 1790603623.6165752,
-    "seen": 1790604025.544303,
-    "ast_hash": "1a66923423c4bd9855d5decc95b4a056",
+    "mtime": 1790604774.991733,
+    "seen": 1790604850.4417794,
+    "ast_hash": "0f4e350f135a067ed402186a29ebbf70",
     "semantic_hash": ""
   },
   "docs/api-contracts/history/history.api.md": {
@@ -558,9 +558,9 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790602361.0581436,
-    "seen": 1790604025.5442836,
-    "ast_hash": "14ca27ab56469fac7380530659d03e98",
+    "mtime": 1790604037.1465085,
+    "seen": 1790604850.4417427,
+    "ast_hash": "2ab5809039ea548bb72c244efb1e99c8",
     "semantic_hash": ""
   },
   "README.md": {
@@ -588,9 +588,9 @@
     "semantic_hash": ""
   },
   "docs/api-contracts/README.md": {
-    "mtime": 1789910647.8600838,
-    "seen": 1790597770.891179,
-    "ast_hash": "f1d194fd8585ee153323f7f4e6fe33b8",
+    "mtime": 1790604710.6167257,
+    "seen": 1790604850.441761,
+    "ast_hash": "e4e1d28cc79c95f61c0b2516c208ca8b",
     "semantic_hash": ""
   },
   "docs/api-contracts/_archive/fleet-and-maintenance.api.md": {
@@ -624,15 +624,15 @@
     "semantic_hash": ""
   },
   "docs/api-contracts/fleet/availability.api.md": {
-    "mtime": 1790603553.726856,
-    "seen": 1790604025.5443003,
-    "ast_hash": "fd9deafa2e7ea4d201dcd388f30accb3",
+    "mtime": 1790604738.0882728,
+    "seen": 1790604850.4417753,
+    "ast_hash": "37760c25acebe7ee34fee7b040f1b264",
     "semantic_hash": ""
   },
   "docs/api-contracts/fleet/drivers.api.md": {
-    "mtime": 1789910675.26811,
-    "seen": 1790597770.8911903,
-    "ast_hash": "673de0783709b624fad69d5de5ff72df",
+    "mtime": 1790604727.298352,
+    "seen": 1790604850.4417775,
+    "ast_hash": "da70e1b1c46a459728021cb8feb87354",
     "semantic_hash": ""
   },
   "docs/api-contracts/users/profile.api.md": {
