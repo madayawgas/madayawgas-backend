@@ -113,19 +113,73 @@ const EVENT_DEFINITIONS = {
   // ============================================================
   // 2. FLEET MANAGEMENT EVENTS
   // ============================================================
+  VEHICLE_REGISTERED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Registered new fleet vehicle '${p.plateNumber}'${p.model ? ` (${p.model})` : ''}`,
+  },
+  VEHICLE_UPDATED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Updated fleet vehicle details for '${p.plateNumber}'`,
+  },
+  VEHICLE_STATUS_UPDATED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: (p) =>
+      p.status === 'INACTIVE' || p.status === 'RETIRED'
+        ? ACTION_TYPES.DEACTIVATED
+        : ACTION_TYPES.UPDATED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Changed status for vehicle '${p.plateNumber}' to '${p.status}'`,
+  },
+  VEHICLE_DEACTIVATED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: ACTION_TYPES.DEACTIVATED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Deactivated fleet vehicle '${p.plateNumber}' and unassigned driver`,
+  },
+  VEHICLE_DRIVER_ASSIGNED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: ACTION_TYPES.ASSIGNED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Assigned driver '${p.driverName}' to vehicle '${p.plateNumber}'`,
+  },
+  VEHICLE_DRIVER_UNASSIGNED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Unassigned driver from vehicle '${p.plateNumber}'`,
+  },
+  VEHICLE_ODOMETER_RECORDED: {
+    module: MODULES.FLEET_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'vehicle',
+    template: (p) =>
+      `Recorded odometer update for vehicle '${p.plateNumber}' (${p.odometer} km)`,
+  },
+
+  // Legacy TRUCK aliases for backward compatibility
   TRUCK_REGISTERED: {
     module: MODULES.FLEET_MANAGEMENT,
     actionType: ACTION_TYPES.CREATED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Registered new fleet truck '${p.plateNumber}'${p.model ? ` (${p.model})` : ''}`,
+      `Registered new fleet vehicle '${p.plateNumber}'${p.model ? ` (${p.model})` : ''}`,
   },
   TRUCK_UPDATED: {
     module: MODULES.FLEET_MANAGEMENT,
     actionType: ACTION_TYPES.UPDATED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Updated fleet truck details for '${p.plateNumber}'`,
+      `Updated fleet vehicle details for '${p.plateNumber}'`,
   },
   TRUCK_STATUS_UPDATED: {
     module: MODULES.FLEET_MANAGEMENT,
@@ -133,44 +187,44 @@ const EVENT_DEFINITIONS = {
       p.status === 'INACTIVE' || p.status === 'RETIRED'
         ? ACTION_TYPES.DEACTIVATED
         : ACTION_TYPES.UPDATED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Changed status for truck '${p.plateNumber}' to '${p.status}'`,
+      `Changed status for vehicle '${p.plateNumber}' to '${p.status}'`,
   },
   TRUCK_DEACTIVATED: {
     module: MODULES.FLEET_MANAGEMENT,
     actionType: ACTION_TYPES.DEACTIVATED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Deactivated fleet truck '${p.plateNumber}' and unassigned driver`,
+      `Deactivated fleet vehicle '${p.plateNumber}' and unassigned driver`,
   },
   TRUCK_DRIVER_ASSIGNED: {
     module: MODULES.FLEET_MANAGEMENT,
     actionType: ACTION_TYPES.ASSIGNED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Assigned driver '${p.driverName}' to truck '${p.plateNumber}'`,
+      `Assigned driver '${p.driverName}' to vehicle '${p.plateNumber}'`,
   },
   TRUCK_DRIVER_UNASSIGNED: {
     module: MODULES.FLEET_MANAGEMENT,
     actionType: ACTION_TYPES.UPDATED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Unassigned driver from truck '${p.plateNumber}'`,
+      `Unassigned driver from vehicle '${p.plateNumber}'`,
   },
   TRUCK_ODOMETER_RECORDED: {
     module: MODULES.FLEET_MANAGEMENT,
     actionType: ACTION_TYPES.UPDATED,
-    targetType: 'truck',
+    targetType: 'vehicle',
     template: (p) =>
-      `Recorded odometer update for truck '${p.plateNumber}' (${p.odometer} km)`,
+      `Recorded odometer update for vehicle '${p.plateNumber}' (${p.odometer} km)`,
   },
   MAINTENANCE_ODOMETER_LOGGED: {
     module: MODULES.FLEET,
     actionType: ACTION_TYPES.UPDATED,
-    targetType: 'TRUCK',
+    targetType: 'VEHICLE',
     template: (p) =>
-      `Recorded odometer reading for truck ${p.plateNumber}: ${p.odometerKm} km`,
+      `Recorded odometer reading for vehicle ${p.plateNumber}: ${p.odometerKm} km`,
   },
   MAINTENANCE_INSPECTION_RECORDED: {
     module: MODULES.FLEET,
@@ -184,14 +238,21 @@ const EVENT_DEFINITIONS = {
     actionType: ACTION_TYPES.CREATED,
     targetType: 'INCIDENT',
     template: (p) =>
-      `Reported ${p.severity} incident for truck ${p.plateNumber}: ${p.description}`,
+      `Reported ${p.severity} incident for vehicle ${p.plateNumber}: ${p.description}`,
   },
   MAINTENANCE_WORK_ORDER_CREATED: {
     module: MODULES.FLEET,
     actionType: ACTION_TYPES.CREATED,
     targetType: 'WORK_ORDER',
     template: (p) =>
-      `Created work order #${p.workOrderId} for truck ${p.plateNumber}`,
+      `Created work order #${p.workOrderId} for vehicle ${p.plateNumber}`,
+  },
+  MAINTENANCE_APPROVAL_REQUESTED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'APPROVAL_REQUEST',
+    template: (p) =>
+      `Submitted cost approval request (₱${p.amountRequested}) for work order #${p.workOrderId}`,
   },
   MAINTENANCE_APPROVAL_DECIDED: {
     module: MODULES.FLEET,
@@ -205,7 +266,21 @@ const EVENT_DEFINITIONS = {
     actionType: ACTION_TYPES.CREATED,
     targetType: 'MAINTENANCE_LOG',
     template: (p) =>
-      `Finalized maintenance log for work order #${p.workOrderId} (OR #${p.receiptNumber})`,
+      `Finalized maintenance log for work order #${p.workOrderId}${p.receiptNumber ? ` (OR #${p.receiptNumber})` : ''}`,
+  },
+  MAINTENANCE_RECEIPT_ADDED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'RECEIPT',
+    template: (p) =>
+      `Attached receipt #${p.receiptNumber || 'N/A'} (₱${p.amount}) to work order #${p.workOrderId}`,
+  },
+  MAINTENANCE_RECEIPT_DELETED: {
+    module: MODULES.FLEET,
+    actionType: ACTION_TYPES.DELETED,
+    targetType: 'RECEIPT',
+    template: (p) =>
+      `Removed receipt from work order #${p.workOrderId}`,
   },
 
   // ============================================================

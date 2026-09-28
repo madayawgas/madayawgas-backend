@@ -1,5 +1,5 @@
 const availabilityRepository = require('./availability.repository');
-const trucksRepository = require('../trucks/trucks.repository');
+const vehiclesRepository = require('../vehicles/vehicles.repository');
 const { historyService, EVENTS } = require('../../history');
 
 /**
@@ -48,8 +48,11 @@ class AvailabilityService {
       plateNumber: row.plate_number,
       model: row.model,
       yearModel: Number(row.year_model),
+      vehicleType: row.vehicle_type || 'DELIVERY_TRUCK',
       currentOdometer: Number(row.current_odometer),
       lastPmOdometer: Number(row.last_pm_odometer),
+      isPmDue: row.pm_due_flag !== undefined ? Boolean(row.pm_due_flag) : (Number(row.current_odometer) - Number(row.last_pm_odometer) >= 5000),
+      pmDueFlag: row.pm_due_flag !== undefined ? Boolean(row.pm_due_flag) : (Number(row.current_odometer) - Number(row.last_pm_odometer) >= 5000),
       status: row.status,
       operationalStatus: 'ACTIVE',
       isAvailable: true,
@@ -70,18 +73,19 @@ class AvailabilityService {
     return {
       availableCount: availableVehicles.length,
       vehicles: availableVehicles,
+      trucks: availableVehicles,
     };
   }
 
   /**
    * Retrieves the current availability and operational status of a specific vehicle.
    */
-  async getTruckStatus(truckId) {
-    if (!truckId || typeof truckId !== 'string') {
-      throw new Error('Truck ID is required');
+  async getTruckStatus(vehicleId) {
+    if (!vehicleId || typeof vehicleId !== 'string') {
+      throw new Error('Vehicle ID is required');
     }
 
-    const row = await availabilityRepository.getTruckStatusById(truckId);
+    const row = await availabilityRepository.getTruckStatusById(vehicleId);
     if (!row) {
       throw new Error('Vehicle not found');
     }
@@ -90,6 +94,7 @@ class AvailabilityService {
       id: row.id,
       plateNumber: row.plate_number,
       model: row.model,
+      vehicleType: row.vehicle_type || 'DELIVERY_TRUCK',
       status: row.status,
       operationalStatus: row.status,
       isAvailable: row.status === 'ACTIVE',
@@ -106,46 +111,54 @@ class AvailabilityService {
   }
 
   /**
-   * Sets or updates the operational availability status of a vehicle.
-   * Preserves soft-bounded driver assignment during maintenance (UNDER_MAINTENANCE);
-   * clears driver assignment only on permanent deactivation (INACTIVE / RETIRED).
+   * Sets vehicle operational availability status and handles driver assignment state transitions.
+   *
+   * Business Rules:
+   * - ACTIVE -> UNDER_MAINTENANCE: Preserves assigned driver.
+   * - ACTIVE -> INACTIVE / RETIRED: Clears driver assignment, returning driver to AVAILABLE pool.
+   * - Re-activating a deactivated vehicle does NOT automatically re-assign past drivers.
    */
-  async updateTruckStatus(truckId, newStatus) {
-    if (!truckId || typeof truckId !== 'string') {
-      throw new Error('Truck ID is required');
+  async updateTruckStatus(vehicleId, status) {
+    if (!vehicleId || typeof vehicleId !== 'string') {
+      throw new Error('Vehicle ID is required');
     }
 
-    if (!newStatus || typeof newStatus !== 'string') {
+    if (!status || typeof status !== 'string') {
       throw new Error('Status is required');
     }
 
-    const cleanStatus = newStatus.trim().toUpperCase();
-    const allowedStatuses = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
-    if (!allowedStatuses.includes(cleanStatus)) {
-      throw new Error(`Invalid status '${newStatus}'. Allowed values: ${allowedStatuses.join(', ')}`);
+    const cleanStatus = status.trim().toUpperCase();
+    const validStatuses = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
+
+    if (!validStatuses.includes(cleanStatus)) {
+      throw new Error(`Invalid status: ${cleanStatus}. Valid options are: ${validStatuses.join(', ')}`);
     }
 
-    const existingTruck = await trucksRepository.getTruckById(truckId);
-    if (!existingTruck) {
+    const existing = await availabilityRepository.getTruckStatusById(vehicleId);
+    if (!existing) {
       throw new Error('Vehicle not found');
     }
 
-    // Preserve driver during maintenance / active; release driver if deactivated or retired
-    const isDecommissioned = cleanStatus === 'INACTIVE' || cleanStatus === 'RETIRED';
-    const finalDriverId = isDecommissioned ? null : existingTruck.driver_id;
+    const shouldClearDriver = cleanStatus === 'INACTIVE' || cleanStatus === 'RETIRED';
+    const targetDriverId = shouldClearDriver ? null : existing.driver_id;
 
-    await availabilityRepository.updateTruckStatus(truckId, cleanStatus, finalDriverId);
+    await availabilityRepository.updateTruckStatus(vehicleId, cleanStatus, targetDriverId);
 
-    const updated = await this.getTruckStatus(truckId);
+    try {
+      const eventKey = EVENTS.VEHICLE_STATUS_UPDATED || EVENTS.TRUCK_STATUS_UPDATED;
+      await historyService.log(eventKey, {
+        actorUser: null,
+        targetId: vehicleId,
+        payload: {
+          plateNumber: existing.plate_number,
+          status: cleanStatus,
+        },
+      });
+    } catch (auditErr) {
+      console.error('Failed to emit history log for VEHICLE_STATUS_UPDATED:', auditErr);
+    }
 
-    await historyService.log(EVENTS.TRUCK_STATUS_UPDATED, {
-      targetId: truckId,
-      payload: { plateNumber: updated.plateNumber, status: cleanStatus },
-      metadata: { status: cleanStatus, driverId: finalDriverId },
-    });
-
-    // Return the fresh full status representation
-    return updated;
+    return this.getTruckStatus(vehicleId);
   }
 }
 

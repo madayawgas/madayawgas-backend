@@ -20,7 +20,7 @@ class AvailabilityController {
    * GET /api/fleet/availability
    */
   async getAvailability(req, res) {
-    const availability = await availabilityService.getAvailability();
+    const availability = await availabilityService.getAvailability(req.query);
     return res.status(200).json({
       status: 'success',
       data: availability,
@@ -36,6 +36,7 @@ class AvailabilityController {
       return res.status(200).json({
         status: 'success',
         data: {
+          vehicle: vehicleStatus,
           truck: vehicleStatus,
         },
       });
@@ -60,6 +61,7 @@ class AvailabilityController {
         status: 'success',
         message: 'Vehicle availability status updated',
         data: {
+          vehicle: vehicleStatus,
           truck: vehicleStatus,
         },
       });

@@ -59,7 +59,7 @@ test('System Event History Log Subsystem Tests', async (t) => {
     );
     await query(`DELETE FROM customers WHERE name ILIKE '${PREFIX}%'`);
     await query(`DELETE FROM products WHERE name ILIKE '${PREFIX}%'`);
-    await query(`DELETE FROM trucks WHERE plate_number ILIKE '${PREFIX}%'`);
+    await query(`DELETE FROM vehicles WHERE plate_number ILIKE '${PREFIX}%'`);
     await query(
       `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username ILIKE '${PREFIX}%')`
     );
@@ -316,7 +316,7 @@ test('System Event History Log Subsystem Tests', async (t) => {
       {
         hostname: '127.0.0.1',
         port,
-        path: '/api/fleet/trucks',
+        path: '/api/fleet/vehicles',
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
       },
@@ -415,7 +415,7 @@ test('System Event History Log Subsystem Tests', async (t) => {
       status: 'UNDER_MAINTENANCE',
     });
     assert.equal(truckMaint.actionType, 'Updated');
-    assert.equal(truckMaint.details, "Changed status for truck 'XYZ-1234' to 'UNDER_MAINTENANCE'");
+    assert.equal(truckMaint.details, "Changed status for vehicle 'XYZ-1234' to 'UNDER_MAINTENANCE'");
 
     const truckRetired = resolveEvent(EVENTS.TRUCK_STATUS_UPDATED, {
       plateNumber: 'XYZ-1234',
@@ -452,8 +452,8 @@ test('System Event History Log Subsystem Tests', async (t) => {
     });
     assert.equal(odoResolved.module, 'Fleet Management');
     assert.equal(odoResolved.actionType, 'Updated');
-    assert.equal(odoResolved.targetType, 'TRUCK');
-    assert.equal(odoResolved.details, 'Recorded odometer reading for truck ABC-1001: 45200 km');
+    assert.equal(odoResolved.targetType, 'VEHICLE');
+    assert.equal(odoResolved.details, 'Recorded odometer reading for vehicle ABC-1001: 45200 km');
 
     const inspResolved = resolveEvent(EVENTS.MAINTENANCE_INSPECTION_RECORDED, {
       plateNumber: 'ABC-1003',
@@ -472,7 +472,7 @@ test('System Event History Log Subsystem Tests', async (t) => {
     assert.equal(incResolved.module, 'Fleet Management');
     assert.equal(incResolved.actionType, 'Created');
     assert.equal(incResolved.targetType, 'INCIDENT');
-    assert.equal(incResolved.details, 'Reported HIGH incident for truck ABC-1003: Brake fluid leakage on descent');
+    assert.equal(incResolved.details, 'Reported HIGH incident for vehicle ABC-1003: Brake fluid leakage on descent');
 
     const woResolved = resolveEvent(EVENTS.MAINTENANCE_WORK_ORDER_CREATED, {
       workOrderId: 'WO-2026-001',
@@ -481,7 +481,7 @@ test('System Event History Log Subsystem Tests', async (t) => {
     assert.equal(woResolved.module, 'Fleet Management');
     assert.equal(woResolved.actionType, 'Created');
     assert.equal(woResolved.targetType, 'WORK_ORDER');
-    assert.equal(woResolved.details, 'Created work order #WO-2026-001 for truck ABC-1003');
+    assert.equal(woResolved.details, 'Created work order #WO-2026-001 for vehicle ABC-1003');
 
     const appResolved = resolveEvent(EVENTS.MAINTENANCE_APPROVAL_DECIDED, {
       workOrderId: 'WO-2026-001',

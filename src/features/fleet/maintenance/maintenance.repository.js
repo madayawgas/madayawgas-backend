@@ -13,11 +13,12 @@ class MaintenanceRepository {
    * @param {Object} [client] - Optional pg transaction client
    * @returns {Promise<Object>} Created odometer log row
    */
-  async insertOdometerLog({ truckId, odometerReading, loggedBy, source, notes }, client = null) {
+  async insertOdometerLog({ vehicleId, truckId, odometerReading, loggedBy, source, notes }, client = null) {
+    const targetVehicleId = vehicleId || truckId;
     const db = client || { query };
     const sql = `
       INSERT INTO vehicle_odometer_logs (
-        truck_id,
+        vehicle_id,
         odometer_reading,
         logged_by,
         source,
@@ -27,7 +28,8 @@ class MaintenanceRepository {
       VALUES ($1, $2, $3, $4, $5, NOW())
       RETURNING 
         id,
-        truck_id,
+        vehicle_id,
+        vehicle_id AS truck_id,
         odometer_reading,
         logged_by,
         source,
@@ -36,7 +38,7 @@ class MaintenanceRepository {
     `;
 
     const result = await db.query(sql, [
-      truckId,
+      targetVehicleId,
       odometerReading,
       loggedBy || null,
       source || 'POST_DISPATCH_RETURN',
@@ -55,7 +57,7 @@ class MaintenanceRepository {
   async updateTruckOdometer({ truckId, currentOdometer }, client = null) {
     const db = client || { query };
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET 
         current_odometer = $1,
         updated_at = NOW()
@@ -95,7 +97,7 @@ class MaintenanceRepository {
         t.driver_id,
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name
-      FROM trucks t
+      FROM vehicles t
       LEFT JOIN users u ON t.driver_id = u.id
       WHERE t.id = $1
     `;
@@ -114,7 +116,7 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         vol.id,
-        vol.truck_id,
+        vol.vehicle_id,
         vol.odometer_reading,
         vol.logged_by,
         vol.source,
@@ -125,7 +127,7 @@ class MaintenanceRepository {
         u.last_name AS logged_by_last_name
       FROM vehicle_odometer_logs vol
       LEFT JOIN users u ON vol.logged_by = u.id
-      WHERE vol.truck_id = $1
+      WHERE vol.vehicle_id = $1
       ORDER BY vol.logged_at DESC
       LIMIT $2 OFFSET $3
     `;
@@ -143,7 +145,7 @@ class MaintenanceRepository {
     const sql = `
       SELECT COUNT(*)::int AS count
       FROM vehicle_odometer_logs
-      WHERE truck_id = $1
+      WHERE vehicle_id = $1
     `;
 
     const result = await query(sql, [truckId]);
@@ -175,11 +177,8 @@ class MaintenanceRepository {
 
     if (isPmDue !== undefined && isPmDue !== null && isPmDue !== '') {
       const pmBool = isPmDue === true || isPmDue === 'true';
-      if (pmBool) {
-        conditions.push(`(t.current_odometer - t.last_pm_odometer) >= 5000`);
-      } else {
-        conditions.push(`(t.current_odometer - t.last_pm_odometer) < 5000`);
-      }
+      conditions.push(`t.pm_due_flag = $${paramIndex++}`);
+      params.push(pmBool);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -190,21 +189,20 @@ class MaintenanceRepository {
         t.plate_number,
         t.model,
         t.year_model,
+        t.vehicle_type,
         t.status,
         t.current_odometer,
         t.last_pm_odometer,
         (t.current_odometer - t.last_pm_odometer) AS distance_since_pm,
-        CASE 
-          WHEN (t.current_odometer - t.last_pm_odometer) >= 5000 THEN TRUE 
-          ELSE FALSE 
-        END AS is_pm_due,
+        t.pm_due_flag AS is_pm_due,
+        t.pm_due_flag,
         GREATEST(0, 5000 - (t.current_odometer - t.last_pm_odometer)) AS remaining_km_before_pm,
         t.driver_id,
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name,
         t.created_at,
         t.updated_at
-      FROM trucks t
+      FROM vehicles t
       LEFT JOIN users u ON t.driver_id = u.id
       ${whereClause}
       ORDER BY 
@@ -226,7 +224,7 @@ class MaintenanceRepository {
   async updateTruckStatus({ truckId, status }, client = null) {
     const db = client || { query };
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET 
         status = $1,
         updated_at = NOW()
@@ -257,34 +255,39 @@ class MaintenanceRepository {
    * @param {Object} [client] - Optional pg transaction client
    * @returns {Promise<Object>} Created inspection record
    */
-  async insertInspection({ truckId, inspectorId, result, findings, issueDetected, inspectionDate }, client = null) {
+  async insertInspection({ vehicleId, truckId, inspectorId, result, findings, issueDetected, allowDispatch = true, inspectionDate }, client = null) {
+    const targetVehicleId = vehicleId || truckId;
     const db = client || { query };
     const sql = `
       INSERT INTO vehicle_inspections (
-        truck_id,
+        vehicle_id,
         inspector_id,
         result,
         findings,
         issue_detected,
+        allow_dispatch,
         inspection_date
       )
-      VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()))
+      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()))
       RETURNING 
         id,
-        truck_id,
+        vehicle_id,
+        vehicle_id AS truck_id,
         inspector_id,
         result,
         findings,
         issue_detected,
+        allow_dispatch,
         inspection_date
     `;
 
     const res = await db.query(sql, [
-      truckId,
+      targetVehicleId,
       inspectorId || null,
       result,
       findings,
       issueDetected !== undefined ? issueDetected : true,
+      allowDispatch !== undefined ? allowDispatch : true,
       inspectionDate || null,
     ]);
 
@@ -298,7 +301,7 @@ class MaintenanceRepository {
    * @returns {Promise<Array<Object>>} Array of inspection records
    */
   async getInspectionsByTruck(truckId, { limit = 50, offset = 0, result = null } = {}) {
-    const conditions = ['vi.truck_id = $1'];
+    const conditions = ['vi.vehicle_id = $1'];
     const params = [truckId];
     let paramIndex = 2;
 
@@ -312,11 +315,12 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         vi.id,
-        vi.truck_id,
+        vi.vehicle_id,
         vi.inspector_id,
         vi.result,
         vi.findings,
         vi.issue_detected,
+        vi.allow_dispatch,
         vi.inspection_date,
         u.username AS inspector_username,
         u.first_name AS inspector_first_name,
@@ -326,7 +330,7 @@ class MaintenanceRepository {
         t.status AS truck_status
       FROM vehicle_inspections vi
       LEFT JOIN users u ON vi.inspector_id = u.id
-      JOIN trucks t ON vi.truck_id = t.id
+      JOIN vehicles t ON vi.vehicle_id = t.id
       WHERE ${conditions.join(' AND ')}
       ORDER BY vi.inspection_date DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -343,7 +347,7 @@ class MaintenanceRepository {
    * @returns {Promise<number>} Total inspection count
    */
   async countInspectionsByTruck(truckId, { result = null } = {}) {
-    const conditions = ['truck_id = $1'];
+    const conditions = ['vehicle_id = $1'];
     const params = [truckId];
 
     if (result) {
@@ -370,11 +374,12 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         vi.id,
-        vi.truck_id,
+        vi.vehicle_id,
         vi.inspector_id,
         vi.result,
         vi.findings,
         vi.issue_detected,
+        vi.allow_dispatch,
         vi.inspection_date,
         u.username AS inspector_username,
         u.first_name AS inspector_first_name,
@@ -384,7 +389,7 @@ class MaintenanceRepository {
         t.status AS truck_status
       FROM vehicle_inspections vi
       LEFT JOIN users u ON vi.inspector_id = u.id
-      JOIN trucks t ON vi.truck_id = t.id
+      JOIN vehicles t ON vi.vehicle_id = t.id
       WHERE vi.id = $1
     `;
 
@@ -432,11 +437,12 @@ class MaintenanceRepository {
    * @param {Object} [client] - Optional pg transaction client
    * @returns {Promise<Object>} Created incident report row
    */
-  async insertIncidentReport({ truckId, reporterId, incidentTypeId, severity, incidentLocation, description, reportDate }, client = null) {
+  async insertIncidentReport({ vehicleId, truckId, reporterId, incidentTypeId, severity, incidentLocation, description, reportDate }, client = null) {
+    const targetVehicleId = vehicleId || truckId;
     const db = client || { query };
     const sql = `
       INSERT INTO incident_reports (
-        truck_id,
+        vehicle_id,
         reporter_id,
         incident_type_id,
         severity,
@@ -447,7 +453,8 @@ class MaintenanceRepository {
       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()))
       RETURNING 
         id,
-        truck_id,
+        vehicle_id,
+        vehicle_id AS truck_id,
         reporter_id,
         incident_type_id,
         severity,
@@ -457,7 +464,7 @@ class MaintenanceRepository {
     `;
 
     const res = await db.query(sql, [
-      truckId,
+      targetVehicleId,
       reporterId || null,
       incidentTypeId,
       severity,
@@ -479,7 +486,8 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         ir.id,
-        ir.truck_id,
+        ir.vehicle_id,
+        ir.vehicle_id AS truck_id,
         ir.reporter_id,
         ir.incident_type_id,
         it.type_name AS incident_type_name,
@@ -496,8 +504,8 @@ class MaintenanceRepository {
       FROM incident_reports ir
       JOIN incident_types it ON ir.incident_type_id = it.id
       LEFT JOIN users u ON ir.reporter_id = u.id
-      JOIN trucks t ON ir.truck_id = t.id
-      WHERE ir.truck_id = $1
+      JOIN vehicles t ON ir.vehicle_id = t.id
+      WHERE ir.vehicle_id = $1
       ORDER BY ir.report_date DESC
       LIMIT $2 OFFSET $3
     `;
@@ -515,7 +523,7 @@ class MaintenanceRepository {
     const sql = `
       SELECT COUNT(*)::int AS count
       FROM incident_reports
-      WHERE truck_id = $1
+      WHERE vehicle_id = $1
     `;
 
     const res = await query(sql, [truckId]);
@@ -535,7 +543,7 @@ class MaintenanceRepository {
     let paramIndex = 1;
 
     if (truckId) {
-      conditions.push(`ir.truck_id = $${paramIndex++}`);
+      conditions.push(`ir.vehicle_id = $${paramIndex++}`);
       params.push(truckId);
     }
 
@@ -576,7 +584,8 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         ir.id,
-        ir.truck_id,
+        ir.vehicle_id,
+        ir.vehicle_id AS truck_id,
         ir.reporter_id,
         ir.incident_type_id,
         it.type_name AS incident_type_name,
@@ -593,7 +602,7 @@ class MaintenanceRepository {
       FROM incident_reports ir
       JOIN incident_types it ON ir.incident_type_id = it.id
       LEFT JOIN users u ON ir.reporter_id = u.id
-      JOIN trucks t ON ir.truck_id = t.id
+      JOIN vehicles t ON ir.vehicle_id = t.id
       ${whereClause}
       ORDER BY ir.report_date DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -615,7 +624,7 @@ class MaintenanceRepository {
     let paramIndex = 1;
 
     if (truckId) {
-      conditions.push(`ir.truck_id = $${paramIndex++}`);
+      conditions.push(`ir.vehicle_id = $${paramIndex++}`);
       params.push(truckId);
     }
 
@@ -656,7 +665,7 @@ class MaintenanceRepository {
       SELECT COUNT(*)::int AS count
       FROM incident_reports ir
       JOIN incident_types it ON ir.incident_type_id = it.id
-      JOIN trucks t ON ir.truck_id = t.id
+      JOIN vehicles t ON ir.vehicle_id = t.id
       ${whereClause}
     `;
 
@@ -673,7 +682,8 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         ir.id,
-        ir.truck_id,
+        ir.vehicle_id,
+        ir.vehicle_id AS truck_id,
         ir.reporter_id,
         ir.incident_type_id,
         it.type_name AS incident_type_name,
@@ -690,7 +700,7 @@ class MaintenanceRepository {
       FROM incident_reports ir
       JOIN incident_types it ON ir.incident_type_id = it.id
       LEFT JOIN users u ON ir.reporter_id = u.id
-      JOIN trucks t ON ir.truck_id = t.id
+      JOIN vehicles t ON ir.vehicle_id = t.id
       WHERE ir.id = $1
     `;
 
@@ -737,12 +747,14 @@ class MaintenanceRepository {
    */
   async insertWorkOrder(
     {
+      vehicleId,
       truckId,
       creatorId,
       maintenanceTypeId,
       status = 'PENDING',
       inspectionId = null,
       incidentReportId = null,
+      requestDate = null,
       scheduledDate = null,
       shopName = null,
       estimatedCost = 0.0,
@@ -750,27 +762,13 @@ class MaintenanceRepository {
     },
     client = null
   ) {
+    const targetVehicleId = vehicleId || truckId;
     const db = client || { query };
     const sql = `
       INSERT INTO work_orders (
-        truck_id,
+        vehicle_id,
         creator_id,
         maintenance_type_id,
-        status,
-        inspection_id,
-        incident_report_id,
-        scheduled_date,
-        shop_name,
-        estimated_cost,
-        description
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING 
-        id,
-        truck_id,
-        creator_id,
-        maintenance_type_id,
-        status,
         inspection_id,
         incident_report_id,
         request_date,
@@ -778,21 +776,41 @@ class MaintenanceRepository {
         shop_name,
         estimated_cost,
         description,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()), $7, $8, $9, $10, $11)
+      RETURNING 
+        id,
+        vehicle_id,
+        vehicle_id AS truck_id,
+        creator_id,
+        maintenance_type_id,
+        inspection_id,
+        incident_report_id,
+        request_date,
+        scheduled_date,
+        shop_name,
+        estimated_cost,
+        description,
+        status,
         created_at,
         updated_at
     `;
+
     const res = await db.query(sql, [
-      truckId,
+      targetVehicleId,
       creatorId || null,
       maintenanceTypeId,
-      status,
       inspectionId || null,
       incidentReportId || null,
+      requestDate || null,
       scheduledDate || null,
       shopName || null,
       estimatedCost,
       description,
+      status || 'PENDING',
     ]);
+
     return res.rows[0];
   }
 
@@ -804,7 +822,7 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         wo.id,
-        wo.truck_id,
+        wo.vehicle_id,
         wo.creator_id,
         wo.maintenance_type_id,
         mt.type_name AS maintenance_type_name,
@@ -837,12 +855,17 @@ class MaintenanceRepository {
         du.first_name AS decider_first_name,
         du.last_name AS decider_last_name,
         ml.id AS maintenance_log_id,
-        ml.official_receipt_number
+        ml.total_cost
       FROM work_orders wo
-      JOIN trucks t ON wo.truck_id = t.id
+      JOIN vehicles t ON wo.vehicle_id = t.id
       JOIN maintenance_types mt ON wo.maintenance_type_id = mt.id
       LEFT JOIN users u ON wo.creator_id = u.id
-      LEFT JOIN approval_requests ar ON wo.id = ar.work_order_id
+      LEFT JOIN LATERAL (
+        SELECT * FROM approval_requests
+        WHERE work_order_id = wo.id
+        ORDER BY requested_date DESC, created_at DESC
+        LIMIT 1
+      ) ar ON TRUE
       LEFT JOIN users du ON ar.decider_id = du.id
       LEFT JOIN maintenance_logs ml ON wo.id = ml.work_order_id
       WHERE wo.id = $1
@@ -860,7 +883,7 @@ class MaintenanceRepository {
     let paramIndex = 1;
 
     if (filters.truckId) {
-      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      conditions.push(`wo.vehicle_id = $${paramIndex++}`);
       params.push(filters.truckId);
     }
 
@@ -888,7 +911,7 @@ class MaintenanceRepository {
     const sql = `
       SELECT 
         wo.id,
-        wo.truck_id,
+        wo.vehicle_id,
         wo.creator_id,
         wo.maintenance_type_id,
         mt.type_name AS maintenance_type_name,
@@ -911,10 +934,15 @@ class MaintenanceRepository {
         ar.id AS approval_request_id,
         ar.is_approved AS approval_is_approved
       FROM work_orders wo
-      JOIN trucks t ON wo.truck_id = t.id
+      JOIN vehicles t ON wo.vehicle_id = t.id
       JOIN maintenance_types mt ON wo.maintenance_type_id = mt.id
       LEFT JOIN users u ON wo.creator_id = u.id
-      LEFT JOIN approval_requests ar ON wo.id = ar.work_order_id
+      LEFT JOIN LATERAL (
+        SELECT id, is_approved FROM approval_requests
+        WHERE work_order_id = wo.id
+        ORDER BY requested_date DESC, created_at DESC
+        LIMIT 1
+      ) ar ON TRUE
       ${whereClause}
       ORDER BY wo.created_at DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -933,7 +961,7 @@ class MaintenanceRepository {
     let paramIndex = 1;
 
     if (filters.truckId) {
-      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      conditions.push(`wo.vehicle_id = $${paramIndex++}`);
       params.push(filters.truckId);
     }
 
@@ -960,7 +988,7 @@ class MaintenanceRepository {
     const sql = `
       SELECT COUNT(*)::int AS count
       FROM work_orders wo
-      JOIN trucks t ON wo.truck_id = t.id
+      JOIN vehicles t ON wo.vehicle_id = t.id
       ${whereClause}
     `;
 
@@ -1008,7 +1036,8 @@ class MaintenanceRepository {
   }
 
   /**
-   * Updates approval request decision.
+   * Updates pending approval request decision.
+   * Targets the currently pending request (is_approved IS NULL).
    */
   async updateApprovalRequest({ workOrderId, deciderId, isApproved, remarks = null }, client = null) {
     const db = client || { query };
@@ -1019,7 +1048,7 @@ class MaintenanceRepository {
         is_approved = $2,
         remarks = $3,
         decided_date = NOW()
-      WHERE work_order_id = $4
+      WHERE work_order_id = $4 AND is_approved IS NULL
       RETURNING *
     `;
     const res = await db.query(sql, [deciderId, isApproved, remarks, workOrderId]);
@@ -1027,7 +1056,48 @@ class MaintenanceRepository {
   }
 
   /**
-   * Retrieves approval request by work order ID.
+   * Retrieves the active pending approval request for a work order if one exists.
+   */
+  async getPendingApprovalRequestByWorkOrderId(workOrderId, client = null) {
+    const db = client || { query };
+    const sql = `
+      SELECT 
+        ar.*,
+        u.username AS decider_username,
+        u.first_name AS decider_first_name,
+        u.last_name AS decider_last_name
+      FROM approval_requests ar
+      LEFT JOIN users u ON ar.decider_id = u.id
+      WHERE ar.work_order_id = $1 AND ar.is_approved IS NULL
+      ORDER BY ar.created_at DESC
+      LIMIT 1
+    `;
+    const res = await db.query(sql, [workOrderId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Retrieves all approval requests for a work order in chronological descending order.
+   */
+  async getApprovalRequestsByWorkOrderId(workOrderId, client = null) {
+    const db = client || { query };
+    const sql = `
+      SELECT 
+        ar.*,
+        u.username AS decider_username,
+        u.first_name AS decider_first_name,
+        u.last_name AS decider_last_name
+      FROM approval_requests ar
+      LEFT JOIN users u ON ar.decider_id = u.id
+      WHERE ar.work_order_id = $1
+      ORDER BY ar.requested_date DESC, ar.created_at DESC
+    `;
+    const res = await db.query(sql, [workOrderId]);
+    return res.rows;
+  }
+
+  /**
+   * Retrieves the latest approval request by work order ID.
    */
   async getApprovalRequestByWorkOrderId(workOrderId, client = null) {
     const db = client || { query };
@@ -1040,8 +1110,27 @@ class MaintenanceRepository {
       FROM approval_requests ar
       LEFT JOIN users u ON ar.decider_id = u.id
       WHERE ar.work_order_id = $1
+      ORDER BY ar.requested_date DESC, ar.created_at DESC
+      LIMIT 1
     `;
     const res = await db.query(sql, [workOrderId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Updates the estimated cost on a work order.
+   */
+  async updateWorkOrderEstimatedCost({ id, estimatedCost }, client = null) {
+    const db = client || { query };
+    const sql = `
+      UPDATE work_orders
+      SET 
+        estimated_cost = $1,
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `;
+    const res = await db.query(sql, [estimatedCost, id]);
     return res.rows[0] || null;
   }
 
@@ -1068,8 +1157,8 @@ class MaintenanceRepository {
   async checkReceiptNumberExists(receiptNumber, client = null) {
     const db = client || { query };
     const sql = `
-      SELECT id FROM maintenance_logs
-      WHERE LOWER(official_receipt_number) = LOWER($1)
+      SELECT id FROM work_order_receipts
+      WHERE LOWER(receipt_number) = LOWER($1)
     `;
     const res = await db.query(sql, [receiptNumber.trim()]);
     return Boolean(res.rows[0]);
@@ -1089,7 +1178,6 @@ class MaintenanceRepository {
       laborCost = 0.0,
       downtimeDays = 0,
       odometerAtService,
-      officialReceiptNumber,
     },
     client = null
   ) {
@@ -1104,10 +1192,9 @@ class MaintenanceRepository {
         parts_cost,
         labor_cost,
         downtime_days,
-        odometer_at_service,
-        official_receipt_number
+        odometer_at_service
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
     const res = await db.query(sql, [
@@ -1120,7 +1207,6 @@ class MaintenanceRepository {
       laborCost,
       downtimeDays,
       odometerAtService,
-      officialReceiptNumber.trim(),
     ]);
     return res.rows[0];
   }
@@ -1131,7 +1217,7 @@ class MaintenanceRepository {
   async resetTruckPmOdometer({ truckId, serviceOdometer }, client = null) {
     const db = client || { query };
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET 
         last_pm_odometer = $1,
         current_odometer = GREATEST(current_odometer, $1),
@@ -1152,7 +1238,7 @@ class MaintenanceRepository {
     let paramIndex = 1;
 
     if (filters.truckId) {
-      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      conditions.push(`wo.vehicle_id = $${paramIndex++}`);
       params.push(filters.truckId);
     }
 
@@ -1173,7 +1259,7 @@ class MaintenanceRepository {
 
     if (filters.search) {
       conditions.push(
-        `(ml.official_receipt_number ILIKE $${paramIndex} OR t.plate_number ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex})`
+        `(ml.total_cost::text ILIKE $${paramIndex} OR t.plate_number ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex} OR wo.description ILIKE $${paramIndex})`
       );
       params.push(`%${filters.search}%`);
       paramIndex++;
@@ -1193,12 +1279,13 @@ class MaintenanceRepository {
         ml.date_resolved,
         ml.parts_cost,
         ml.labor_cost,
-        (ml.parts_cost + ml.labor_cost) AS total_cost,
+        ml.total_cost,
         ml.downtime_days,
         ml.odometer_at_service,
-        ml.official_receipt_number,
         ml.created_at,
-        wo.truck_id,
+        (SELECT COUNT(*)::int FROM work_order_receipts wor WHERE wor.work_order_id = wo.id) AS receipts_count,
+        (SELECT wor.receipt_number FROM work_order_receipts wor WHERE wor.work_order_id = wo.id ORDER BY wor.created_at DESC LIMIT 1) AS primary_receipt_number,
+        wo.vehicle_id,
         wo.shop_name,
         wo.description AS work_order_description,
         t.plate_number,
@@ -1207,7 +1294,7 @@ class MaintenanceRepository {
       FROM maintenance_logs ml
       JOIN maintenance_types mt ON ml.maintenance_type_id = mt.id
       JOIN work_orders wo ON ml.work_order_id = wo.id
-      JOIN trucks t ON wo.truck_id = t.id
+      JOIN vehicles t ON wo.vehicle_id = t.id
       ${whereClause}
       ORDER BY ml.date_resolved DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -1226,7 +1313,7 @@ class MaintenanceRepository {
     let paramIndex = 1;
 
     if (filters.truckId) {
-      conditions.push(`wo.truck_id = $${paramIndex++}`);
+      conditions.push(`wo.vehicle_id = $${paramIndex++}`);
       params.push(filters.truckId);
     }
 
@@ -1247,7 +1334,7 @@ class MaintenanceRepository {
 
     if (filters.search) {
       conditions.push(
-        `(ml.official_receipt_number ILIKE $${paramIndex} OR t.plate_number ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex})`
+        `(ml.total_cost::text ILIKE $${paramIndex} OR t.plate_number ILIKE $${paramIndex} OR wo.shop_name ILIKE $${paramIndex} OR wo.description ILIKE $${paramIndex})`
       );
       params.push(`%${filters.search}%`);
       paramIndex++;
@@ -1259,7 +1346,7 @@ class MaintenanceRepository {
       SELECT COUNT(*)::int AS count
       FROM maintenance_logs ml
       JOIN work_orders wo ON ml.work_order_id = wo.id
-      JOIN trucks t ON wo.truck_id = t.id
+      JOIN vehicles t ON wo.vehicle_id = t.id
       ${whereClause}
     `;
 
@@ -1291,7 +1378,7 @@ class MaintenanceRepository {
     let paramIndex = 2;
 
     if (truckId && typeof truckId === 'string' && truckId.trim().length > 0) {
-      conditions.push(`ir.truck_id = $${paramIndex++}`);
+      conditions.push(`ir.vehicle_id = $${paramIndex++}`);
       params.push(truckId.trim());
     }
 
@@ -1299,7 +1386,8 @@ class MaintenanceRepository {
 
     const sql = `
       SELECT 
-        ir.truck_id,
+        ir.vehicle_id,
+        ir.vehicle_id AS truck_id,
         t.plate_number,
         t.model AS truck_model,
         ir.incident_type_id,
@@ -1310,9 +1398,9 @@ class MaintenanceRepository {
         ARRAY_AGG(ir.description ORDER BY ir.report_date DESC) AS descriptions
       FROM incident_reports ir
       JOIN incident_types it ON ir.incident_type_id = it.id
-      JOIN trucks t ON ir.truck_id = t.id
+      JOIN vehicles t ON ir.vehicle_id = t.id
       WHERE ${conditions.join(' AND ')}
-      GROUP BY ir.truck_id, t.plate_number, t.model, ir.incident_type_id, it.type_name
+      GROUP BY ir.vehicle_id, t.plate_number, t.model, ir.incident_type_id, it.type_name
       HAVING COUNT(*) >= $${paramIndex}
       ORDER BY occurrence_count DESC, latest_incident_date DESC
     `;
@@ -1320,6 +1408,109 @@ class MaintenanceRepository {
     const res = await db.query(sql, params);
     return res.rows;
   }
+
+  // ============================================================
+  // WORK ORDER RECEIPTS QUERIES (0..N AUDIT ATTACHMENTS)
+  // ============================================================
+
+  /**
+   * Inserts a receipt audit attachment for a work order.
+   */
+  async insertWorkOrderReceipt(
+    {
+      workOrderId,
+      uploadedBy,
+      fileUrl,
+      receiptNumber = null,
+      vendorName = null,
+      amount = 0.0,
+      receiptType = 'PARTS',
+      receiptDate = null,
+    },
+    client = null
+  ) {
+    const db = client || { query };
+    const sql = `
+      INSERT INTO work_order_receipts (
+        work_order_id,
+        uploaded_by,
+        file_url,
+        receipt_number,
+        vendor_name,
+        amount,
+        receipt_type,
+        receipt_date
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `;
+    const res = await db.query(sql, [
+      workOrderId,
+      uploadedBy || null,
+      fileUrl,
+      receiptNumber ? receiptNumber.trim() : null,
+      vendorName ? vendorName.trim() : null,
+      amount,
+      receiptType,
+      receiptDate || null,
+    ]);
+    return res.rows[0];
+  }
+
+  /**
+   * Retrieves all receipts attached to a specific work order.
+   */
+  async getReceiptsByWorkOrderId(workOrderId) {
+    const sql = `
+      SELECT 
+        wor.id,
+        wor.work_order_id,
+        wor.uploaded_by,
+        wor.file_url,
+        wor.receipt_number,
+        wor.vendor_name,
+        wor.amount,
+        wor.receipt_type,
+        wor.receipt_date,
+        wor.created_at,
+        u.username AS uploader_username,
+        u.first_name AS uploader_first_name,
+        u.last_name AS uploader_last_name
+      FROM work_order_receipts wor
+      LEFT JOIN users u ON wor.uploaded_by = u.id
+      WHERE wor.work_order_id = $1
+      ORDER BY wor.created_at DESC
+    `;
+    const res = await query(sql, [workOrderId]);
+    return res.rows;
+  }
+
+  /**
+   * Retrieves a single receipt by ID.
+   */
+  async getReceiptById(receiptId) {
+    const sql = `
+      SELECT * FROM work_order_receipts
+      WHERE id = $1
+    `;
+    const res = await query(sql, [receiptId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Deletes a receipt attachment.
+   */
+  async deleteReceipt(receiptId, client = null) {
+    const db = client || { query };
+    const sql = `
+      DELETE FROM work_order_receipts
+      WHERE id = $1
+      RETURNING *
+    `;
+    const res = await db.query(sql, [receiptId]);
+    return res.rows[0] || null;
+  }
 }
+
 
 module.exports = new MaintenanceRepository();

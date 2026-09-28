@@ -41,7 +41,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   beforeEach(async () => {
     // 1. Clean test records with isolation prefix test_fleet_ and TEST-FLT-
     await query(`DELETE FROM history_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%') OR details LIKE '%TEST-FLT-%' OR details LIKE '%TEST-DUP-%'`);
-    await query(`DELETE FROM trucks WHERE plate_number LIKE 'TEST-FLT-%' OR plate_number LIKE 'TEST-DUP-%'`);
+    await query(`DELETE FROM vehicles WHERE plate_number LIKE 'TEST-FLT-%' OR plate_number LIKE 'TEST-DUP-%'`);
     await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_fleet_%')`);
     await query(`DELETE FROM users WHERE username LIKE 'test_fleet_%'`);
@@ -125,7 +125,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(salesOverview.status, 403);
 
     // 3) Sales Person (lacks fleet.manage) -> 403 Forbidden
-    const salesCreate = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const salesCreate = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -148,7 +148,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   await t.test('2. View Fleet Overview and Fleet Availability with Soft-Bounded Default Driver', async () => {
     // Create one active truck with soft-bounded driver, one active unassigned truck, and one under-maintenance truck
     await query(
-      `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status, driver_id)
+      `INSERT INTO vehicles (plate_number, model, year_model, current_odometer, last_pm_odometer, status, driver_id)
        VALUES ('TEST-FLT-101', 'Isuzu Elf', 2022, 10000, 8000, 'ACTIVE', $1),
               ('TEST-FLT-102', 'Fuso Canter', 2022, 15000, 12000, 'ACTIVE', NULL),
               ('TEST-FLT-103', 'Hino 300', 2021, 25000, 20000, 'UNDER_MAINTENANCE', NULL)`,
@@ -186,11 +186,11 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   });
 
   // ------------------------------------------------------------
-  // 3. Register Vehicle (POST /api/fleet/trucks)
+  // 3. Register Vehicle (POST /api/fleet/vehicles)
   // ------------------------------------------------------------
   await t.test('3. Register Vehicle - Validation, Initial Driver, & Duplicate Handling', async () => {
     // 1) Successful registration without initial driver
-    const createRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const createRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -216,7 +216,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(createJson.data.truck.updatedAt);
 
     // 2) Duplicate plate number -> 409 Conflict
-    const dupRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const dupRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -231,7 +231,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(dupRes.status, 409);
 
     // 3) Invalid input (negative odometer) -> 400 Bad Request
-    const invalidOdoRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const invalidOdoRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -247,7 +247,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(invalidOdoRes.status, 400);
 
     // 4) Successful registration with soft-bounded initial driver
-    const createWithDriverRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const createWithDriverRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -271,7 +271,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   // 4. View Vehicle Information (List & Detail)
   // ------------------------------------------------------------
   await t.test('4. View Vehicle Information & Filtering', async () => {
-    const regRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const regRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -287,8 +287,8 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const regJson = await regRes.json();
     const truckId = regJson.data.truck.id;
 
-    // 1) GET /api/fleet/trucks with search
-    const listRes = await fetch(`${baseUrl}/api/fleet/trucks?search=TEST-FLT-301`, {
+    // 1) GET /api/fleet/vehicles with search
+    const listRes = await fetch(`${baseUrl}/api/fleet/vehicles?search=TEST-FLT-301`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
     assert.equal(listRes.status, 200);
@@ -296,8 +296,8 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(listJson.data.trucks.length, 1);
     assert.equal(listJson.data.trucks[0].plateNumber, 'TEST-FLT-301');
 
-    // 2) GET /api/fleet/trucks/:id (Detail with driver info)
-    const detailRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}`, {
+    // 2) GET /api/fleet/vehicles/:id (Detail with driver info)
+    const detailRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
     assert.equal(detailRes.status, 200);
@@ -305,18 +305,18 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(detailJson.data.truck.id, truckId);
     assert.equal(detailJson.data.truck.driver.username, 'test_fleet_driver1');
 
-    // 3) GET /api/fleet/trucks/:id (Non-existent UUID -> 404)
-    const notFoundRes = await fetch(`${baseUrl}/api/fleet/trucks/00000000-0000-0000-0000-000000000000`, {
+    // 3) GET /api/fleet/vehicles/:id (Non-existent UUID -> 404)
+    const notFoundRes = await fetch(`${baseUrl}/api/fleet/vehicles/00000000-0000-0000-0000-000000000000`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
     assert.equal(notFoundRes.status, 404);
   });
 
   // ------------------------------------------------------------
-  // 5. Update Vehicle Information (PATCH /api/fleet/trucks/:id)
+  // 5. Update Vehicle Information (PATCH /api/fleet/vehicles/:id)
   // ------------------------------------------------------------
   await t.test('5. Update Vehicle Information & Constraint Checks', async () => {
-    const regRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const regRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -332,7 +332,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const truckId = (await regRes.json()).data.truck.id;
 
     // 1) Successful update
-    const updateRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}`, {
+    const updateRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -351,8 +351,8 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(updateJson.data.truck.updatedAt);
 
     // 2) Update with duplicate plate number -> 409 Conflict
-    await query(`INSERT INTO trucks (plate_number, model, year_model) VALUES ('TEST-DUP-999', 'Existing', 2021)`);
-    const dupPlateRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}`, {
+    await query(`INSERT INTO vehicles (plate_number, model, year_model) VALUES ('TEST-DUP-999', 'Existing', 2021)`);
+    const dupPlateRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -368,7 +368,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   // ------------------------------------------------------------
   await t.test('6. Set Vehicle Status & Soft-Bounded Driver Preservation on Maintenance', async () => {
     // Create active truck assigned to driver1
-    const regRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const regRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -384,7 +384,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const truckId = (await regRes.json()).data.truck.id;
 
     // 1) View Status before change -> ACTIVE & Available
-    const statusBeforeRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/status`, {
+    const statusBeforeRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/status`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
     assert.equal(statusBeforeRes.status, 200);
@@ -394,7 +394,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(statusBeforeJson.data.truck.driver.id, driver1Id);
 
     // 2) Update status to UNDER_MAINTENANCE (driver remains soft-bounded!)
-    const setStatusRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/status`, {
+    const setStatusRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/status`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -409,7 +409,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(setStatusJson.data.truck.driver.id, driver1Id); // Driver preserved!
 
     // 3) Update status back to ACTIVE -> isAvailable becomes true, driver still driver1Id
-    const setBackRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/status`, {
+    const setBackRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/status`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -425,10 +425,10 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   });
 
   // ------------------------------------------------------------
-  // 7. Deactivate Vehicle (PATCH /api/fleet/trucks/:id/deactivate)
+  // 7. Deactivate Vehicle (PATCH /api/fleet/vehicles/:id/deactivate)
   // ------------------------------------------------------------
   await t.test('7. Deactivate Vehicle - Releases Driver & Excludes from Available Fleet', async () => {
-    const regRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const regRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -444,7 +444,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const truckId = (await regRes.json()).data.truck.id;
 
     // 1) Rejects deactivation without password confirmation
-    const noPassDeact = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/deactivate`, {
+    const noPassDeact = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/deactivate`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -456,7 +456,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(noPassJson.code, 'PASSWORD_CONFIRMATION_REQUIRED');
 
     // 2) Rejects deactivation with incorrect password
-    const wrongPassDeact = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/deactivate`, {
+    const wrongPassDeact = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/deactivate`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -469,7 +469,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(wrongPassJson.code, 'INVALID_CONFIRMATION_PASSWORD');
 
     // 3) Successfully deactivates with valid confirmPassword
-    const deactRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/deactivate`, {
+    const deactRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/deactivate`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -537,7 +537,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   // ------------------------------------------------------------
   await t.test('9. Assign & Unassign Driver - Strict Unassign-First Invariant & Status Reflection', async () => {
     // 1) Create two test vehicles
-    const truck1Res = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const truck1Res = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -547,7 +547,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     });
     const truck1Id = (await truck1Res.json()).data.truck.id;
 
-    const truck2Res = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const truck2Res = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -559,7 +559,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
 
     // Reject assigning non-driver role user (e.g. Sales Person) -> 400 Bad Request
     const salesUserId = (await query(`SELECT id FROM users WHERE username = 'test_fleet_sales'`)).rows[0].id;
-    const nonDriverAssignRes = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
+    const nonDriverAssignRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truck1Id}/assign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -572,7 +572,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(nonDriverJson.message.includes('Driver'));
 
     // 2) Assign driver1 to Truck 1 -> 200 OK
-    const assign1Res = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
+    const assign1Res = await fetch(`${baseUrl}/api/fleet/vehicles/${truck1Id}/assign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -595,7 +595,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(availableIdsAfterAssign.includes(driver2Id));
 
     // 3) Attempt assigning driver1 to Truck 2 (driver1 already assigned to Truck 1) -> 409 Conflict
-    const conflictAssign = await fetch(`${baseUrl}/api/fleet/trucks/${truck2Id}/assign`, {
+    const conflictAssign = await fetch(`${baseUrl}/api/fleet/vehicles/${truck2Id}/assign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -608,7 +608,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(conflictJson.message.includes('already assigned'));
 
     // 4) Attempt assigning driver2 to Truck 1 (Truck 1 already has driver1 without unassigning first) -> 409 Conflict
-    const conflictTruckAssign = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/assign`, {
+    const conflictTruckAssign = await fetch(`${baseUrl}/api/fleet/vehicles/${truck1Id}/assign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -621,7 +621,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(conflictTruckJson.message.includes('already assigned'));
 
     // 5) Attempt assigning non-existent driver -> 404 Not Found
-    const notFoundDriver = await fetch(`${baseUrl}/api/fleet/trucks/${truck2Id}/assign`, {
+    const notFoundDriver = await fetch(`${baseUrl}/api/fleet/vehicles/${truck2Id}/assign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -631,8 +631,8 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     });
     assert.equal(notFoundDriver.status, 404);
 
-    // 6) Dedicated Unassign Endpoint: PATCH /api/fleet/trucks/:id/unassign -> 200 OK
-    const unassignRes = await fetch(`${baseUrl}/api/fleet/trucks/${truck1Id}/unassign`, {
+    // 6) Dedicated Unassign Endpoint: PATCH /api/fleet/vehicles/:id/unassign -> 200 OK
+    const unassignRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truck1Id}/unassign`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -653,7 +653,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.ok(availableIdsAfterUnassign.includes(driver1Id));
 
     // 8) Now driver1 can be cleanly assigned to Truck 2
-    const assign2Res = await fetch(`${baseUrl}/api/fleet/trucks/${truck2Id}/assign`, {
+    const assign2Res = await fetch(`${baseUrl}/api/fleet/vehicles/${truck2Id}/assign`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -672,7 +672,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   await t.test('10. Fleet Register Options - Available Unassigned Drivers', async () => {
     // Assign driver1 to a vehicle
     await query(
-      `INSERT INTO trucks (plate_number, model, year_model, driver_id, status)
+      `INSERT INTO vehicles (plate_number, model, year_model, driver_id, status)
        VALUES ('TEST-FLT-801', 'Assigned Truck', 2022, $1, 'ACTIVE')`,
       [driver1Id]
     );
@@ -691,11 +691,11 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
   });
 
   // ------------------------------------------------------------
-  // 11. Record Vehicle Mileage (POST & PATCH /api/fleet/trucks/:id/mileage)
+  // 11. Record Vehicle Mileage (POST & PATCH /api/fleet/vehicles/:id/mileage)
   // ------------------------------------------------------------
   await t.test('11. Record Vehicle Mileage - Usage & Maintenance Calculation', async () => {
     // 1) Create truck with initial 10,000 km odometer and 8,000 km PM odometer
-    const regRes = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const regRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -712,7 +712,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     const truckId = (await regRes.json()).data.truck.id;
 
     // 2) Record new valid mileage (12,500 km) -> 200 OK
-    const recordRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/mileage`, {
+    const recordRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/mileage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -730,7 +730,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(recordJson.data.mileageSummary.distanceSinceLastPm, 4500);
 
     // 3) Attempt recording mileage lower than current odometer (11,000 < 12,500) -> 400 Bad Request
-    const lowerRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/mileage`, {
+    const lowerRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/mileage`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -741,7 +741,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(lowerRes.status, 400);
 
     // 4) Attempt negative odometer -> 400 Bad Request
-    const negRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/mileage`, {
+    const negRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/mileage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -752,7 +752,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(negRes.status, 400);
 
     // 5) Non-existent truck -> 404 Not Found
-    const notFoundRes = await fetch(`${baseUrl}/api/fleet/trucks/00000000-0000-0000-0000-000000000000/mileage`, {
+    const notFoundRes = await fetch(`${baseUrl}/api/fleet/vehicles/00000000-0000-0000-0000-000000000000/mileage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -763,7 +763,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
     assert.equal(notFoundRes.status, 404);
 
     // 6) Sales Person (unauthorized) -> 403 Forbidden
-    const salesRes = await fetch(`${baseUrl}/api/fleet/trucks/${truckId}/mileage`, {
+    const salesRes = await fetch(`${baseUrl}/api/fleet/vehicles/${truckId}/mileage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -772,5 +772,178 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
       body: JSON.stringify({ odometer: 15000 }),
     });
     assert.equal(salesRes.status, 403);
+  });
+
+  // ------------------------------------------------------------
+  // 12. Vehicle Types, Categorization & Stored Generated PM Due Invariants
+  // ------------------------------------------------------------
+  await t.test('12. Vehicle Types, Categorization & Stored Generated PM Due Invariants', async () => {
+    // 1) Register vehicles across non-truck operational categories:
+    // SERVICE_PICKUP, MOTORCYCLE, UTILITY_VAN
+    const pickupRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        plateNumber: 'TEST-FLT-PICKUP',
+        model: 'Toyota Hilux 4x4',
+        yearModel: 2023,
+        vehicleType: 'SERVICE_PICKUP',
+        currentOdometer: 15000,
+        lastPmOdometer: 15000,
+      }),
+    });
+    assert.equal(pickupRes.status, 201);
+    const pickupJson = await pickupRes.json();
+    assert.equal(pickupJson.data.truck.vehicleType, 'SERVICE_PICKUP');
+    assert.equal(pickupJson.data.truck.isPmDue, false);
+    assert.equal(pickupJson.data.truck.pmDueFlag, false);
+    const pickupId = pickupJson.data.truck.id;
+
+    const motoRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        plateNumber: 'TEST-FLT-MOTO',
+        model: 'Honda TMX 125 Alpha',
+        yearModel: 2024,
+        vehicleType: 'MOTORCYCLE',
+        currentOdometer: 5200,
+        lastPmOdometer: 0,
+      }),
+    });
+    assert.equal(motoRes.status, 201);
+    const motoJson = await motoRes.json();
+    assert.equal(motoJson.data.truck.vehicleType, 'MOTORCYCLE');
+    // current - last_pm = 5200 - 0 = 5200 (>= 5000) -> pmDueFlag = true
+    assert.equal(motoJson.data.truck.isPmDue, true);
+    assert.equal(motoJson.data.truck.pmDueFlag, true);
+    const motoId = motoJson.data.truck.id;
+
+    const vanRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        plateNumber: 'TEST-FLT-VAN',
+        model: 'Nissan Urvan Cargo',
+        yearModel: 2022,
+        vehicleType: 'UTILITY_VAN',
+        currentOdometer: 8000,
+        lastPmOdometer: 8000,
+      }),
+    });
+    assert.equal(vanRes.status, 201);
+    const vanJson = await vanRes.json();
+    assert.equal(vanJson.data.truck.vehicleType, 'UTILITY_VAN');
+    const vanId = vanJson.data.truck.id;
+
+    // 2) Validation: Reject invalid vehicleType on creation -> 400 Bad Request
+    const invalidTypeRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        plateNumber: 'TEST-FLT-PLANE',
+        model: 'Cessna 172',
+        yearModel: 2021,
+        vehicleType: 'AIRPLANE',
+      }),
+    });
+    assert.equal(invalidTypeRes.status, 400);
+    const invalidTypeJson = await invalidTypeRes.json();
+    assert.match(invalidTypeJson.message, /vehicle type must be one of/i);
+
+    // 3) Validation: Reject invalid vehicleType on update -> 400 Bad Request
+    const invalidUpdateRes = await fetch(`${baseUrl}/api/fleet/vehicles/${pickupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        vehicleType: 'SUBMARINE',
+      }),
+    });
+    assert.equal(invalidUpdateRes.status, 400);
+
+    // 4) Query Filtering: Filter vehicles list by vehicleType
+    const listMotoRes = await fetch(`${baseUrl}/api/fleet/vehicles?vehicleType=MOTORCYCLE`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    assert.equal(listMotoRes.status, 200);
+    const listMotoJson = await listMotoRes.json();
+    assert.ok(listMotoJson.data.vehicles.every((v) => v.vehicleType === 'MOTORCYCLE'));
+    assert.ok(listMotoJson.data.vehicles.some((v) => v.id === motoId));
+
+    const listPickupRes = await fetch(`${baseUrl}/api/fleet/vehicles?type=SERVICE_PICKUP`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    assert.equal(listPickupRes.status, 200);
+    const listPickupJson = await listPickupRes.json();
+    assert.ok(listPickupJson.data.vehicles.every((v) => v.vehicleType === 'SERVICE_PICKUP'));
+    assert.ok(listPickupJson.data.vehicles.some((v) => v.id === pickupId));
+
+    // 5) Availability Filtering: Filter active available vehicles by vehicleType
+    const availPickupRes = await fetch(`${baseUrl}/api/fleet/availability?vehicleType=SERVICE_PICKUP`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    assert.equal(availPickupRes.status, 200);
+    const availPickupJson = await availPickupRes.json();
+    assert.ok(availPickupJson.data.vehicles.length >= 1);
+    assert.ok(availPickupJson.data.vehicles.every((v) => v.vehicleType === 'SERVICE_PICKUP'));
+    assert.ok(availPickupJson.data.trucks); // dual key check
+
+    // 6) Stored Generated Column pm_due_flag Reactivity Verification
+    // A) Pickup started at current=15000, last_pm=15000 (delta=0 -> pmDueFlag=false)
+    const pickupDetail1 = await fetch(`${baseUrl}/api/fleet/vehicles/${pickupId}`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    const p1Json = await pickupDetail1.json();
+    assert.equal(p1Json.data.truck.pmDueFlag, false);
+
+    // B) Record mileage advancing odometer to 20100 (delta = 5100 >= 5000)
+    const mileageRes = await fetch(`${baseUrl}/api/fleet/vehicles/${pickupId}/mileage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({ odometer: 20100 }),
+    });
+    assert.equal(mileageRes.status, 200);
+
+    // C) Verify database stored generated column automatically flipped to true without manual math
+    const pickupDetail2 = await fetch(`${baseUrl}/api/fleet/vehicles/${pickupId}`, {
+      headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
+    });
+    const p2Json = await pickupDetail2.json();
+    assert.equal(p2Json.data.truck.currentOdometer, 20100);
+    assert.equal(p2Json.data.truck.pmDueFlag, true);
+    assert.equal(p2Json.data.truck.isPmDue, true);
+
+    // D) Update lastPmOdometer to 20100 -> delta becomes 0 -> database automatically resets pmDueFlag to false
+    const resetPmRes = await fetch(`${baseUrl}/api/fleet/vehicles/${pickupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({ lastPmOdometer: 20100 }),
+    });
+    assert.equal(resetPmRes.status, 200);
+    const p3Json = await resetPmRes.json();
+    assert.equal(p3Json.data.truck.lastPmOdometer, 20100);
+    assert.equal(p3Json.data.truck.pmDueFlag, false);
+    assert.equal(p3Json.data.truck.isPmDue, false);
   });
 });

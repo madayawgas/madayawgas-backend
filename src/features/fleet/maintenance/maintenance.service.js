@@ -19,22 +19,24 @@ class MaintenanceService {
    * @returns {Promise<Object>} Processed odometer update and PM status metadata
    */
   async logOdometerReading(actorUser, payload = {}) {
-    const { truckId, odometerReading, source, notes } = payload;
+    const targetVehicleId = payload.vehicleId || payload.truckId;
+    const rawOdometer = payload.odometerReading !== undefined ? payload.odometerReading : payload.odometer;
+    const { source, notes } = payload;
 
     // 1. Validation: Required fields
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
-    if (odometerReading === undefined || odometerReading === null || odometerReading === '') {
+    if (rawOdometer === undefined || rawOdometer === null || rawOdometer === '') {
       const err = new Error('Odometer reading is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const numOdometer = Number(odometerReading);
+    const numOdometer = Number(rawOdometer);
     if (isNaN(numOdometer) || !Number.isInteger(numOdometer) || numOdometer < 0) {
       const err = new Error('Odometer reading must be a non-negative integer');
       err.statusCode = 400;
@@ -42,7 +44,7 @@ class MaintenanceService {
     }
 
     // 2. Fetch existing truck state
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -147,13 +149,14 @@ class MaintenanceService {
    * @returns {Promise<Object>} Paginated logs with vehicle metadata
    */
   async getTruckOdometerHistory(truckId, queryParams = {}) {
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    const targetVehicleId = truckId;
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -204,11 +207,12 @@ class MaintenanceService {
   async getFleetPmOverview(queryParams = {}) {
     const rows = await maintenanceRepository.getFleetPmStatusOverview(queryParams);
 
-    const trucks = rows.map((r) => ({
+    const vehicles = rows.map((r) => ({
       id: r.id,
       plateNumber: r.plate_number,
       model: r.model,
       yearModel: r.year_model,
+      vehicleType: r.vehicle_type || 'DELIVERY_TRUCK',
       status: r.status,
       driverId: r.driver_id,
       driverName: [r.driver_first_name, r.driver_last_name].filter(Boolean).join(' ') || null,
@@ -216,15 +220,16 @@ class MaintenanceService {
       lastPmOdometer: r.last_pm_odometer,
       distanceSinceLastPm: Number(r.distance_since_pm),
       isPmDue: Boolean(r.is_pm_due),
+      pmDueFlag: Boolean(r.is_pm_due),
       remainingKmBeforePm: Number(r.remaining_km_before_pm),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
 
-    const totalCount = trucks.length;
-    const pmDueCount = trucks.filter((t) => t.isPmDue).length;
-    const operationalCount = trucks.filter((t) => t.status === 'ACTIVE').length;
-    const operationalPmDueCount = trucks.filter((t) => t.status === 'ACTIVE' && t.isPmDue).length;
+    const totalCount = vehicles.length;
+    const pmDueCount = vehicles.filter((t) => t.isPmDue).length;
+    const operationalCount = vehicles.filter((t) => t.status === 'ACTIVE').length;
+    const operationalPmDueCount = vehicles.filter((t) => t.status === 'ACTIVE' && t.isPmDue).length;
 
     return {
       count: totalCount,
@@ -234,7 +239,8 @@ class MaintenanceService {
         pmDueTotal: pmDueCount,
         operationalPmDue: operationalPmDueCount,
       },
-      trucks,
+      vehicles,
+      trucks: vehicles,
     };
   }
 
@@ -252,17 +258,18 @@ class MaintenanceService {
    * @returns {Promise<Object>} Inspection record and truck operational status update
    */
   async recordInspection(actorUser, payload = {}) {
-    const { truckId, result, findings, issueDetected, inspectionDate, allowDispatch } = payload;
+    const targetVehicleId = payload.vehicleId || payload.truckId;
+    const { result, findings, issueDetected, inspectionDate, allowDispatch } = payload;
 
     // 1. Validation: Truck ID
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
     // 2. Fetch existing truck state
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -326,11 +333,13 @@ class MaintenanceService {
 
       createdInspection = await maintenanceRepository.insertInspection(
         {
+          vehicleId: truck.id,
           truckId: truck.id,
           inspectorId: actorUser?.id || null,
           result: cleanResult,
           findings: cleanFindings,
           issueDetected: cleanIssueDetected,
+          allowDispatch: shouldAllowDispatch,
           inspectionDate: parsedDate ? parsedDate.toISOString() : null,
         },
         client
@@ -410,13 +419,14 @@ class MaintenanceService {
    * @returns {Promise<Object>} Paginated inspections list
    */
   async getTruckInspections(truckId, queryParams = {}) {
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    const targetVehicleId = truckId;
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -442,7 +452,8 @@ class MaintenanceService {
 
     const inspections = rows.map((r) => ({
       id: r.id,
-      truckId: r.truck_id,
+      vehicleId: r.vehicle_id || r.truck_id,
+      truckId: r.vehicle_id || r.truck_id,
       plateNumber: r.plate_number,
       truckModel: r.truck_model,
       inspectorId: r.inspector_id,
@@ -453,10 +464,12 @@ class MaintenanceService {
       result: r.result,
       findings: r.findings,
       issueDetected: r.issue_detected,
+      allowDispatch: r.allow_dispatch !== undefined ? Boolean(r.allow_dispatch) : true,
       inspectionDate: r.inspection_date,
     }));
 
     return {
+      vehicleId: truck.id,
       truckId: truck.id,
       plateNumber: truck.plate_number,
       count: inspections.length,
@@ -489,7 +502,8 @@ class MaintenanceService {
     return {
       inspection: {
         id: r.id,
-        truckId: r.truck_id,
+        vehicleId: r.vehicle_id || r.truck_id,
+        truckId: r.vehicle_id || r.truck_id,
         plateNumber: r.plate_number,
         truckModel: r.truck_model,
         truckStatus: r.truck_status,
@@ -501,6 +515,7 @@ class MaintenanceService {
         result: r.result,
         findings: r.findings,
         issueDetected: r.issue_detected,
+        allowDispatch: r.allow_dispatch !== undefined ? Boolean(r.allow_dispatch) : true,
         inspectionDate: r.inspection_date,
       },
     };
@@ -536,16 +551,17 @@ class MaintenanceService {
    * @returns {Promise<Object>} Created incident report and truck status update
    */
   async reportIncident(actorUser, payload = {}) {
-    const { truckId, incidentTypeId, severity, incidentLocation, description, reportDate } = payload;
+    const targetVehicleId = payload.vehicleId || payload.truckId;
+    const { incidentTypeId, severity, incidentLocation, description, reportDate } = payload;
 
-    // 1. Validation: Truck ID
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    // 1. Validation: Vehicle ID
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -719,7 +735,8 @@ class MaintenanceService {
 
     const incidents = rows.map((r) => ({
       id: r.id,
-      truckId: r.truck_id,
+      vehicleId: r.vehicle_id || r.truck_id,
+      truckId: r.vehicle_id || r.truck_id,
       plateNumber: r.plate_number,
       truckModel: r.truck_model,
       truckStatus: r.truck_status,
@@ -752,13 +769,14 @@ class MaintenanceService {
    * @returns {Promise<Object>} Paginated incidents for truck
    */
   async getTruckIncidents(truckId, queryParams = {}) {
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    const targetVehicleId = truckId;
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -776,7 +794,8 @@ class MaintenanceService {
 
     const incidents = rows.map((r) => ({
       id: r.id,
-      truckId: r.truck_id,
+      vehicleId: r.vehicle_id || r.truck_id,
+      truckId: r.vehicle_id || r.truck_id,
       plateNumber: r.plate_number,
       truckModel: r.truck_model,
       truckStatus: r.truck_status,
@@ -794,6 +813,7 @@ class MaintenanceService {
     }));
 
     return {
+      vehicleId: truck.id,
       truckId: truck.id,
       plateNumber: truck.plate_number,
       count: incidents.length,
@@ -826,7 +846,8 @@ class MaintenanceService {
     return {
       incident: {
         id: r.id,
-        truckId: r.truck_id,
+        vehicleId: r.vehicle_id || r.truck_id,
+        truckId: r.vehicle_id || r.truck_id,
         plateNumber: r.plate_number,
         truckModel: r.truck_model,
         truckStatus: r.truck_status,
@@ -871,8 +892,8 @@ class MaintenanceService {
    * Automatically grounds the truck to UNDER_MAINTENANCE in an atomic transaction.
    */
   async createWorkOrder(actorUser, payload = {}) {
+    const targetVehicleId = payload.vehicleId || payload.truckId;
     const {
-      truckId,
       maintenanceTypeId,
       inspectionId,
       incidentReportId,
@@ -883,14 +904,14 @@ class MaintenanceService {
       requiresApproval,
     } = payload;
 
-    // 1. Validation: Truck ID
-    if (!truckId || typeof truckId !== 'string' || truckId.trim().length === 0) {
-      const err = new Error('Truck ID is required');
+    // 1. Validation: Vehicle ID
+    if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
+      const err = new Error('Vehicle ID is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const truck = await maintenanceRepository.getTruckOdometerState(truckId.trim());
+    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
@@ -1206,10 +1227,77 @@ class MaintenanceService {
       throw err;
     }
 
+    const [receiptsRows, approvalRequestsRows] = await Promise.all([
+      maintenanceRepository.getReceiptsByWorkOrderId(r.id),
+      maintenanceRepository.getApprovalRequestsByWorkOrderId(r.id),
+    ]);
+
+    const receipts = receiptsRows.map((rec) => ({
+      id: rec.id,
+      workOrderId: rec.work_order_id,
+      uploadedBy: rec.uploaded_by,
+      uploaderName:
+        rec.uploader_first_name && rec.uploader_last_name
+          ? `${rec.uploader_first_name} ${rec.uploader_last_name}`.trim()
+          : rec.uploader_username || null,
+      fileUrl: rec.file_url,
+      receiptNumber: rec.receipt_number,
+      vendorName: rec.vendor_name,
+      amount: Number(rec.amount),
+      receiptType: rec.receipt_type,
+      receiptDate: rec.receipt_date,
+      createdAt: rec.created_at,
+    }));
+
+    const totalReceiptsAmount = receipts.reduce((sum, item) => sum + item.amount, 0);
+
+    const approvalRequests = approvalRequestsRows.map((ar) => ({
+      id: ar.id,
+      workOrderId: ar.work_order_id,
+      amountRequested: Number(ar.amount_requested),
+      isApproved: ar.is_approved,
+      status:
+        ar.is_approved === true
+          ? 'APPROVED'
+          : ar.is_approved === false
+          ? 'REJECTED'
+          : 'PENDING',
+      remarks: ar.remarks,
+      requestedDate: ar.requested_date,
+      decidedDate: ar.decided_date,
+      deciderId: ar.decider_id,
+      deciderName:
+        ar.decider_first_name && ar.decider_last_name
+          ? `${ar.decider_first_name} ${ar.decider_last_name}`.trim()
+          : ar.decider_username || null,
+      createdAt: ar.created_at,
+    }));
+
+    const latestApprovalRequest = approvalRequests[0] || (r.approval_request_id ? {
+      id: r.approval_request_id,
+      amountRequested: Number(r.approval_amount_requested),
+      isApproved: r.approval_is_approved,
+      status:
+        r.approval_is_approved === true
+          ? 'APPROVED'
+          : r.approval_is_approved === false
+          ? 'REJECTED'
+          : 'PENDING',
+      remarks: r.approval_remarks,
+      requestedDate: r.approval_requested_date,
+      decidedDate: r.approval_decided_date,
+      deciderId: r.approval_decider_id,
+      deciderName:
+        r.decider_first_name && r.decider_last_name
+          ? `${r.decider_first_name} ${r.decider_last_name}`.trim()
+          : r.decider_username || null,
+    } : null);
+
     return {
       workOrder: {
         id: r.id,
-        truckId: r.truck_id,
+        vehicleId: r.vehicle_id || r.truck_id,
+        truckId: r.vehicle_id || r.truck_id,
         plateNumber: r.plate_number,
         truckModel: r.truck_model,
         truckStatus: r.truck_status,
@@ -1232,31 +1320,15 @@ class MaintenanceService {
         description: r.description,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
-        approvalRequest: r.approval_request_id
-          ? {
-              id: r.approval_request_id,
-              amountRequested: Number(r.approval_amount_requested),
-              isApproved: r.approval_is_approved,
-              status:
-                r.approval_is_approved === true
-                  ? 'APPROVED'
-                  : r.approval_is_approved === false
-                  ? 'REJECTED'
-                  : 'PENDING',
-              remarks: r.approval_remarks,
-              requestedDate: r.approval_requested_date,
-              decidedDate: r.approval_decided_date,
-              deciderId: r.approval_decider_id,
-              deciderName:
-                r.decider_first_name && r.decider_last_name
-                  ? `${r.decider_first_name} ${r.decider_last_name}`.trim()
-                  : r.decider_username || null,
-            }
-          : null,
+        approvalRequests,
+        approvalRequest: latestApprovalRequest,
+        receipts,
+        receiptsCount: receipts.length,
+        totalReceiptsAmount,
         maintenanceLog: r.maintenance_log_id
           ? {
               id: r.maintenance_log_id,
-              officialReceiptNumber: r.official_receipt_number,
+              totalCost: Number(r.total_cost),
             }
           : null,
       },
@@ -1305,15 +1377,9 @@ class MaintenanceService {
     }
 
     // 4. Approval Request Check
-    const approval = await maintenanceRepository.getApprovalRequestByWorkOrderId(order.id);
+    const approval = await maintenanceRepository.getPendingApprovalRequestByWorkOrderId(order.id);
     if (!approval) {
-      const err = new Error('No approval request found for this work order');
-      err.statusCode = 400;
-      throw err;
-    }
-
-    if (approval.is_approved !== null) {
-      const err = new Error('Approval request has already been decided');
+      const err = new Error('No pending approval request found for this work order');
       err.statusCode = 400;
       throw err;
     }
@@ -1415,6 +1481,187 @@ class MaintenanceService {
         deciderName: `${actorUser.firstName} ${actorUser.lastName}`.trim(),
       },
     };
+  }
+
+  /**
+   * Submits a cost approval request for a work order.
+   * Enables sequential approval requests (1:N) if costs increase or if a previous request was rejected.
+   *
+   * @param {Object} actorUser - Authenticated user submitting the request
+   * @param {string} workOrderId - Work Order UUID
+   * @param {Object} payload - { amountRequested, remarks, estimatedCost }
+   * @returns {Promise<Object>} Created approval request and updated work order
+   */
+  async requestApproval(actorUser, workOrderId, payload = {}) {
+    if (!workOrderId || typeof workOrderId !== 'string') {
+      const err = new Error('Work order ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const order = await maintenanceRepository.getWorkOrderById(workOrderId.trim());
+    if (!order) {
+      const err = new Error('Work order not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (order.status === 'COMPLETED') {
+      const err = new Error('Cannot request approval for a completed work order');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check if there is already an active pending approval request
+    const existingPending = await maintenanceRepository.getPendingApprovalRequestByWorkOrderId(order.id);
+    if (existingPending) {
+      const err = new Error('Work order already has a pending approval request under review');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const rawAmount = payload.amountRequested !== undefined ? payload.amountRequested : payload.estimatedCost !== undefined ? payload.estimatedCost : order.estimated_cost;
+    const numAmount = Number(rawAmount);
+    if (isNaN(numAmount) || numAmount < 0) {
+      const err = new Error('Amount requested must be a non-negative number');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanRemarks = payload.remarks && typeof payload.remarks === 'string' && payload.remarks.trim().length > 0
+      ? payload.remarks.trim()
+      : 'Cost review requested';
+
+    // Atomic transaction: Insert approval request + update work order status to PENDING
+    const client = await pool.connect();
+    let createdApproval;
+    let updatedOrder;
+
+    try {
+      await client.query('BEGIN');
+
+      createdApproval = await maintenanceRepository.insertApprovalRequest(
+        {
+          workOrderId: order.id,
+          amountRequested: numAmount,
+          remarks: cleanRemarks,
+        },
+        client
+      );
+
+      // Reset work order status to PENDING
+      updatedOrder = await maintenanceRepository.updateWorkOrderStatus(
+        {
+          id: order.id,
+          status: 'PENDING',
+        },
+        client
+      );
+
+      // Update estimated cost if different
+      if (numAmount !== Number(order.estimated_cost)) {
+        await maintenanceRepository.updateWorkOrderEstimatedCost(
+          {
+            id: order.id,
+            estimatedCost: numAmount,
+          },
+          client
+        );
+        updatedOrder.estimated_cost = numAmount;
+      }
+
+      await client.query('COMMIT');
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      throw dbErr;
+    } finally {
+      client.release();
+    }
+
+    // History audit logging
+    try {
+      await historyService.log(EVENTS.MAINTENANCE_APPROVAL_REQUESTED, {
+        actorUser,
+        targetId: createdApproval.id,
+        payload: {
+          workOrderId: order.id,
+          amountRequested: numAmount,
+        },
+        metadata: {
+          workOrderId: order.id,
+          truckId: order.vehicle_id || order.truck_id,
+          plateNumber: order.plate_number,
+          previousStatus: order.status,
+          amountRequested: numAmount,
+          remarks: cleanRemarks,
+        },
+      });
+    } catch (histErr) {
+      console.error('Failed to emit history log for MAINTENANCE_APPROVAL_REQUESTED:', histErr);
+    }
+
+    return {
+      workOrder: {
+        id: updatedOrder.id,
+        vehicleId: order.vehicle_id || order.truck_id,
+        truckId: order.vehicle_id || order.truck_id,
+        plateNumber: order.plate_number,
+        status: updatedOrder.status,
+        previousStatus: order.status,
+        estimatedCost: numAmount,
+        updatedAt: updatedOrder.updated_at,
+      },
+      approvalRequest: {
+        id: createdApproval.id,
+        workOrderId: order.id,
+        amountRequested: numAmount,
+        isApproved: null,
+        status: 'PENDING',
+        remarks: createdApproval.remarks,
+        requestedDate: createdApproval.requested_date,
+      },
+    };
+  }
+
+  /**
+   * Retrieves all historical approval requests for a work order.
+   */
+  async getWorkOrderApprovalRequests(workOrderId) {
+    if (!workOrderId || typeof workOrderId !== 'string') {
+      const err = new Error('Work order ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const order = await maintenanceRepository.getWorkOrderById(workOrderId.trim());
+    if (!order) {
+      const err = new Error('Work order not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const rows = await maintenanceRepository.getApprovalRequestsByWorkOrderId(order.id);
+    return rows.map((ar) => ({
+      id: ar.id,
+      workOrderId: ar.work_order_id,
+      amountRequested: Number(ar.amount_requested),
+      isApproved: ar.is_approved,
+      status:
+        ar.is_approved === true
+          ? 'APPROVED'
+          : ar.is_approved === false
+          ? 'REJECTED'
+          : 'PENDING',
+      remarks: ar.remarks,
+      requestedDate: ar.requested_date,
+      decidedDate: ar.decided_date,
+      deciderId: ar.decider_id,
+      deciderName:
+        ar.decider_first_name && ar.decider_last_name
+          ? `${ar.decider_first_name} ${ar.decider_last_name}`.trim()
+          : ar.decider_username || null,
+      createdAt: ar.created_at,
+    }));
   }
 
   /**
@@ -1578,22 +1825,10 @@ class MaintenanceService {
       odometerAtService,
     } = payload;
 
-    // 1. Validation: Official Receipt Number
-    if (!officialReceiptNumber || typeof officialReceiptNumber !== 'string' || officialReceiptNumber.trim().length === 0) {
-      const err = new Error('Official receipt number is required');
-      err.statusCode = 400;
-      throw err;
-    }
-    const cleanReceiptNumber = officialReceiptNumber.trim();
-
-    const receiptExists = await maintenanceRepository.checkReceiptNumberExists(cleanReceiptNumber);
-    if (receiptExists) {
-      const err = new Error(
-        `Official receipt number '${cleanReceiptNumber}' has already been registered in maintenance logs`
-      );
-      err.statusCode = 409;
-      throw err;
-    }
+    // 1. Optional Receipt Number
+    const cleanReceiptNumber = officialReceiptNumber && typeof officialReceiptNumber === 'string' && officialReceiptNumber.trim().length > 0
+      ? officialReceiptNumber.trim()
+      : null;
 
     // 2. Validation: Severity
     const validSeverities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -1697,10 +1932,43 @@ class MaintenanceService {
           laborCost: numLaborCost,
           downtimeDays: numDowntimeDays,
           odometerAtService: numOdometerAtService,
-          officialReceiptNumber: cleanReceiptNumber,
         },
         client
       );
+
+      if (Array.isArray(payload.receipts) && payload.receipts.length > 0) {
+        for (const rec of payload.receipts) {
+          if (rec.fileUrl) {
+            await maintenanceRepository.insertWorkOrderReceipt(
+              {
+                workOrderId: order.id,
+                uploadedBy: actorUser?.id || null,
+                fileUrl: String(rec.fileUrl).trim(),
+                receiptNumber: rec.receiptNumber ? String(rec.receiptNumber).trim() : null,
+                vendorName: rec.vendorName ? String(rec.vendorName).trim() : (order.shop_name || null),
+                amount: Number(rec.amount) || 0,
+                receiptType: rec.receiptType || 'PARTS',
+                receiptDate: rec.receiptDate ? new Date(rec.receiptDate) : parsedDateResolved,
+              },
+              client
+            );
+          }
+        }
+      } else if (cleanReceiptNumber) {
+        await maintenanceRepository.insertWorkOrderReceipt(
+          {
+            workOrderId: order.id,
+            uploadedBy: actorUser?.id || null,
+            fileUrl: payload.fileUrl || `receipts/${cleanReceiptNumber}`,
+            receiptNumber: cleanReceiptNumber,
+            vendorName: order.shop_name || null,
+            amount: numPartsCost + numLaborCost,
+            receiptType: 'MISC',
+            receiptDate: parsedDateResolved,
+          },
+          client
+        );
+      }
 
       // Transition work order status to COMPLETED
       await maintenanceRepository.updateWorkOrderStatus(
@@ -1715,7 +1983,7 @@ class MaintenanceService {
       if (isPreventive) {
         await maintenanceRepository.resetTruckPmOdometer(
           {
-            truckId: order.truck_id,
+            truckId: order.vehicle_id || order.truck_id,
             serviceOdometer: numOdometerAtService,
           },
           client
@@ -1723,15 +1991,15 @@ class MaintenanceService {
       } else if (numOdometerAtService > order.current_odometer) {
         // Advance current odometer if higher
         await client.query(
-          'UPDATE trucks SET current_odometer = $1, updated_at = NOW() WHERE id = $2',
-          [numOdometerAtService, order.truck_id]
+          'UPDATE vehicles SET current_odometer = $1, updated_at = NOW() WHERE id = $2',
+          [numOdometerAtService, order.vehicle_id || order.truck_id]
         );
       }
 
       // Operational Release: Truck status returns to ACTIVE (driver assignment preserved)
       await maintenanceRepository.updateTruckStatus(
         {
-          truckId: order.truck_id,
+          truckId: order.vehicle_id || order.truck_id,
           status: 'ACTIVE',
         },
         client
@@ -1784,20 +2052,31 @@ class MaintenanceService {
         dateResolved: createdLog.date_resolved,
         partsCost: Number(createdLog.parts_cost),
         laborCost: Number(createdLog.labor_cost),
-        totalCost: Number(createdLog.parts_cost) + Number(createdLog.labor_cost),
+        totalCost: Number(createdLog.total_cost || (Number(createdLog.parts_cost) + Number(createdLog.labor_cost))),
         downtimeDays: createdLog.downtime_days,
         odometerAtService: createdLog.odometer_at_service,
-        officialReceiptNumber: createdLog.official_receipt_number,
+        officialReceiptNumber: cleanReceiptNumber,
+        receiptNumber: cleanReceiptNumber,
         createdAt: createdLog.created_at,
       },
       workOrder: {
         id: order.id,
+        vehicleId: order.vehicle_id || order.truck_id,
+        truckId: order.vehicle_id || order.truck_id,
         status: 'COMPLETED',
         shopName: order.shop_name,
         description: order.description,
       },
+      vehicle: {
+        id: order.vehicle_id || order.truck_id,
+        plateNumber: order.plate_number,
+        status: 'ACTIVE',
+        currentOdometer: Math.max(order.current_odometer, numOdometerAtService),
+        lastPmOdometer: isPreventive ? numOdometerAtService : order.last_pm_odometer,
+        isPmReset: isPreventive,
+      },
       truck: {
-        id: order.truck_id,
+        id: order.vehicle_id || order.truck_id,
         plateNumber: order.plate_number,
         status: 'ACTIVE',
         currentOdometer: Math.max(order.current_odometer, numOdometerAtService),
@@ -1816,7 +2095,9 @@ class MaintenanceService {
 
     const filters = {
       truckId:
-        queryParams.truckId && typeof queryParams.truckId === 'string'
+        queryParams.vehicleId && typeof queryParams.vehicleId === 'string'
+          ? queryParams.vehicleId.trim()
+          : queryParams.truckId && typeof queryParams.truckId === 'string'
           ? queryParams.truckId.trim()
           : null,
       maintenanceTypeId: queryParams.maintenanceTypeId
@@ -1838,7 +2119,8 @@ class MaintenanceService {
     const logs = rows.map((r) => ({
       id: r.id,
       workOrderId: r.work_order_id,
-      truckId: r.truck_id,
+      vehicleId: r.vehicle_id || r.truck_id,
+      truckId: r.vehicle_id || r.truck_id,
       plateNumber: r.plate_number,
       maintenanceTypeId: r.maintenance_type_id,
       maintenanceTypeName: r.maintenance_type_name,
@@ -1850,10 +2132,18 @@ class MaintenanceService {
       totalCost: Number(r.total_cost),
       downtimeDays: r.downtime_days,
       odometerAtService: r.odometer_at_service,
-      officialReceiptNumber: r.official_receipt_number,
+      receiptsCount: Number(r.receipts_count || 0),
+      receiptNumber: r.primary_receipt_number || null,
+      officialReceiptNumber: r.primary_receipt_number || null,
       createdAt: r.created_at,
+      vehicle: {
+        id: r.vehicle_id || r.truck_id,
+        plateNumber: r.plate_number,
+        model: r.truck_model,
+        status: r.truck_status,
+      },
       truck: {
-        id: r.truck_id,
+        id: r.vehicle_id || r.truck_id,
         plateNumber: r.plate_number,
         model: r.truck_model,
         status: r.truck_status,
@@ -1924,6 +2214,168 @@ class MaintenanceService {
       count: recurringIssues.length,
       recurringIssues,
     };
+  }
+
+  /**
+   * Attaches a receipt document to an existing work order.
+   */
+  async addWorkOrderReceipt(actorUser, workOrderId, payload = {}) {
+    if (!workOrderId || typeof workOrderId !== 'string' || workOrderId.trim().length === 0) {
+      const err = new Error('Work order ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const order = await maintenanceRepository.getWorkOrderById(workOrderId.trim());
+    if (!order) {
+      const err = new Error('Work order not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const { fileUrl, receiptNumber, vendorName, amount = 0, receiptType = 'PARTS', receiptDate } = payload;
+
+    if (!fileUrl || typeof fileUrl !== 'string' || fileUrl.trim().length === 0) {
+      const err = new Error('Receipt file URL is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const validReceiptTypes = ['PARTS', 'LABOR', 'MISC'];
+    const cleanType = receiptType && typeof receiptType === 'string' && validReceiptTypes.includes(receiptType.trim().toUpperCase())
+      ? receiptType.trim().toUpperCase()
+      : 'PARTS';
+
+    const numAmount = Number(amount) || 0.0;
+    if (isNaN(numAmount) || numAmount < 0) {
+      const err = new Error('Receipt amount must be a non-negative number');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    let parsedDate = null;
+    if (receiptDate) {
+      parsedDate = new Date(receiptDate);
+      if (isNaN(parsedDate.getTime())) {
+        const err = new Error('Invalid receipt date format');
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    const cleanReceiptNumber = receiptNumber && typeof receiptNumber === 'string' && receiptNumber.trim().length > 0
+      ? receiptNumber.trim()
+      : null;
+
+    const cleanVendor = vendorName && typeof vendorName === 'string' && vendorName.trim().length > 0
+      ? vendorName.trim()
+      : null;
+
+    const createdReceipt = await maintenanceRepository.insertWorkOrderReceipt({
+      workOrderId: order.id,
+      uploadedBy: actorUser?.id || null,
+      fileUrl: fileUrl.trim(),
+      receiptNumber: cleanReceiptNumber,
+      vendorName: cleanVendor,
+      amount: numAmount,
+      receiptType: cleanType,
+      receiptDate: parsedDate ? parsedDate.toISOString() : null,
+    });
+
+    try {
+      await historyService.log(EVENTS.MAINTENANCE_RECEIPT_ADDED, {
+        actorUser,
+        targetId: createdReceipt.id,
+        payload: {
+          workOrderId: order.id,
+          receiptNumber: cleanReceiptNumber,
+          amount: numAmount,
+        },
+      });
+    } catch (auditErr) {
+      console.error('Failed to emit history log for MAINTENANCE_RECEIPT_ADDED:', auditErr);
+    }
+
+    return {
+      id: createdReceipt.id,
+      workOrderId: createdReceipt.work_order_id,
+      uploadedBy: createdReceipt.uploaded_by,
+      fileUrl: createdReceipt.file_url,
+      receiptNumber: createdReceipt.receipt_number,
+      vendorName: createdReceipt.vendor_name,
+      amount: Number(createdReceipt.amount),
+      receiptType: createdReceipt.receipt_type,
+      receiptDate: createdReceipt.receipt_date,
+      createdAt: createdReceipt.created_at,
+    };
+  }
+
+  /**
+   * Retrieves all receipts attached to a work order.
+   */
+  async getWorkOrderReceipts(workOrderId) {
+    if (!workOrderId || typeof workOrderId !== 'string' || workOrderId.trim().length === 0) {
+      const err = new Error('Work order ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const order = await maintenanceRepository.getWorkOrderById(workOrderId.trim());
+    if (!order) {
+      const err = new Error('Work order not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const rows = await maintenanceRepository.getReceiptsByWorkOrderId(order.id);
+    return rows.map((r) => ({
+      id: r.id,
+      workOrderId: r.work_order_id,
+      uploadedBy: r.uploaded_by,
+      uploaderName: r.uploader_first_name && r.uploader_last_name ? `${r.uploader_first_name} ${r.uploader_last_name}`.trim() : r.uploader_username || null,
+      fileUrl: r.file_url,
+      receiptNumber: r.receipt_number,
+      vendorName: r.vendor_name,
+      amount: Number(r.amount),
+      receiptType: r.receipt_type,
+      receiptDate: r.receipt_date,
+      createdAt: r.created_at,
+    }));
+  }
+
+  /**
+   * Deletes a receipt attachment.
+   */
+  async deleteWorkOrderReceipt(actorUser, receiptId) {
+    if (!receiptId || typeof receiptId !== 'string' || receiptId.trim().length === 0) {
+      const err = new Error('Receipt ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const existing = await maintenanceRepository.getReceiptById(receiptId.trim());
+    if (!existing) {
+      const err = new Error('Receipt not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    await maintenanceRepository.deleteReceipt(existing.id);
+
+    try {
+      await historyService.log(EVENTS.MAINTENANCE_RECEIPT_DELETED, {
+        actorUser,
+        targetId: existing.id,
+        payload: {
+          workOrderId: existing.work_order_id,
+          receiptNumber: existing.receipt_number,
+        },
+      });
+    } catch (auditErr) {
+      console.error('Failed to emit history log for MAINTENANCE_RECEIPT_DELETED:', auditErr);
+    }
+
+    return { success: true, message: 'Receipt deleted successfully' };
   }
 }
 

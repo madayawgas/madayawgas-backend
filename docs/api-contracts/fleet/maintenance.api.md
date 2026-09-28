@@ -46,10 +46,10 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
   - Invariant: Work orders **cannot** be directly transitioned to `COMPLETED` via `/status` (`400 Bad Request`). They can ONLY be completed by finalizing the maintenance log via `/finalize`.
 
 - **Maintenance Finalization, PM Reset & Operational Release**:
-  - Calling `POST /work-orders/:id/finalize` requires a unique `officialReceiptNumber`, resolution timestamps, costs, and `odometerAtService`. Duplicate receipt numbers return `409 Conflict`.
+  - Calling `POST /work-orders/:id/finalize` completes the repair lifecycle, recording manual financial costs (`parts_cost + labor_cost = total_cost`), downtime days, service odometer, and optional supporting audit receipts (`receipts: [...]` array or legacy `officialReceiptNumber`).
   - Transition: Work order status updates to `'COMPLETED'`.
-  - PM Baseline Reset: If maintenance type is `PREVENTIVE`, updates `trucks.last_pm_odometer = odometerAtService`, resetting the 5,000-km PM interval to 0 km.
-  - Operational Release: Automatically restores `trucks.status = 'ACTIVE'` while preserving the truck's driver assignment (`driver_id`).
+  - PM Baseline Reset: If maintenance type is `PREVENTIVE`, updates `vehicles.last_pm_odometer = odometerAtService`, resetting the 5,000-km PM interval to 0 km.
+  - Operational Release: Automatically restores `vehicles.status = 'ACTIVE'` while preserving driver assignment (`driver_id`).
 
 ---
 
@@ -874,6 +874,7 @@ Retrieves single work order details including linked approval requests, inspecti
   "data": {
     "workOrder": {
       "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "vehicleId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
       "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
       "plateNumber": "ABC-1001",
       "truckModel": "Isuzu Elf N-Series",
@@ -889,14 +890,45 @@ Retrieves single work order details including linked approval requests, inspecti
       "scheduledDate": "2026-09-20T08:00:00.000Z",
       "approvalStatus": "PENDING",
       "createdAt": "2026-09-18T09:00:00.000Z",
+      "approvalRequests": [
+        {
+          "id": "f5b6e90c-01a2-54dc-c102-778899aabbcc",
+          "amountRequested": 7500.00,
+          "isApproved": null,
+          "status": "PENDING",
+          "remarks": "Automated cost review trigger (>= ₱5,000.00)",
+          "requestedDate": "2026-09-18T09:00:00.000Z",
+          "decidedDate": null,
+          "deciderId": null,
+          "deciderName": null
+        }
+      ],
       "approvalRequest": {
         "id": "f5b6e90c-01a2-54dc-c102-778899aabbcc",
+        "amountRequested": 7500.00,
+        "isApproved": null,
         "status": "PENDING",
-        "estimatedCost": 7500.00,
-        "decidedBy": null,
-        "decisionDate": null,
-        "remarks": null
-      }
+        "remarks": "Automated cost review trigger (>= ₱5,000.00)",
+        "requestedDate": "2026-09-18T09:00:00.000Z"
+      },
+      "receipts": [
+        {
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+          "uploadedBy": "00000000-0000-0000-0000-000000000001",
+          "uploaderName": "Fleet Supervisor",
+          "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
+          "receiptNumber": "OR-10001",
+          "vendorName": "Bunawan Parts Depot",
+          "amount": 4500.00,
+          "receiptType": "PARTS",
+          "receiptDate": "2026-09-18T00:00:00.000Z",
+          "createdAt": "2026-09-18T10:00:00.000Z"
+        }
+      ],
+      "receiptsCount": 1,
+      "totalReceiptsAmount": 4500.00,
+      "maintenanceLog": null
     }
   }
 }
@@ -1005,6 +1037,111 @@ Approves or rejects a high-cost repair work order exceeding the ₱5,000.00 thre
 
 ---
 
+### 18.1. Submit Cost Approval Request (1:N Multi-Approval)
+
+Submits a cost approval request for a work order. Enables initial cost approval or revised sequential requests (e.g. after an initial estimate was rejected by an executive or when additional repair scope is identified). Transitions the work order status back to `'PENDING'`.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/approval-requests`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+```json
+{
+  "amountRequested": 6500.00,
+  "remarks": "Revised estimate with alternative machine shop quotation."
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `amountRequested` | Number | No | Estimated repair cost requiring approval (defaults to work order estimated cost) |
+| `remarks` | String | No | Notes or rationale for the cost approval request |
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Approval request submitted successfully.",
+  "data": {
+    "workOrder": {
+      "id": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "vehicleId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "truckId": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
+      "plateNumber": "ABC-1001",
+      "status": "PENDING",
+      "previousStatus": "CANCELLED",
+      "estimatedCost": 6500.00,
+      "updatedAt": "2026-09-18T10:15:00.000Z"
+    },
+    "approvalRequest": {
+      "id": "c3d4e5f6-7890-1234-abcd-567890abcdef",
+      "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "amountRequested": 6500.00,
+      "isApproved": null,
+      "status": "PENDING",
+      "remarks": "Revised estimate with alternative machine shop quotation.",
+      "requestedDate": "2026-09-18T10:15:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+### 18.2. Get Work Order Approval Requests
+
+Retrieves all historical approval requests associated with a work order in reverse chronological order.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/approval-requests`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 2,
+    "approvalRequests": [
+      {
+        "id": "c3d4e5f6-7890-1234-abcd-567890abcdef",
+        "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+        "amountRequested": 6500.00,
+        "isApproved": null,
+        "status": "PENDING",
+        "remarks": "Revised estimate with alternative machine shop quotation.",
+        "requestedDate": "2026-09-18T10:15:00.000Z",
+        "decidedDate": null,
+        "deciderId": null,
+        "deciderName": null,
+        "createdAt": "2026-09-18T10:15:00.000Z"
+      },
+      {
+        "id": "f5b6e90c-01a2-54dc-c102-778899aabbcc",
+        "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+        "amountRequested": 9500.00,
+        "isApproved": false,
+        "status": "REJECTED",
+        "remarks": "Too expensive. Inquire with other shops.",
+        "requestedDate": "2026-09-18T09:00:00.000Z",
+        "decidedDate": "2026-09-18T09:30:00.000Z",
+        "deciderId": "00000000-0000-0000-0000-000000000001",
+        "deciderName": "Admin User",
+        "createdAt": "2026-09-18T09:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
 ### 19. Finalize Maintenance Log & Release Vehicle
 
 Completes the repair lifecycle by logging official parts/labor costs, receipt number, downtime, and odometer reading. Updates the work order status to `'COMPLETED'`, resets the 5,000-km PM baseline if the work order was `PREVENTIVE`, and restores the vehicle operational condition to `'ACTIVE'` while preserving driver assignment.
@@ -1031,14 +1168,15 @@ Completes the repair lifecycle by logging official parts/labor costs, receipt nu
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `officialReceiptNumber` | String | Yes | Mandatory unique receipt number from service provider |
 | `severity` | String | Yes | `'LOW'`, `'MEDIUM'`, `'HIGH'`, or `'CRITICAL'` |
 | `dateStarted` | ISO 8601 | Yes | Timestamp repair started |
 | `dateResolved` | ISO 8601 | Yes | Timestamp repair completed (must be >= `dateStarted`) |
+| `odometerAtService` | Integer | Yes | Odometer reading in km at time of servicing |
 | `partsCost` | Number | No | Non-negative parts expense in PHP (default: 0.00) |
 | `laborCost` | Number | No | Non-negative labor expense in PHP (default: 0.00) |
 | `downtimeDays` | Integer | No | Days out of service (auto-calculated from dates if omitted) |
-| `odometerAtService` | Integer | Yes | Odometer reading in km at time of servicing |
+| `receipts` | Array<Object> | No | Optional array of batch receipt documents (`fileUrl`, `receiptNumber`, `vendorName`, `amount`, `receiptType`) |
+| `officialReceiptNumber` | String | No | Optional single receipt number (supported for backward compatibility) |
 
 #### Response: `201 Created` (Success)
 
@@ -1231,5 +1369,122 @@ Identifies vehicle reliability trends and problem areas across the fleet by aggr
 {
   "status": "fail",
   "message": "Vehicle not found"
+}
+```
+
+---
+
+## Work Order Receipts Management (Supporting Audit Evidence)
+
+Receipt documents serve strictly as supporting audit evidence for completed or ongoing work orders. Financial calculations are computed directly from user input (`parts_cost + labor_cost`), decoupling mathematics from file processing.
+
+### 22. Attach Receipt to Work Order
+
+Uploads and attaches a proof of purchase or service receipt document to a specific work order.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/receipts`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Request Body
+
+```json
+{
+  "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
+  "receiptNumber": "OR-10001",
+  "vendorName": "Bunawan Parts Depot",
+  "amount": 4500.00,
+  "receiptType": "PARTS",
+  "receiptDate": "2026-09-18"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `fileUrl` | String | Yes | Storage URI or document download URL |
+| `receiptNumber` | String | No | Official receipt or invoice reference number |
+| `vendorName` | String | No | Supplier or repair center name |
+| `amount` | Number | No | Non-negative receipt amount in PHP (default: 0.00) |
+| `receiptType` | String | No | Category: `'PARTS'`, `'LABOR'`, or `'MISC'` (default: `'PARTS'`) |
+| `receiptDate` | Date | No | Date printed on the receipt document |
+
+#### Response: `201 Created` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Receipt attached successfully",
+  "data": {
+    "receipt": {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "uploadedBy": "00000000-0000-0000-0000-000000000001",
+      "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
+      "receiptNumber": "OR-10001",
+      "vendorName": "Bunawan Parts Depot",
+      "amount": 4500.00,
+      "receiptType": "PARTS",
+      "receiptDate": "2026-09-18T00:00:00.000Z",
+      "createdAt": "2026-09-18T10:00:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+### 23. List Work Order Receipts
+
+Retrieves all receipts attached to a specific work order.
+
+- **HTTP Method**: `GET`
+- **URL**: `/api/fleet/maintenance/work-orders/:id/receipts`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.view`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 1,
+    "receipts": [
+      {
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+        "uploadedBy": "00000000-0000-0000-0000-000000000001",
+        "uploaderName": "Fleet Supervisor",
+        "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
+        "receiptNumber": "OR-10001",
+        "vendorName": "Bunawan Parts Depot",
+        "amount": 4500.00,
+        "receiptType": "PARTS",
+        "receiptDate": "2026-09-18T00:00:00.000Z",
+        "createdAt": "2026-09-18T10:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 24. Delete Work Order Receipt Attachment
+
+Removes a supporting receipt document attachment from a work order. Emits an audit log.
+
+- **HTTP Method**: `DELETE`
+- **URL**: `/api/fleet/maintenance/receipts/:receiptId`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `fleet.manage`
+
+#### Response: `200 OK` (Success)
+
+```json
+{
+  "status": "success",
+  "message": "Receipt deleted successfully"
 }
 ```

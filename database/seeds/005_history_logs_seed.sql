@@ -157,7 +157,7 @@ SELECT
     'truck',
     NOW() - INTERVAL '20 days'
 FROM users fm
-CROSS JOIN trucks t
+CROSS JOIN vehicles t
 WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1001'
   AND NOT EXISTS (
@@ -178,7 +178,7 @@ SELECT
     'truck',
     NOW() - INTERVAL '19 days'
 FROM users fm
-CROSS JOIN trucks t
+CROSS JOIN vehicles t
 JOIN users d ON t.driver_id = d.id
 WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1001'
@@ -200,7 +200,7 @@ SELECT
     'truck',
     NOW() - INTERVAL '20 days' + INTERVAL '30 minutes'
 FROM users fm
-CROSS JOIN trucks t
+CROSS JOIN vehicles t
 WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1002'
   AND NOT EXISTS (
@@ -221,7 +221,7 @@ SELECT
     'truck',
     NOW() - INTERVAL '20 days' + INTERVAL '1 hour'
 FROM users fm
-CROSS JOIN trucks t
+CROSS JOIN vehicles t
 WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1003'
   AND NOT EXISTS (
@@ -242,7 +242,7 @@ SELECT
     'truck',
     NOW() - INTERVAL '5 days'
 FROM users fm
-CROSS JOIN trucks t
+CROSS JOIN vehicles t
 WHERE fm.username = 'logistics_supervisor'
   AND t.plate_number = 'ABC-1003'
   AND NOT EXISTS (
