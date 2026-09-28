@@ -114,10 +114,10 @@
     "semantic_hash": ""
   },
   "database/snapshots/schema.sql": {
-    "mtime": 1789701016.070358,
-    "seen": 1790443066.3239079,
-    "ast_hash": "8100106f2d8e3289a7bcc4b7b88ff48c",
-    "semantic_hash": "8100106f2d8e3289a7bcc4b7b88ff48c"
+    "mtime": 1790611855.7145765,
+    "seen": 1790612292.0483353,
+    "ast_hash": "3eb7705207acd50a34503c3dc5707c36",
+    "semantic_hash": ""
   },
   "package.json": {
     "mtime": 1789701016.2638443,
@@ -210,9 +210,9 @@
     "semantic_hash": ""
   },
   "src/features/history/history.events.js": {
-    "mtime": 1790603284.1625354,
-    "seen": 1790604025.5442288,
-    "ast_hash": "c2bd469e0df110ec0fd4767ab4863c53",
+    "mtime": 1790609561.8920105,
+    "seen": 1790610064.7591002,
+    "ast_hash": "1bf6968e4062d36e78ac08a71fef5fd0",
     "semantic_hash": ""
   },
   "src/features/history/history.repository.js": {
@@ -366,9 +366,9 @@
     "semantic_hash": ""
   },
   "src/routes/index.js": {
-    "mtime": 1790603192.3514328,
-    "seen": 1790604025.544259,
-    "ast_hash": "53630481a12a9802fc93d0e190da4ff8",
+    "mtime": 1790609783.9361906,
+    "seen": 1790610064.7591603,
+    "ast_hash": "c70a6a790f4b720794cd42063dfb131b",
     "semantic_hash": ""
   },
   "src/server.js": {
@@ -474,16 +474,16 @@
     "semantic_hash": ""
   },
   "docs/ERD_mermaid/fleet_and_maintenance_erd.md": {
-    "mtime": 1790598200.5737007,
-    "seen": 1790602334.8426027,
-    "ast_hash": "a2f786abb00b9adbf1d83b4f8efbf1a7",
+    "mtime": 1790612109.3421118,
+    "seen": 1790612292.0485547,
+    "ast_hash": "d3c8344b7771f1d9726bc681772d8c20",
     "semantic_hash": ""
   },
   "docs/ERD_mermaid/sales_and_delivery_erd.md": {
-    "mtime": 1789701016.1515832,
-    "seen": 1790443066.3240147,
-    "ast_hash": "687cafd9076ef22a028ab4fbf2247519",
-    "semantic_hash": "687cafd9076ef22a028ab4fbf2247519"
+    "mtime": 1790612116.8354409,
+    "seen": 1790612292.0485613,
+    "ast_hash": "5c4770e2d5405a11dbdd4edea0f1cede",
+    "semantic_hash": ""
   },
   "docs/api-contracts/fleet/maintenance.api.md": {
     "mtime": 1790604774.991733,
@@ -558,9 +558,9 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790604864.8292572,
-    "seen": 1790608417.2541516,
-    "ast_hash": "3e5dabed95c424e7b92979d9f51fc254",
+    "mtime": 1790612189.9119723,
+    "seen": 1790612292.0485454,
+    "ast_hash": "13c6fe6b46bfaa215b371ffc4d4966a1",
     "semantic_hash": ""
   },
   "README.md": {
@@ -588,9 +588,9 @@
     "semantic_hash": ""
   },
   "docs/api-contracts/README.md": {
-    "mtime": 1790604710.6167257,
-    "seen": 1790604850.441761,
-    "ast_hash": "e4e1d28cc79c95f61c0b2516c208ca8b",
+    "mtime": 1790609971.853168,
+    "seen": 1790610064.7592025,
+    "ast_hash": "453ccfbdff495ab490092132d52245fe",
     "semantic_hash": ""
   },
   "docs/api-contracts/_archive/fleet-and-maintenance.api.md": {
@@ -702,9 +702,177 @@
     "semantic_hash": ""
   },
   "docs/ERD_mermaid/schedule_and_trip_erd.md": {
-    "mtime": 1790608170.3279128,
-    "seen": 1790608417.2541647,
-    "ast_hash": "1c5d25b7ee22b1c92bcdbd68b9e896c7",
+    "mtime": 1790612091.5363352,
+    "seen": 1790612292.0485637,
+    "ast_hash": "8b9313cabaf00923d9e502d5e8683b27",
+    "semantic_hash": ""
+  },
+  "database/migrations/010_schedules_and_trips.sql": {
+    "mtime": 1790609465.319508,
+    "seen": 1790610064.7590513,
+    "ast_hash": "b6d613c57b82b6b8d164af6d10d99bf2",
+    "semantic_hash": ""
+  },
+  "database/seeds/006_schedules_and_trips_seed.sql": {
+    "mtime": 1790609498.6184747,
+    "seen": 1790610064.7590702,
+    "ast_hash": "6c885f8870d86b032ada68db641ff5d6",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/index.js": {
+    "mtime": 1790609689.401044,
+    "seen": 1790610064.759122,
+    "ast_hash": "ea67d76d2ebd13f44ddb3a6d7ca521d8",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/schedules.controller.js": {
+    "mtime": 1790609660.8063376,
+    "seen": 1790610064.7591236,
+    "ast_hash": "840d36e43269cadb9c4b471d8cc78f49",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/schedules.repository.js": {
+    "mtime": 1790609634.7088053,
+    "seen": 1790610064.7591248,
+    "ast_hash": "7cd60888b1c567e330ff0d3775053f3b",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/schedules.routes.js": {
+    "mtime": 1790609682.7184656,
+    "seen": 1790610064.7591257,
+    "ast_hash": "6b4d23f6c6c558f7a4dd4e8609f8d28a",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/schedules.service.js": {
+    "mtime": 1790609653.219908,
+    "seen": 1790610064.759127,
+    "ast_hash": "2fbc6e6f5b2903d94da4e66e03a5cfa7",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/templates/templates.controller.js": {
+    "mtime": 1790609619.0195332,
+    "seen": 1790610064.7591283,
+    "ast_hash": "ab8ed2c34b3544d4482415eb8d7f43fe",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/templates/templates.repository.js": {
+    "mtime": 1790609594.7728856,
+    "seen": 1790610064.7591293,
+    "ast_hash": "c29a59925339189ce627cc8be8f4c5c5",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/templates/templates.service.js": {
+    "mtime": 1790609606.3885841,
+    "seen": 1790610064.7591307,
+    "ast_hash": "b768d98712a5e9e13141b0c646534b68",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/zones/zones.controller.js": {
+    "mtime": 1790609586.0501277,
+    "seen": 1790610064.759132,
+    "ast_hash": "48b3cea6a433d514f89a66a61c65445b",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/zones/zones.repository.js": {
+    "mtime": 1790609572.9965432,
+    "seen": 1790610064.759133,
+    "ast_hash": "d1f892b76fcb765ee24aebac9f86eeaa",
+    "semantic_hash": ""
+  },
+  "src/features/schedules/zones/zones.service.js": {
+    "mtime": 1790609579.5032222,
+    "seen": 1790610064.7591343,
+    "ast_hash": "946b65d4aa4f6649a4642e735c54f21a",
+    "semantic_hash": ""
+  },
+  "src/features/trips/index.js": {
+    "mtime": 1790609776.365818,
+    "seen": 1790610064.759135,
+    "ast_hash": "a049947326101265e780e58fe3006899",
+    "semantic_hash": ""
+  },
+  "src/features/trips/loads/loads.repository.js": {
+    "mtime": 1790609697.2442846,
+    "seen": 1790610064.7591362,
+    "ast_hash": "0d30ff17700112cc2c11c6f159d65bce",
+    "semantic_hash": ""
+  },
+  "src/features/trips/reconciliation/reconciliation.repository.js": {
+    "mtime": 1790609704.7128503,
+    "seen": 1790610064.7591374,
+    "ast_hash": "a9025958bfbeebf6a94f23a0afb338c5",
+    "semantic_hash": ""
+  },
+  "src/features/trips/trips.controller.js": {
+    "mtime": 1790609763.0796854,
+    "seen": 1790610064.7591383,
+    "ast_hash": "bd182f9f4f38d5596271863ff61c5910",
+    "semantic_hash": ""
+  },
+  "src/features/trips/trips.repository.js": {
+    "mtime": 1790609716.6899009,
+    "seen": 1790610064.7591393,
+    "ast_hash": "3b416cda826b53c84040e2c7e288e332",
+    "semantic_hash": ""
+  },
+  "src/features/trips/trips.routes.js": {
+    "mtime": 1790609771.2800355,
+    "seen": 1790610064.7591405,
+    "ast_hash": "d01210a600afeba8846912d5331194be",
+    "semantic_hash": ""
+  },
+  "src/features/trips/trips.service.js": {
+    "mtime": 1790609755.6845324,
+    "seen": 1790610064.7591417,
+    "ast_hash": "9d7ea0ab61af0ee6f19328e67c0f0e7f",
+    "semantic_hash": ""
+  },
+  "src/test/schedules.trips.test.js": {
+    "mtime": 1790609863.7171173,
+    "seen": 1790610064.759182,
+    "ast_hash": "1ebf0422ff1487252a436373b47f4b4e",
+    "semantic_hash": ""
+  },
+  "docs/api-contracts/schedules/schedules.api.md": {
+    "mtime": 1790609920.3702233,
+    "seen": 1790610064.759218,
+    "ast_hash": "c4b844735a14d0e3ad73d2e51b26afa9",
+    "semantic_hash": ""
+  },
+  "docs/api-contracts/trips/trips.api.md": {
+    "mtime": 1790609932.5980184,
+    "seen": 1790610064.7592192,
+    "ast_hash": "6e2bc3495c43baf34e7096e81a2c84d8",
+    "semantic_hash": ""
+  },
+  "docs/ERD_mermaid/README.md": {
+    "mtime": 1790612161.5511844,
+    "seen": 1790612292.0485518,
+    "ast_hash": "24c149f5e967380777ba1821bbb04dd6",
+    "semantic_hash": ""
+  },
+  "docs/ERD_mermaid/inventory_erd.md": {
+    "mtime": 1790612134.4261394,
+    "seen": 1790612292.0485568,
+    "ast_hash": "f27ef090ea0a0eea3d39610aefcd2bb5",
+    "semantic_hash": ""
+  },
+  "docs/ERD_mermaid/master_database_erd.md": {
+    "mtime": 1790612155.0666823,
+    "seen": 1790612292.0485592,
+    "ast_hash": "498af9524b04dd5ef0f88572455cac40",
+    "semantic_hash": ""
+  },
+  "docs/ERD_mermaid/system_history_logs_erd.md": {
+    "mtime": 1790612140.5172863,
+    "seen": 1790612292.048566,
+    "ast_hash": "968d171413bcd534b0dd5ee01d632b2e",
+    "semantic_hash": ""
+  },
+  "docs/ERD_mermaid/users_and_rbac_erd.md": {
+    "mtime": 1790612129.20875,
+    "seen": 1790612292.048568,
+    "ast_hash": "b88cb0bc99b23e41fa838e17944d9c95",
     "semantic_hash": ""
   }
 }

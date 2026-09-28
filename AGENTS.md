@@ -47,7 +47,9 @@ madayawgas-backend/
 │   │   ├── 005_history_logs.sql             # System event history logs schema
 │   │   ├── 006_roles_and_permissions_expansion.sql # Roles matrix expansion schema
 │   │   ├── 007_multi_role_and_org_chart_roles.sql # Multi-role junction & org chart roles schema
-│   │   └── 008_maintenance_and_work_orders.sql # Maintenance, odometer logs, inspections, work orders schema
+│   │   ├── 008_maintenance_and_work_orders.sql # Maintenance, odometer logs, inspections, work orders schema
+│   │   ├── 009_vehicles_and_receipts_refactor.sql # Vehicles generalization, receipts & work orders refactor
+│   │   └── 010_schedules_and_trips.sql     # Schedules, templates, zones, trips, loads, reconciliations schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -59,7 +61,8 @@ madayawgas-backend/
 │       ├── 002_fleet_and_maintenance_seed.sql # Seed vehicles and maintenance logs
 │       ├── 003_inventory_products_seed.sql  # Seed product items
 │       ├── 004_sales_customers_seed.sql     # Seed customer profiles
-│       └── 005_history_logs_seed.sql        # Seed system event historical logs
+│       ├── 005_history_logs_seed.sql        # Seed system event historical logs
+│       └── 006_schedules_and_trips_seed.sql # Seed service zones and weekly schedule templates
 ├── docs/
 │   ├── api-contracts/
 │   │   ├── README.md                        # Master directory & route matrix
@@ -70,8 +73,14 @@ madayawgas-backend/
 │   │   ├── users/                           # Auth, profile, management, roles & permissions
 │   │   └── _archive/                        # Preserved original monolithic contract files
 │   ├── ERD_mermaid/
-│   │   ├── fleet_and_maintenance_erd.md     # Fleet ERD diagram
-│   │   └── sales_and_delivery_erd.md        # Sales and delivery ERD diagram
+│   │   ├── README.md                        # ERD navigation index, ENUM catalog & DB conventions
+│   │   ├── master_database_erd.md           # Master 27-table unified system architecture ERD
+│   │   ├── fleet_and_maintenance_erd.md     # Fleet & Maintenance ERD diagram
+│   │   ├── inventory_erd.md                 # Inventory products ERD diagram
+│   │   ├── sales_and_delivery_erd.md        # Sales customer ERD diagram
+│   │   ├── schedule_and_trip_erd.md         # Schedules & Trips ERD diagram
+│   │   ├── system_history_logs_erd.md       # System event history logs ERD diagram
+│   │   └── users_and_rbac_erd.md            # User Management, RBAC & sessions ERD diagram
 │   ├── QA/
 │   │   ├── (1)_qa-testing-guide.md          # General QA testing guide & principles
 │   │   ├── (2)_seed-credentials.md          # Seed accounts, roles, and test credentials
@@ -110,6 +119,22 @@ madayawgas-backend/
 │   │   │   ├── products/                    # Item/Product CRUD (Repository, Service, Controller)
 │   │   │   ├── inventory.routes.js          # Express inventory route definitions
 │   │   │   └── index.js                     # Inventory barrel export
+│   │   ├── schedules/                       # Schedule Subsystem
+│   │   │   ├── zones/                       # Service Zones CRUD
+│   │   │   ├── templates/                   # Weekly Master Route Templates CRUD
+│   │   │   ├── schedules.repository.js      # Daily truck schedules data access
+│   │   │   ├── schedules.service.js         # Generation & validation logic
+│   │   │   ├── schedules.controller.js      # Schedules HTTP controller
+│   │   │   ├── schedules.routes.js          # Express route declarations
+│   │   │   └── index.js                     # Barrel export
+│   │   ├── trips/                           # Trip & Reconciliation Subsystem
+│   │   │   ├── loads/                       # Multi-load transfer slips & items
+│   │   │   ├── reconciliation/              # Post-trip stock reconciliation & variance
+│   │   │   ├── trips.repository.js          # Trip lifecycles & crew snapshots data access
+│   │   │   ├── trips.service.js             # Dispatch, check-in & reconciliation math
+│   │   │   ├── trips.controller.js          # Trips HTTP controller
+│   │   │   ├── trips.routes.js              # Express route declarations
+│   │   │   └── index.js                     # Barrel export
 │   │   └── sales/
 │   │       ├── customer/                    # Customer CRUD (Repository, Service, Controller)
 │   │       ├── sales.routes.js              # Express sales route definitions
@@ -127,7 +152,8 @@ madayawgas-backend/
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
 │   │   ├── permission.test.js               # RBAC & permission tests (prefix: test_perm_)
-│   │   └── profile.test.js                  # Profile tests (prefix: test_prof_)
+│   │   ├── profile.test.js                  # Profile tests (prefix: test_prof_)
+│   │   └── schedules.trips.test.js          # Schedule & Trip Subsystem tests (prefix: test_sched_)
 │   └── utils/
 │       ├── asyncHandler.js                  # Wrapper for async route error catching
 │       ├── passwordGenerator.js             # Cryptographic temporary password generator
@@ -425,6 +451,44 @@ madayawgas-backend/
       - Executed `npm run db:reset` cleanly applying migrations 001–009 and seeds 001–005 from scratch on PostgreSQL 18.
       - Verified 100% pass rate across all 83 tests in all 11 test suites (`npm test`).
       - Synchronized AST knowledge graph with `graphify update .`.
+24. **Schedule & Trip Subsystem Implementation (`src/features/schedules/` & `src/features/trips/`)**:
+    * **Database Migration & Seeds**:
+      - Created migration `010_schedules_and_trips.sql` establishing strict 3NF tables: `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, and `trip_stock_reconciliations` with custom ENUMs (`schedule_status`, `trip_status`, `transfer_type`, `stock_condition`, `reconciliation_status`).
+      - Created seed `006_schedules_and_trips_seed.sql` populating primary service zones (`Toril`, `Bankerohan`, `Calinan`, `Buhangin`, `Panacan`, `Matina`) and sample weekly master templates.
+    * **Centralized Event History Registry**:
+      - Registered 6 domain events in `src/features/history/history.events.js`: `SCHEDULE_CREATED`, `SCHEDULE_CANCELLED`, `TRIP_DISPATCHED`, `TRIP_STOCK_LOADED`, `TRIP_COMPLETED`, and `TRIP_RECONCILED`.
+    * **Schedule Domain (`src/features/schedules/`)**:
+      - Service Zones CRUD (`/api/schedules/zones`).
+      - Recurring Weekly Master Templates CRUD (`/api/schedules/templates`) with `day_of_week` (1-7) and `UNIQUE(truck_id, day_of_week)`.
+      - Operational Daily Truck Schedules (`/api/schedules`) with batch generator engine (`POST /api/schedules/generate`) skipping grounded trucks (`UNDER_MAINTENANCE`), honoring overrides, and enforcing `UNIQUE(truck_id, scheduled_date)`.
+    * **Trip & Reconciliation Domain (`src/features/trips/`)**:
+      - Scheduled and ad-hoc trip dispatch (`POST /api/trips/dispatch`) snapshotting crew (`driver_id`, `sales_user_id`) and transitioning schedule to `DISPATCHED`.
+      - Multi-load transfers (`POST /api/trips/:id/loads`) for midday reloads and unloads with canonical integer unit counts.
+      - Plant return check-in (`POST /api/trips/:id/complete`) directly integrated with fleet maintenance single-point return odometer engine (`maintenanceService.logOdometerReading`) enforcing monotonic readings and 5,000-km PM evaluation.
+      - Post-trip stock reconciliation engine (`POST /api/trips/:id/reconcile`) evaluating Full Discrepancy and Empty Discrepancy formulas against synchronized cabin app sales and customer canister debt (`SETTLED` vs `FLAGGED_VARIANCE`).
+    * **Integration Test Suite**:
+      - Implemented `src/test/schedules.trips.test.js` covering RBAC, generator engine, double-booking guard, trip lifecycles, odometer check-in, reconciliation math, and audit trails.
+      - 100% test pass rate across all 92 project tests in 12 test suites (`npm test`).
+    * **Documentation & Contracts**:
+      - Created formal contracts `docs/api-contracts/schedules/schedules.api.md` and `docs/api-contracts/trips/trips.api.md`.
+      - Synchronized `docs/api-contracts/README.md`.
+25. **Database ERD Documentation Synchronization & Master Architecture Alignment**:
+    * **Direct PostgreSQL 18 Live Introspection**:
+      - Exported and cross-verified complete PostgreSQL schema snapshot (`npm run db:export` -> `database/snapshots/schema.sql`).
+    * **Schedule & Trip ERD Alignment (`docs/ERD_mermaid/schedule_and_trip_erd.md`)**:
+      - Updated legacy `TRUCKS` stub to actual `VEHICLES` table (`truck_id REFERENCES vehicles(id)`).
+      - Added exhaustive markdown table specifications, custom ENUMs (`schedule_status`, `trip_status`, `transfer_type`, `stock_condition`, `reconciliation_status`), partial unique index (`UQ_trips_schedule_id`), and trigger documentation.
+    * **Fleet & Maintenance ERD Alignment (`docs/ERD_mermaid/fleet_and_maintenance_erd.md`)**:
+      - Updated temporal data types from `datetime` to `TIMESTAMPTZ`.
+      - Aligned `VEHICLES.status` with custom ENUM `truck_status`.
+      - Documented multi-approval cardinality (`approval_requests` partial unique index `UQ_approval_requests_pending`), generated columns (`pm_due_flag`, `total_cost`), decoupled `work_order_receipts`, and `allow_dispatch`.
+    * **New Domain ERD Documentation**:
+      - Created `docs/ERD_mermaid/users_and_rbac_erd.md` covering all 7 RBAC tables, sessions, and audit logs.
+      - Created `docs/ERD_mermaid/inventory_erd.md` covering `products` and `container_type_enum`.
+      - Created `docs/ERD_mermaid/system_history_logs_erd.md` covering `history_logs`, actor snapshots, and JSONB `metadata`.
+    * **Master Database Architecture & Navigation Index**:
+      - Created unified 27-table master system ERD in `docs/ERD_mermaid/master_database_erd.md` displaying all cross-subsystem foreign keys.
+      - Created `docs/ERD_mermaid/README.md` cataloging all subsystem diagrams, PostgreSQL ENUM types, and database conventions.
 
 ---
 

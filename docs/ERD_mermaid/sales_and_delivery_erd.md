@@ -2,28 +2,35 @@
 
 > **Module**: Sales & Delivery Subsystem  
 > **Target Database**: PostgreSQL 18.x  
-> **Last Updated**: August 28, 2026
+> **Status**: Customer Profile Management is implemented in Migration 004 (`004_customers.sql`). Frontline transactional sales orders and customer cylinder debt ledgers are slated for the subsequent roadmap phase.
 
 ---
 
 ## 1. Mermaid Entity-Relationship Diagram
 
 ```mermaid
+---
+config:
+  layout: elk
+  theme: neutral
+---
+
 erDiagram
+
     %% ==========================================
     %% ENUMS
     %% ==========================================
     %% customer_type_enum: 'RETAIL', 'COMMERCIAL', 'WHOLESALE'
 
     CUSTOMERS {
-        UUID id PK "DEFAULT gen_random_uuid()"
-        VARCHAR_255 name "NOT NULL"
-        TEXT address "NOT NULL"
-        VARCHAR_50 contact_number "NOT NULL"
-        customer_type_enum customer_type "NOT NULL ('RETAIL', 'COMMERCIAL', 'WHOLESALE')"
-        BOOLEAN is_active "NOT NULL DEFAULT TRUE"
-        TIMESTAMPTZ created_at "NOT NULL DEFAULT NOW()"
-        TIMESTAMPTZ updated_at "NOT NULL DEFAULT NOW()"
+        uuid id PK
+        string name "NOT NULL"
+        string address "NOT NULL"
+        string contact_number "NOT NULL"
+        enum customer_type "customer_type_enum: RETAIL, COMMERCIAL, WHOLESALE"
+        boolean is_active "DEFAULT TRUE"
+        timestamptz created_at
+        timestamptz updated_at
     }
 ```
 
@@ -32,18 +39,23 @@ erDiagram
 ## 2. Table Specifications
 
 ### `customers`
-Stores customer profiles and business accounts for LPG distribution, orders, and delivery dispatch.
+Stores customer master profiles and institutional accounts for LPG distribution, orders, and delivery dispatch.
 
-| Column | Data Type | Nullable | Default / Constraint | Description |
+| Column | Data Type | Nullable | Default / Constraints | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | `UUID` | No | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique customer identifier |
 | `name` | `VARCHAR(255)` | No | Non-empty | Full name or business trade name of the customer |
-| `address` | `TEXT` | No | Non-empty | Complete physical / delivery address |
+| `address` | `TEXT` | No | Non-empty | Complete physical delivery address |
 | `contact_number` | `VARCHAR(50)` | No | Non-empty | Mobile or landline contact number |
-| `customer_type` | `customer_type_enum` | No | `'RETAIL'` \| `'COMMERCIAL'` \| `'WHOLESALE'` | Customer segment category |
+| `customer_type` | `customer_type_enum` | No | `'RETAIL'`, `'COMMERCIAL'`, `'WHOLESALE'` | Customer segment classification |
 | `is_active` | `BOOLEAN` | No | `DEFAULT TRUE` | Soft-deactivation indicator |
 | `created_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Record creation timestamp |
-| `updated_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Record last update timestamp (managed via trigger) |
+| `updated_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Managed automatically via trigger |
+
+**Lookup Indexes:**
+- `idx_customers_name`: Index on `customers(name)` for search lookups.
+- `idx_customers_customer_type`: Index on `customers(customer_type)` for segmentation queries.
+- `idx_customers_is_active`: Index on `customers(is_active)` for active filtering.
 
 ---
 

@@ -11,6 +11,8 @@ const MODULES = Object.freeze({
   INVENTORY_MANAGEMENT: 'Inventory Management',
   SALES_DELIVERY: 'Sales & Delivery',
   ROUTE_DISPATCH: 'Route Dispatch',
+  SCHEDULE: 'SCHEDULE',
+  TRIP: 'TRIP',
 });
 
 const ACTION_TYPES = Object.freeze({
@@ -331,6 +333,52 @@ const EVENT_DEFINITIONS = {
     targetType: 'customer',
     template: (p) =>
       `Deactivated customer profile for '${p.name}'`,
+  },
+
+  // ============================================================
+  // 5. SCHEDULE & TRIP SUBSYSTEM EVENTS
+  // ============================================================
+  SCHEDULE_CREATED: {
+    module: MODULES.SCHEDULE,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'schedule',
+    template: (p) =>
+      `Scheduled route for vehicle '${p.plateNumber || p.truckId}' on ${p.date || p.scheduledDate}`,
+  },
+  SCHEDULE_CANCELLED: {
+    module: MODULES.SCHEDULE,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'schedule',
+    template: (p) =>
+      `Cancelled scheduled route for vehicle '${p.plateNumber || p.truckId}' on ${p.date || p.scheduledDate}`,
+  },
+  TRIP_DISPATCHED: {
+    module: MODULES.TRIP,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'trip',
+    template: (p) =>
+      `Dispatched trip #${p.tripNumber} for vehicle '${p.plateNumber || p.truckId}'`,
+  },
+  TRIP_STOCK_LOADED: {
+    module: MODULES.TRIP,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'trip_load',
+    template: (p) =>
+      `Recorded stock transfer slip #${p.slipNumber} (${p.transferType}) for trip #${p.tripNumber}`,
+  },
+  TRIP_COMPLETED: {
+    module: MODULES.TRIP,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'trip',
+    template: (p) =>
+      `Completed trip #${p.tripNumber} with return odometer reading of ${p.odometerKm || p.returnOdometerKm} km`,
+  },
+  TRIP_RECONCILED: {
+    module: MODULES.TRIP,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'trip_reconciliation',
+    template: (p) =>
+      `Settled stock reconciliation for trip #${p.tripNumber} with status '${p.status}'`,
   },
 };
 

@@ -11,6 +11,8 @@ Welcome to the MadayawGas Backend RESTful API documentation. This directory prov
 | :--- | :--- | :--- |
 | **Users & Identity** | `/api/users` | Authentication, sessions, user profiles, admin management, and RBAC |
 | **Fleet & Logistics** | `/api/fleet` | Fleet overview, truck inventory, driver assignments, and maintenance tracking |
+| **Schedule & Routing** | `/api/schedules` | Service zones, weekly recurring route templates, and operational daily truck schedules |
+| **Trip & Reconciliation** | `/api/trips` | Real-time dispatch, multi-load inventory transfers, plant return check-in, and stock reconciliation |
 | **Inventory** | `/api/inventory` | LPG cylinder & canister product catalog and profile management |
 | **Sales & Delivery** | `/api/sales` | Customer profiles, commercial accounts, and retail distribution |
 | **System History** | `/api/history` | Centralized audit trail and system event historical logs |
@@ -90,6 +92,12 @@ docs/api-contracts/
 │   ├── vehicles.api.md                      # Vehicle inventory CRUD, registration options, deactivation
 │   ├── drivers.api.md                       # Driver assignment, unassignment, driver directory
 │   └── maintenance.api.md                   # Odometer return log, 5,000-km PM engine, log history
+│
+├── schedules/                               # Subsystem: Schedule & Routing
+│   └── schedules.api.md                     # Service zones, weekly master templates, daily schedules
+│
+├── trips/                                   # Subsystem: Trips & Reconciliation
+│   └── trips.api.md                         # Real-time dispatch, multi-load transfers, return odometer, reconciliation
 │
 ├── history/                                 # Subsystem: Audit & History Logs
 │   └── history.api.md                       # System event history logs, module filters, search, detail
@@ -187,6 +195,42 @@ docs/api-contracts/
 | `POST` | `/api/fleet/maintenance/work-orders/:id/receipts` | Attach proof receipt document to work order | `fleet.manage` | [fleet/maintenance.api.md](file:///docs/api-contracts/fleet/maintenance.api.md#22-attach-receipt-to-work-order) |
 | `GET` | `/api/fleet/maintenance/work-orders/:id/receipts` | List all receipts attached to work order | `fleet.view` | [fleet/maintenance.api.md](file:///docs/api-contracts/fleet/maintenance.api.md#23-list-work-order-receipts) |
 | `DELETE` | `/api/fleet/maintenance/receipts/:receiptId` | Delete a receipt attachment | `fleet.manage` | [fleet/maintenance.api.md](file:///docs/api-contracts/fleet/maintenance.api.md#24-delete-work-order-receipt) |
+
+---
+
+### Subsystem: Schedule & Routing (`/api/schedules`)
+
+| Method | Endpoint | Description | Permissions | Contract Document |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/schedules/zones` | List delivery service zones | `route.view` / `route.view_own` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
+| `POST` | `/api/schedules/zones` | Register new delivery service zone | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
+| `PATCH` | `/api/schedules/zones/:id` | Update delivery service zone | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
+| `GET` | `/api/schedules/templates` | List recurring weekly route templates | `route.view` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
+| `POST` | `/api/schedules/templates` | Create recurring weekly master template | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
+| `PATCH` | `/api/schedules/templates/:id` | Update weekly master template | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
+| `DELETE` | `/api/schedules/templates/:id` | Delete weekly master template | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
+| `GET` | `/api/schedules` | List operational daily truck schedules | `route.view` / `route.view_own` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
+| `POST` | `/api/schedules` | Create ad-hoc single-day truck schedule | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
+| `POST` | `/api/schedules/generate` | Batch generate daily schedules from templates | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
+| `GET` | `/api/schedules/:id` | View single operational schedule detail | `route.view` / `route.view_own` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
+| `PATCH` | `/api/schedules/:id` | Modify operational schedule parameters | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
+| `PATCH` | `/api/schedules/:id/cancel` | Cancel scheduled operational run | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
+
+---
+
+### Subsystem: Trip & Reconciliation (`/api/trips`)
+
+| Method | Endpoint | Description | Permissions | Contract Document |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/trips/dispatch` | Dispatch truck for scheduled or ad-hoc run | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#1-dispatch-trip-post-apitripsdispatch) |
+| `GET` | `/api/trips` | List delivery trips with filters & pagination | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
+| `GET` | `/api/trips/:id` | View trip detail, crew snapshot & loads | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
+| `PATCH` | `/api/trips/:id/cancel` | Cancel active or pending trip | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
+| `POST` | `/api/trips/:id/loads` | Record multi-load transfer slip (reload/unload) | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#2-multi-load-inventory-transfer-post-apitripsidloads) |
+| `GET` | `/api/trips/:id/loads` | List all transfer slips and line items for trip | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
+| `POST` | `/api/trips/:id/complete` | Complete plant return check-in & odometer | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#3-plant-return-check-in-post-apitripsidcomplete) |
+| `POST` | `/api/trips/:id/reconcile` | Settle post-trip stock variance & discrepancies | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#4-post-trip-stock-reconciliation-post-apitripsidreconcile) |
+| `GET` | `/api/trips/:id/reconciliation` | View reconciliation discrepancy breakdown | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
 
 ---
 

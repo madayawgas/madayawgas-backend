@@ -1,17 +1,17 @@
-# Graph Report - madayawgas-backend  (2026-09-28)
+# Graph Report - madayawgas-backend  (2026-09-29)
 
 ## Corpus Check
-- 116 files · ~119,650 words
+- 144 files · ~149,469 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 9 file(s) not represented in the graph (top: (none) 8, .example 1)
 
 ## Summary
-- 1319 nodes · 1977 edges · 114 communities (78 shown, 36 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 98 edges (avg confidence: 0.9)
+- 1688 nodes · 2644 edges · 162 communities (95 shown, 67 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 102 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `82bc2e3d`
+- Built from commit: `e3b862fe`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -22,7 +22,7 @@
 - 008_maintenance_and_work_orders.sql
 - maintenance.service.js
 - MaintenanceRepository
-- schema.sql
+- public.work_orders
 - package.json
 - query
 - MaintenanceService
@@ -37,7 +37,7 @@
 - history.test.js
 - users.controller.js
 - connection.js
-- pagination.js
+- VehiclesController
 - Endpoints
 - ProductsRepository
 - Endpoints
@@ -48,12 +48,12 @@
 - pagination.test.js
 - permission.test.js
 - 004_customers.sql
-- AvailabilityRepository
+- availability.repository.js
 - rules/graphify.md
 - workflows/graphify.md
 - MadayawGas Backend: Developer Guide & Architecture Conventions
 - inventory.test.js
-- fleet/index.js
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenancecontroller
 - management.test.js
 - profile.test.js
 - post-checkout
@@ -62,21 +62,21 @@
 - 3. Step-by-Step Test Scenarios
 - Mid-Route Incident & Breakdown Reporting
 - HistoryRepository
-- 003_products.sql
-- Fleet Maintenance API
+- 010_schedules_and_trips.sql
+- master_database_erd.md
 - RBAC System
 - check-node.js
 - Products API
 - Customer API
 - Auth API
-- Sales ERD
+- schema.sql
 - Endpoints
 - Endpoints
 - MadayawGas API Contract: System Event History Log
 - 2. Core User Flows & Step-by-Step Workflows
 - VehiclesRepository
 - Detailed Role & Permission Breakdown
-- 3. Coding Standards & Architectural Patterns
+- authenticate
 - User Administration Endpoints (Admin)
 - users.routes.js
 - customer.service.js
@@ -91,61 +91,109 @@
 - Setup
 - Safety Inspections (Issue-Reporting Only — No Checklists)
 - fleet.routes.js
-- 009_vehicles_and_receipts_refactor.sql
-- availability.service.js
+- 3. Operational Daily Truck Schedules
+- schedules.service.js
 - history.routes.js
 - inventory.routes.js
 - vehicles.service.js
 - CustomerService
 - 18. Delete System Role
 - fleet.test.js
-- 12. Record Vehicle Mileage
+- schedules/index.js
 - 10. Change User Role (Admin)
 - 7. Register / Create User Account
 - System Permissions & RBAC Matrix
-- 10. Assign Driver to Vehicle
-- 12. Driver Directory (List All Drivers)
+- MadayawGas API Contract: Trip Subsystem
+- trips.service.js
 - 11. Update User Credentials / Reset Password (Admin Reset)
 - 12. Deactivate / Activate or Block / Unblock User Account
 - 14. Get Single Role Details
 - 16. Create System Role
 - 9. Update User Profile by ID
-- "vehicles"
-- 2. View Fleet Availability
-- 3. List All Vehicles
-- 5. Register Vehicle
-- availability.controller.js
-- 8. Set Vehicle Availability Status
-- 9. Deactivate Vehicle
+- trips/index.js
+- products.service.js
+- VehiclesService
+- schedules.controller.js
+- TripsService
+- parsePaginationQuery
+- products.controller.js
 - AvailabilityService
-- "incident_reports"
-- "maintenance_logs"
-- src_features_history_index_resolveevent
-- "vehicle_inspections"
-- "vehicle_odometer_logs"
+- public.users
+- customer.controller.js
+- TripsController
+- schedules.routes.js
+- public.trips
+- history.controller.js
+- formatProduct
+- SchedulesRepository
+- TemplatesRepository
+- TemplatesService
+- ZonesRepository
+- schedules.trips.test.js
+- AGENTS.md — MadayawGas Backend System Context & Engineering Handbook
+- maintenance.routes.js
+- HistoryService
+- SchedulesService
+- TemplatesController
+- trips.repository.js
+- public.vehicles
+- vehicles.controller.js
+- ZonesController
+- ZonesService
+- 17. Update Work Order Status
+- 19. Finalize Maintenance Log & Release Vehicle
+- LoadsRepository
+- pagination.js
+- 14. Create Maintenance Work Order
+- 18. Executive Cost Approval Decision
+- reconciliation.repository.js
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_database_connection_pool
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_database_connection_query
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenancerepository
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenanceroutes
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenanceservice
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_history_index_events
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_history_index_historyservice
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_history_index_resolveevent
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_middleware_auth_middleware_authenticate
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_middleware_auth_middleware_requirepasswordconfirmation
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_middleware_auth_middleware_requirepermission
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_buildpaginationmeta
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_calculateoffset
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_formatpaginatedenvelope
+- c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_parsepaginationquery
+- "vehicles"
+- public.schedule_templates
+- public.truck_schedules
+- public.update_timestamp_column
+- public.approval_requests
+- trigger_update_customers_updated_at
+- trigger_update_products_updated_at
+- trigger_update_vehicles_updated_at
+- trigger_update_work_orders_updated_at
 
 ## God Nodes (most connected - your core abstractions)
-1. `query()` - 129 edges
+1. `query()` - 170 edges
 2. `MaintenanceRepository` - 44 edges
 3. `4. Recent Work Completed` - 37 edges
 4. `UsersRepository` - 34 edges
 5. `MaintenanceController` - 26 edges
 6. `MaintenanceService` - 26 edges
-7. `UsersController` - 20 edges
-8. `Endpoints` - 16 edges
-9. `ManagementService` - 15 edges
-10. `VehiclesRepository` - 14 edges
+7. `{ Pool }` - 20 edges
+8. `UsersController` - 20 edges
+9. `"users"` - 18 edges
+10. `public.users` - 18 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `1. Overview & Tech Stack` --references--> `query()`  [INFERRED]
   AGENTS.md → database/connection.js
-- `C. System Autonomy in User Credentials` --references--> `authenticate()`  [INFERRED]
-  AGENTS.md → src/middleware/auth.middleware.js
 - `F. Centralized Event History Logging & Template Resolver` --references--> `resolveEvent()`  [INFERRED]
   AGENTS.md → src/features/history/history.events.js
 - `Dangerous Operations Protection (`requirePasswordConfirmation`)` --references--> `requirePasswordConfirmation()`  [INFERRED]
   docs/api-contracts/README.md → src/middleware/auth.middleware.js
-- `D. Dangerous Operations Protection (Password Confirmation Middleware)` --references--> `requirePasswordConfirmation()`  [INFERRED]
+- `4. Recent Work Completed` --references--> `resolveEvent()`  [INFERRED]
+  AGENTS.md → src/features/history/history.events.js
+- `4. Recent Work Completed` --references--> `authenticate()`  [INFERRED]
   AGENTS.md → src/middleware/auth.middleware.js
 
 ## Import Cycles
@@ -154,39 +202,35 @@
 ## Hyperedges (group relationships)
 - **Maintenance Workflow Participants** — docs_api_contracts_fleet_maintenance_api_md, docs_erd_mermaid_fleet_and_maintenance_erd_md, maintenance_work_order_flow [EXTRACTED 1.00]
 
-## Communities (114 total, 36 thin omitted)
+## Communities (162 total, 67 thin omitted)
 
 ### Community 0 - "history/index.js"
-Cohesion: 0.06
-Nodes (32): formatDriver(), formatVehicle(), VehiclesService, ACTION_TYPES, EVENT_DEFINITIONS, EVENTS, MODULES, resolveEvent() (+24 more)
+Cohesion: 0.18
+Nodes (13): ACTION_TYPES, EVENT_DEFINITIONS, EVENTS, MODULES, resolveEvent(), { query }, { calculateOffset, buildPaginationMeta }, historyRepository (+5 more)
 
 ### Community 1 - "routes/index.js"
-Cohesion: 0.15
-Nodes (12): historyRoutes, customerController, customerRepository, customerService, salesRoutes, express, fleetRoutes, { historyRoutes } (+4 more)
+Cohesion: 0.13
+Nodes (14): historyRoutes, customerController, customerRepository, customerService, salesRoutes, express, fleetRoutes, { historyRoutes } (+6 more)
 
 ### Community 2 - "setup.js"
 Cohesion: 0.06
-Nodes (45): { Pool }, cleanDump(), { execFileSync }, exportSchema(), findPgDump(), fs, getPostgresVersion(), main() (+37 more)
+Nodes (44): cleanDump(), { execFileSync }, exportSchema(), findPgDump(), fs, getPostgresVersion(), main(), path (+36 more)
 
 ### Community 3 - "008_maintenance_and_work_orders.sql"
-Cohesion: 0.08
-Nodes (43): "audit_logs", "permissions", "role_permissions", "roles", "sessions", "users", IX_trucks_driver_id, trigger_update_trucks_updated_at (+35 more)
+Cohesion: 0.07
+Nodes (49): "audit_logs", "permissions", "role_permissions", "roles", "sessions", "users", IX_trucks_driver_id, trigger_update_trucks_updated_at (+41 more)
 
 ### Community 4 - "maintenance.service.js"
-Cohesion: 0.16
-Nodes (11): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_database_connection_pool, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_history_index_events, maintenanceController, maintenanceRepository, maintenanceRoutes, maintenanceService, maintenanceService, { query, pool } (+3 more)
+Cohesion: 0.22
+Nodes (8): availabilityRepository, { historyService, EVENTS }, vehiclesRepository, { historyService, EVENTS }, maintenanceRepository, { pool }, src_features_history_index_events, historyService
 
-### Community 6 - "schema.sql"
-Cohesion: 0.11
-Nodes (34): IX_approval_requests_decider_id, IX_approval_requests_work_order_id, IX_incident_reports_incident_type_id, IX_incident_reports_reporter_id, IX_incident_reports_truck_id, IX_maintenance_logs_maintenance_type_id, IX_maintenance_logs_work_order_id, IX_trucks_driver_id (+26 more)
+### Community 6 - "public.work_orders"
+Cohesion: 0.20
+Nodes (11): IX_maintenance_logs_work_order_id, IX_vehicle_inspections_inspection_date, IX_vehicle_inspections_result, IX_vehicle_inspections_vehicle_id, IX_work_orders_maintenance_type_id, IX_work_orders_status, IX_work_orders_vehicle_id, public.maintenance_logs (+3 more)
 
 ### Community 7 - "package.json"
 Cohesion: 0.06
 Nodes (35): author, dependencies, bcrypt, cors, dotenv, express, pg, zod (+27 more)
-
-### Community 8 - "query"
-Cohesion: 0.11
-Nodes (3): query(), { query }, UsersRepository
 
 ### Community 10 - "management.service.js"
 Cohesion: 0.16
@@ -201,12 +245,21 @@ Cohesion: 0.14
 Nodes (8): app, cookieParser, cors, corsOptions, errorHandler, express, routes, corsOptions
 
 ### Community 13 - "Endpoints"
-Cohesion: 0.12
-Nodes (17): 11. Unassign Driver from Vehicle, 13. List Available Drivers, 14. Fleet Register Page Options, 1. View Fleet Overview, 4. Get Vehicle by ID, 6. Update Vehicle Information, 7. View Vehicle Status, Endpoints (+9 more)
+Cohesion: 0.05
+Nodes (44): 10. Assign Driver to Vehicle, 11. Unassign Driver from Vehicle, 12. Driver Directory (List All Drivers), 12. Record Vehicle Mileage, 13. List Available Drivers, 14. Fleet Register Page Options, 1. View Fleet Overview, 2. View Fleet Availability (+36 more)
 
 ### Community 14 - "customer.test.js"
-Cohesion: 0.29
-Nodes (5): app, assert, bcrypt, { query, pool }, { test, before, after, beforeEach }
+Cohesion: 0.17
+Nodes (10): ref_node_assert, ref_node_test, app, assert, bcrypt, { query, pool }, { test, before, after, beforeEach }, assert (+2 more)
+
+### Community 15 - "MaintenanceController"
+Cohesion: 0.04
+Nodes (16): AvailabilityController, availabilityService, availabilityController, availabilityRepository, availabilityService, fleetRoutes, {
+  maintenanceRepository,
+  maintenanceService,
+  maintenanceController,
+  maintenanceRoutes,
+}, vehiclesController (+8 more)
 
 ### Community 17 - "fleet.maintenance.test.js"
 Cohesion: 0.20
@@ -214,19 +267,15 @@ Nodes (11): ref_node_http, app, assert, bcrypt, cleanupTestData(), http, login()
 
 ### Community 18 - "history.test.js"
 Cohesion: 0.23
-Nodes (11): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_history_index_resolveevent, app, assert, cleanupTestData(), http, loginAsSalesUser(), loginAsSuperAdmin(), makeRequest() (+3 more)
+Nodes (11): src_features_history_index_resolveevent, app, assert, cleanupTestData(), http, loginAsSalesUser(), loginAsSuperAdmin(), makeRequest() (+3 more)
 
 ### Community 19 - "users.controller.js"
-Cohesion: 0.12
-Nodes (14): authService, managementService, permissionService, profileService, usersController, usersRepository, usersRoutes, usersRepository (+6 more)
+Cohesion: 0.10
+Nodes (19): authService, managementService, permissionService, profileService, usersController, usersRepository, usersRoutes, usersRepository (+11 more)
 
 ### Community 20 - "connection.js"
-Cohesion: 0.43
-Nodes (5): testConnection(), app, initializeDatabase(), startServer(), { testConnection }
-
-### Community 21 - "pagination.js"
-Cohesion: 0.05
-Nodes (21): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_formatpaginatedenvelope, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_parsepaginationquery, ALLOWED_DRIVER_SORT_FIELDS, ALLOWED_VEHICLE_SORT_FIELDS, { parsePaginationQuery, formatPaginatedEnvelope }, VehiclesController, vehiclesService, ALLOWED_HISTORY_SORT_FIELDS (+13 more)
+Cohesion: 0.24
+Nodes (8): { Pool }, testConnection(), { query, pool }, { query, pool }, app, initializeDatabase(), startServer(), { testConnection }
 
 ### Community 22 - "Endpoints"
 Cohesion: 0.07
@@ -257,12 +306,8 @@ Cohesion: 0.09
 Nodes (21): 10. Standardized Server-Side Pagination Pattern, 1. Architectural Overview, 1. Opt-in vs Legacy Fallback (100% Backward Compatibility), 2. Directory Structure, 2. Standardized Response Envelope, 3. Layer Responsibilities, 4. Authentication & Stateful Sessions, 5. Role-Based Access Control (RBAC) (+13 more)
 
 ### Community 36 - "inventory.test.js"
-Cohesion: 0.17
-Nodes (10): ref_node_assert, ref_node_test, app, assert, bcrypt, { query, pool }, { test, before, after, beforeEach }, assert (+2 more)
-
-### Community 37 - "fleet/index.js"
-Cohesion: 0.15
-Nodes (12): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenancecontroller, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenancerepository, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenanceroutes, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_fleet_maintenance_index_maintenanceservice, availabilityController, availabilityRepository, availabilityService, fleetRoutes (+4 more)
+Cohesion: 0.29
+Nodes (5): app, assert, bcrypt, { query, pool }, { test, before, after, beforeEach }
 
 ### Community 38 - "management.test.js"
 Cohesion: 0.29
@@ -281,20 +326,24 @@ Cohesion: 0.10
 Nodes (20): 1. Test Accounts & Credentials, 2. How Authentication Works in Postman, 3. Step-by-Step Test Scenarios, Expected Response (`200 OK`), Expected Response (`401 Unauthorized`), Postman Testing Guide: Authentication & RBAC, Scenario A: Unauthenticated Request (401 Unauthorized), Scenario B: Login as `sales_user` (Normal User) (+12 more)
 
 ### Community 44 - "Mid-Route Incident & Breakdown Reporting"
-Cohesion: 0.06
-Nodes (33): 10. List Fleet Incidents, 11. View Truck Incident History, 12. Get Incident Report by ID, 13. List Maintenance Types, 14. Create Maintenance Work Order, 15. List Fleet Work Orders, 16. Get Work Order Details by ID, 17. Update Work Order Status (+25 more)
+Cohesion: 0.11
+Nodes (19): 10. List Fleet Incidents, 11. View Truck Incident History, 12. Get Incident Report by ID, 13. List Maintenance Types, 15. List Fleet Work Orders, 16. Get Work Order Details by ID, 20. Query Historical Maintenance Logs, 8. Get Incident Types Catalog (+11 more)
 
-### Community 46 - "003_products.sql"
-Cohesion: 0.67
-Nodes (3): "products", trigger_update_products_updated_at, update_products_updated_at_column()
+### Community 46 - "010_schedules_and_trips.sql"
+Cohesion: 0.09
+Nodes (43): "products", trigger_update_products_updated_at, update_products_updated_at_column(), IX_schedule_templates_day_of_week, IX_schedule_templates_is_active, IX_schedule_templates_truck_id, IX_schedule_templates_zone_id, IX_service_zones_code (+35 more)
 
-### Community 47 - "Fleet Maintenance API"
-Cohesion: 0.67
-Nodes (3): Fleet Maintenance API, Fleet ERD, Maintenance Lifecycle
+### Community 47 - "master_database_erd.md"
+Cohesion: 0.05
+Nodes (42): Fleet Maintenance API, Fleet ERD, 1. Mermaid Entity-Relationship Diagram, 2. Table Specifications, 3. Triggers & Automation, Inventory Subsystem — Entity Relationship Diagram (ERD), `products`, 1. Unified Mermaid Entity-Relationship Diagram (+34 more)
 
 ### Community 48 - "RBAC System"
 Cohesion: 0.50
 Nodes (4): History API, User Management API, Roles API, RBAC System
+
+### Community 59 - "schema.sql"
+Cohesion: 0.12
+Nodes (19): idx_customers_customer_type, idx_customers_is_active, idx_customers_name, idx_history_logs_action_type, idx_history_logs_created_at, idx_history_logs_module, idx_history_logs_user_id, IX_trip_load_items_condition (+11 more)
 
 ### Community 60 - "Endpoints"
 Cohesion: 0.11
@@ -316,21 +365,21 @@ Nodes (14): 1. Executive Summary: What Changed & What's New, 2. Core User Flows 
 Cohesion: 0.15
 Nodes (12): 1. Super Admin (`superadmin`), 2. Administrator (`admin_user`), 3. Logistics Supervisor (`logistics_supervisor`), 4. Sales Supervisor (`sales_supervisor`), 5. Sales Person (`sales_user`), 6. Driver (`driver_user`), 7. Plant Supervisor (`plant_user`), 8. Multi-Role Supervisor (`samantha_supervisor`) (+4 more)
 
-### Community 66 - "3. Coding Standards & Architectural Patterns"
-Cohesion: 0.17
-Nodes (11): 1. Overview & Tech Stack, 2. Current Architecture & Key Files, 3. Coding Standards & Architectural Patterns, 5. Seed Users & Permanent Test Accounts, 6. Next Steps & Roadmap, A. 3-Layer Architecture Rules, AGENTS.md — MadayawGas Backend System Context & Engineering Handbook, B. Authentication & Session Management (+3 more)
+### Community 66 - "authenticate"
+Cohesion: 0.18
+Nodes (11): 3. Coding Standards & Architectural Patterns, A. 3-Layer Architecture Rules, B. Authentication & Session Management, C. System Autonomy in User Credentials, E. Test Concurrency & Isolation, F. Centralized Event History Logging & Template Resolver, 3. Layer Responsibilities & Strict Rules, Layer 1: Route Layer (`*.routes.js`) (+3 more)
 
 ### Community 67 - "User Administration Endpoints (Admin)"
 Cohesion: 0.17
 Nodes (12): 13. Get System Roles List, 15. Get System Permissions Catalog, 17. Update System Role, 6. List All Users, 8. View User Profile by ID, Request Body, Response: `200 OK` (Success), Response: `200 OK` (Success) (+4 more)
 
 ### Community 68 - "users.routes.js"
-Cohesion: 0.16
-Nodes (14): 11. Summary Checklist for Developers, 3. Layer Responsibilities & Strict Rules, 7. How to Add a New Feature (Step-by-Step), Layer 1: Route Layer (`*.routes.js`), Layer 2: Service Layer (`*.service.js`), Layer 3: Repository Layer (`*.repository.js`), asyncHandler, { authenticate, requirePermission, requirePasswordConfirmation } (+6 more)
+Cohesion: 0.33
+Nodes (5): asyncHandler, { authenticate, requirePermission, requirePasswordConfirmation }, express, router, usersController
 
 ### Community 69 - "customer.service.js"
-Cohesion: 0.15
-Nodes (14): src_features_history_index_events, ALLOWED_CUSTOMER_TYPES, { calculateOffset, buildPaginationMeta }, customerRepository, { historyService, EVENTS }, { parsePhoneNumber }, { historyService, EVENTS }, { parsePhoneNumber } (+6 more)
+Cohesion: 0.21
+Nodes (9): ALLOWED_CUSTOMER_TYPES, { calculateOffset, buildPaginationMeta }, customerRepository, { historyService, EVENTS }, { parsePhoneNumber }, ProfileService, getPhoneType(), isValidPhoneNumber() (+1 more)
 
 ### Community 70 - "sales.routes.js"
 Cohesion: 0.33
@@ -357,8 +406,8 @@ Cohesion: 0.20
 Nodes (9): 1. Happy Path Testing (Valid Inputs), 1. What is the QA's Role?, 2. Form & Input Validation (Unhappy Path), 2. General Testing Principles (For the Entire System), 3. How to Write a High-Quality Bug Report, 3. Role-Based Access Control (RBAC) Checks, 4. State Transitions & Business Logic, 5. Security & Error Safety (+1 more)
 
 ### Community 76 - "3. Master Endpoint Routing Matrix"
-Cohesion: 0.12
-Nodes (15): 1. Global API Standards & Architecture, 2. Directory Structure, 3. Master Endpoint Routing Matrix, Base URL Paths, Dangerous Operations Protection (`requirePasswordConfirmation`), Error Envelope (`400`, `401`, `403`, `404`, `409`, `500`), MadayawGas API Contracts & Documentation Directory, Standard Paginated Envelope (`200 OK`) (+7 more)
+Cohesion: 0.11
+Nodes (17): 1. Global API Standards & Architecture, 2. Directory Structure, 3. Master Endpoint Routing Matrix, Base URL Paths, Dangerous Operations Protection (`requirePasswordConfirmation`), Error Envelope (`400`, `401`, `403`, `404`, `409`, `500`), MadayawGas API Contracts & Documentation Directory, Standard Paginated Envelope (`200 OK`) (+9 more)
 
 ### Community 77 - "2. Update Current User Profile (`/me`)"
 Cohesion: 0.22
@@ -373,28 +422,28 @@ Cohesion: 0.25
 Nodes (8): 5. Record Safety Inspection, 6. View Truck Inspections History, 7. Get Inspection Record by ID, Request Body, Response: `200 OK` (Success), Response: `200 OK` (Success), Response: `201 Created` (Success), Safety Inspections (Issue-Reporting Only — No Checklists)
 
 ### Community 80 - "fleet.routes.js"
-Cohesion: 0.13
-Nodes (15): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_middleware_auth_middleware_authenticate, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_middleware_auth_middleware_requirepasswordconfirmation, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_middleware_auth_middleware_requirepermission, asyncHandler, { authenticate, requirePermission, requirePasswordConfirmation }, availabilityController, express, maintenanceRoutes (+7 more)
+Cohesion: 0.17
+Nodes (11): D. Dangerous Operations Protection (Password Confirmation Middleware), asyncHandler, { authenticate, requirePermission, requirePasswordConfirmation }, availabilityController, express, maintenanceRoutes, router, vehiclesController (+3 more)
 
-### Community 81 - "009_vehicles_and_receipts_refactor.sql"
-Cohesion: 0.27
-Nodes (9): "approval_requests", IX_work_order_receipts_receipt_type, IX_work_order_receipts_work_order_id, trigger_update_vehicles_updated_at, update_vehicles_updated_at_column(), UQ_approval_requests_pending, "work_order_receipts", "users" (+1 more)
+### Community 81 - "3. Operational Daily Truck Schedules"
+Cohesion: 0.08
+Nodes (23): 1. Service Zones, 1. `service_zones` Table, 2. `schedule_templates` Table, 2. Weekly Master Route Templates, 3. Operational Daily Truck Schedules, 3. `truck_schedules` Table, Data Models & Database Schemas, `DELETE /api/schedules/templates/:id` (+15 more)
 
-### Community 82 - "availability.service.js"
-Cohesion: 0.22
-Nodes (7): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_database_connection_query, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_features_history_index_historyservice, { query }, availabilityRepository, { historyService, EVENTS }, vehiclesRepository, { query }
+### Community 82 - "schedules.service.js"
+Cohesion: 0.14
+Nodes (12): { query }, { historyService, EVENTS }, schedulesRepository, templatesRepository, templatesService, vehiclesRepository, zonesRepository, { query } (+4 more)
 
 ### Community 83 - "history.routes.js"
 Cohesion: 0.33
 Nodes (5): express, { authenticate, requirePermission }, express, historyController, router
 
 ### Community 84 - "inventory.routes.js"
-Cohesion: 0.20
-Nodes (9): D. Dangerous Operations Protection (Password Confirmation Middleware), asyncHandler, { authenticate, requirePermission, requirePasswordConfirmation }, express, productsController, router, authService, permissionService (+1 more)
+Cohesion: 0.33
+Nodes (5): asyncHandler, { authenticate, requirePermission, requirePasswordConfirmation }, express, productsController, router
 
 ### Community 85 - "vehicles.service.js"
-Cohesion: 0.25
-Nodes (7): c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_buildpaginationmeta, c_users_giann_documents_programming_stuff_madayawgas_madayawgas_backend_src_utils_pagination_calculateoffset, { calculateOffset, buildPaginationMeta }, { historyService, EVENTS }, VALID_STATUSES, VALID_VEHICLE_TYPES, vehiclesRepository
+Cohesion: 0.20
+Nodes (8): { calculateOffset, buildPaginationMeta }, formatDriver(), formatVehicle(), { historyService, EVENTS }, VALID_STATUSES, VALID_VEHICLE_TYPES, vehiclesRepository, calculateOffset()
 
 ### Community 87 - "18. Delete System Role"
 Cohesion: 0.40
@@ -404,9 +453,9 @@ Nodes (5): 18. Delete System Role, Error Responses, Request Body, Response: `200
 Cohesion: 0.29
 Nodes (5): app, assert, bcrypt, { query, pool }, { test, before, after, beforeEach }
 
-### Community 89 - "12. Record Vehicle Mileage"
-Cohesion: 0.40
-Nodes (5): 12. Record Vehicle Mileage, Path Parameters, Request Body, Response: `200 OK` (Success), Response: `400 Bad Request` (Lower Odometer / Rollback Attempt)
+### Community 89 - "schedules/index.js"
+Cohesion: 0.13
+Nodes (13): schedulesController, schedulesRepository, schedulesRoutes, schedulesService, templatesController, templatesRepository, templatesService, zonesController (+5 more)
 
 ### Community 90 - "10. Change User Role (Admin)"
 Cohesion: 0.50
@@ -420,13 +469,13 @@ Nodes (4): 7. Register / Create User Account, Request Body (Multi-Role), Request
 Cohesion: 0.50
 Nodes (3): 1. Role Permissions Matrix, 2. Complete Permissions Reference, System Permissions & RBAC Matrix
 
-### Community 93 - "10. Assign Driver to Vehicle"
-Cohesion: 0.50
-Nodes (4): 10. Assign Driver to Vehicle, Request Body, Response: `200 OK` (Success), Response: `409 Conflict` (Driver Already Assigned)
+### Community 93 - "MadayawGas API Contract: Trip Subsystem"
+Cohesion: 0.13
+Nodes (14): 1. Dispatch Trip (`POST /api/trips/dispatch`), 1. `trips` Table, 2. Multi-Load Inventory Transfer (`POST /api/trips/:id/loads`), 2. `trip_loads` Table, 3. Plant Return Check-In (`POST /api/trips/:id/complete`), 3. `trip_load_items` Table, 4. Post-Trip Stock Reconciliation (`POST /api/trips/:id/reconcile`), 4. `trip_stock_reconciliations` Table (+6 more)
 
-### Community 94 - "12. Driver Directory (List All Drivers)"
-Cohesion: 0.67
-Nodes (3): 12. Driver Directory (List All Drivers), Query Parameters, Response: `200 OK` (Success)
+### Community 94 - "trips.service.js"
+Cohesion: 0.12
+Nodes (14): { query }, { buildPaginationMeta }, crypto, { historyService, EVENTS }, loadsRepository, { maintenanceService }, { pool }, productsRepository (+6 more)
 
 ### Community 95 - "11. Update User Credentials / Reset Password (Admin Reset)"
 Cohesion: 0.67
@@ -448,45 +497,117 @@ Nodes (3): 16. Create System Role, Request Body, Response: `201 Created` (Succes
 Cohesion: 0.67
 Nodes (3): 9. Update User Profile by ID, Request Body, Response: `200 OK` (Success)
 
-### Community 101 - "2. View Fleet Availability"
-Cohesion: 0.67
-Nodes (3): 2. View Fleet Availability, Query Parameters, Response: `200 OK` (Success)
+### Community 100 - "trips/index.js"
+Cohesion: 0.15
+Nodes (11): loadsRepository, reconciliationRepository, tripsController, tripsRepository, tripsRoutes, tripsService, asyncHandler, { authenticate, requirePermission } (+3 more)
 
-### Community 102 - "3. List All Vehicles"
-Cohesion: 0.67
-Nodes (3): 3. List All Vehicles, Query Parameters, Response: `200 OK` (Success)
+### Community 101 - "products.service.js"
+Cohesion: 0.18
+Nodes (9): inventoryRoutes, productsController, productsRepository, productsService, { query }, ALLOWED_CONTAINER_TYPES, { calculateOffset, buildPaginationMeta }, { historyService, EVENTS } (+1 more)
 
-### Community 103 - "5. Register Vehicle"
-Cohesion: 0.67
-Nodes (3): 5. Register Vehicle, Request Body, Response: `201 Created` (Success)
+### Community 103 - "schedules.controller.js"
+Cohesion: 0.20
+Nodes (4): ALLOWED_SCHEDULE_SORT_FIELDS, { parsePaginationQuery, formatPaginatedEnvelope }, SchedulesController, schedulesService
 
-### Community 105 - "8. Set Vehicle Availability Status"
-Cohesion: 0.67
-Nodes (3): 8. Set Vehicle Availability Status, Request Body, Response: `200 OK` (Success)
+### Community 106 - "products.controller.js"
+Cohesion: 0.22
+Nodes (4): ALLOWED_PRODUCT_SORT_FIELDS, { parsePaginationQuery, formatPaginatedEnvelope }, ProductsController, productsService
 
-### Community 106 - "9. Deactivate Vehicle"
+### Community 108 - "public.users"
+Cohesion: 0.18
+Nodes (12): idx_user_roles_role_id, idx_user_roles_user_id, IX_work_order_receipts_receipt_type, IX_work_order_receipts_work_order_id, public.audit_logs, public.permissions, public.role_permissions, public.roles (+4 more)
+
+### Community 109 - "customer.controller.js"
+Cohesion: 0.22
+Nodes (4): ALLOWED_CUSTOMER_SORT_FIELDS, CustomerController, customerService, { parsePaginationQuery, formatPaginatedEnvelope }
+
+### Community 111 - "schedules.routes.js"
+Cohesion: 0.18
+Nodes (11): 11. Summary Checklist for Developers, 7. How to Add a New Feature (Step-by-Step), asyncHandler, { authenticate, requirePermission }, express, router, schedulesController, templatesController (+3 more)
+
+### Community 112 - "public.trips"
+Cohesion: 0.18
+Nodes (11): IX_trip_stock_reconciliations_status, IX_trip_stock_reconciliations_trip_id, IX_trips_departure_time, IX_trips_driver_id, IX_trips_sales_user_id, IX_trips_status, IX_trips_truck_id, IX_trips_zone_id (+3 more)
+
+### Community 113 - "history.controller.js"
+Cohesion: 0.33
+Nodes (4): ALLOWED_HISTORY_SORT_FIELDS, HistoryController, historyService, { parsePaginationQuery, formatPaginatedEnvelope }
+
+### Community 119 - "schedules.trips.test.js"
+Cohesion: 0.29
+Nodes (5): app, assert, bcrypt, { query, pool }, { test, before, after, beforeEach }
+
+### Community 120 - "AGENTS.md — MadayawGas Backend System Context & Engineering Handbook"
+Cohesion: 0.33
+Nodes (5): 1. Overview & Tech Stack, 2. Current Architecture & Key Files, 5. Seed Users & Permanent Test Accounts, 6. Next Steps & Roadmap, AGENTS.md — MadayawGas Backend System Context & Engineering Handbook
+
+### Community 121 - "maintenance.routes.js"
+Cohesion: 0.33
+Nodes (5): asyncHandler, { authenticate, requirePermission }, express, maintenanceController, router
+
+### Community 126 - "public.vehicles"
+Cohesion: 0.20
+Nodes (10): IX_incident_reports_report_date, IX_incident_reports_severity, IX_incident_reports_vehicle_id, IX_vehicle_odometer_logs_logged_at, IX_vehicle_odometer_logs_vehicle_id, IX_vehicles_driver_id, public.incident_reports, public.incident_types (+2 more)
+
+### Community 127 - "vehicles.controller.js"
+Cohesion: 0.40
+Nodes (4): ALLOWED_DRIVER_SORT_FIELDS, ALLOWED_VEHICLE_SORT_FIELDS, { parsePaginationQuery, formatPaginatedEnvelope }, vehiclesService
+
+### Community 130 - "17. Update Work Order Status"
+Cohesion: 0.50
+Nodes (4): 17. Update Work Order Status, Request Body, Response: `200 OK` (Success), Response: `400 Bad Request` (Attempting Manual Completion)
+
+### Community 131 - "19. Finalize Maintenance Log & Release Vehicle"
+Cohesion: 0.50
+Nodes (4): 19. Finalize Maintenance Log & Release Vehicle, Request Body, Response: `201 Created` (Success), Response: `409 Conflict` (Duplicate Receipt Number)
+
+### Community 133 - "pagination.js"
+Cohesion: 0.29
+Nodes (4): ALLOWED_TRIP_SORT_FIELDS, { parsePaginationQuery, formatPaginatedEnvelope }, tripsService, buildPaginationMeta()
+
+### Community 134 - "14. Create Maintenance Work Order"
 Cohesion: 0.67
-Nodes (3): 9. Deactivate Vehicle, Request Body, Response: `200 OK` (Success)
+Nodes (3): 14. Create Maintenance Work Order, Request Body, Response: `201 Created` (Success)
+
+### Community 135 - "18. Executive Cost Approval Decision"
+Cohesion: 0.67
+Nodes (3): 18. Executive Cost Approval Decision, Request Body, Response: `200 OK` (Success)
+
+### Community 154 - "public.schedule_templates"
+Cohesion: 0.25
+Nodes (8): IX_schedule_templates_day_of_week, IX_schedule_templates_is_active, IX_schedule_templates_truck_id, IX_schedule_templates_zone_id, IX_service_zones_code, IX_service_zones_is_active, public.schedule_templates, public.service_zones
+
+### Community 155 - "public.truck_schedules"
+Cohesion: 0.33
+Nodes (6): IX_truck_schedules_sales_user_id, IX_truck_schedules_scheduled_date, IX_truck_schedules_status, IX_truck_schedules_truck_id, IX_truck_schedules_zone_id, public.truck_schedules
+
+### Community 156 - "public.update_timestamp_column"
+Cohesion: 0.33
+Nodes (6): trigger_update_schedule_templates_updated_at, trigger_update_service_zones_updated_at, trigger_update_trip_stock_reconciliations_updated_at, trigger_update_trips_updated_at, trigger_update_truck_schedules_updated_at, public.update_timestamp_column
+
+### Community 157 - "public.approval_requests"
+Cohesion: 0.50
+Nodes (4): IX_approval_requests_is_approved, IX_approval_requests_work_order_id, public.approval_requests, UQ_approval_requests_pending
 
 ## Knowledge Gaps
-- **557 isolated node(s):** `2. Current Architecture & Key Files`, `A. 3-Layer Architecture Rules`, `B. Authentication & Session Management`, `E. Test Concurrency & Isolation`, `5. Seed Users & Permanent Test Accounts` (+552 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 655 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **36 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **678 isolated node(s):** `{ execFileSync }`, `fs`, `path`, `fs`, `path` (+673 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 785 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **67 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `query()` connect `query` to `history/index.js`, `MaintenanceRepository`, `customer.test.js`, `fleet.maintenance.test.js`, `history.test.js`, `connection.js`, `ProductsRepository`, `CustomerRepository`, `auth.test.js`, `pagination.test.js`, `permission.test.js`, `AvailabilityRepository`, `inventory.test.js`, `management.test.js`, `profile.test.js`, `HistoryRepository`, `VehiclesRepository`, `3. Coding Standards & Architectural Patterns`, `fleet.test.js`?**
-  _High betweenness centrality (0.099) - this node is a cross-community bridge._
-- **Why does `4. Recent Work Completed` connect `MaintenanceRepository` to `VehiclesRepository`, `history/index.js`, `3. Coding Standards & Architectural Patterns`, `users.routes.js`, `MaintenanceController`, `ManagementService`, `inventory.routes.js`, `pagination.js`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
-- **Why does `bcrypt` connect `auth.test.js` to `inventory.test.js`, `management.test.js`, `package.json`, `profile.test.js`, `management.service.js`, `customer.test.js`, `fleet.maintenance.test.js`, `fleet.test.js`, `pagination.test.js`, `permission.test.js`?**
-  _High betweenness centrality (0.028) - this node is a cross-community bridge._
-- **Are the 24 inferred relationships involving `query()` (e.g. with `1. Overview & Tech Stack` and `connection.js`) actually correct?**
-  _`query()` has 24 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `query()` connect `query` to `history/index.js`, `LoadsRepository`, `MaintenanceRepository`, `reconciliation.repository.js`, `customer.test.js`, `fleet.maintenance.test.js`, `history.test.js`, `users.controller.js`, `connection.js`, `ProductsRepository`, `CustomerRepository`, `auth.test.js`, `pagination.test.js`, `permission.test.js`, `availability.repository.js`, `inventory.test.js`, `management.test.js`, `profile.test.js`, `HistoryRepository`, `VehiclesRepository`, `schedules.service.js`, `fleet.test.js`, `schedules/index.js`, `trips.service.js`, `products.service.js`, `VehiclesService`, `SchedulesRepository`, `TemplatesRepository`, `TemplatesService`, `ZonesRepository`, `schedules.trips.test.js`, `AGENTS.md — MadayawGas Backend System Context & Engineering Handbook`, `trips.repository.js`?**
+  _High betweenness centrality (0.095) - this node is a cross-community bridge._
+- **Why does `4. Recent Work Completed` connect `MaintenanceRepository` to `VehiclesRepository`, `history/index.js`, `authenticate`, `pagination.js`, `parsePaginationQuery`, `MaintenanceController`, `ManagementService`, `fleet.routes.js`, `vehicles.service.js`, `AGENTS.md — MadayawGas Backend System Context & Engineering Handbook`?**
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+- **Why does `MaintenanceService` connect `MaintenanceService` to `maintenance.service.js`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+- **Are the 28 inferred relationships involving `query()` (e.g. with `1. Overview & Tech Stack` and `connection.js`) actually correct?**
+  _`query()` has 28 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 36 inferred relationships involving `4. Recent Work Completed` (e.g. with `.getPmOverview()` and `.checkReceiptNumberExists()`) actually correct?**
   _`4. Recent Work Completed` has 36 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `2. Current Architecture & Key Files`, `A. 3-Layer Architecture Rules`, `B. Authentication & Session Management` to the rest of the system?**
-  _557 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `history/index.js` be split into smaller, more focused modules?**
-  _Cohesion score 0.05683060109289618 - nodes in this community are weakly interconnected._
+- **What connects `{ execFileSync }`, `fs`, `path` to the rest of the system?**
+  _678 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `routes/index.js` be split into smaller, more focused modules?**
+  _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._

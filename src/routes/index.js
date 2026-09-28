@@ -6,6 +6,8 @@ const fleetRoutes = require('../features/fleet/fleet.routes');
 const inventoryRoutes = require('../features/inventory/inventory.routes');
 const { salesRoutes } = require('../features/sales');
 const { historyRoutes } = require('../features/history');
+const { schedulesRoutes } = require('../features/schedules');
+const { tripsRoutes } = require('../features/trips');
 
 // Register API Module Routes
 
@@ -15,5 +17,7 @@ router.use('/inventory', inventoryRoutes);
 router.use('/sales', salesRoutes);
 router.use('/history', historyRoutes);
 router.use('/history-logs', historyRoutes);
+router.use('/schedules', schedulesRoutes);
+router.use('/trips', tripsRoutes);
 
 module.exports = router;
