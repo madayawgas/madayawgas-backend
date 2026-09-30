@@ -1,1 +1,0 @@
-{"nodes": [{"id": "docs_api_contracts_history_history_api_md", "label": "History API", "file_type": "document", "source_file": "docs/api-contracts/history/history.api.md", "rationale": "Defines system event logging and audit trail endpoints."}], "edges": [], "hyperedges": []}
