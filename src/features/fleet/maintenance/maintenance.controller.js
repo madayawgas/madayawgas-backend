@@ -11,12 +11,13 @@ class MaintenanceController {
    * Records single-point post-dispatch return odometer reading for a vehicle.
    */
   async logOdometer(req, res) {
-    const { truckId, odometerReading, source, notes } = req.body || {};
+    const { vehicleId, truckId, odometerReading, odometer, source, notes } = req.body || {};
 
     try {
       const data = await maintenanceService.logOdometerReading(req.user, {
-        truckId,
-        odometerReading,
+        vehicleId: vehicleId || truckId,
+        truckId: vehicleId || truckId,
+        odometerReading: odometerReading !== undefined ? odometerReading : odometer,
         source,
         notes,
       });
@@ -41,8 +42,9 @@ class MaintenanceController {
    */
   async getTruckOdometerHistory(req, res) {
     try {
+      const targetVehicleId = req.params.vehicleId || req.params.truckId;
       const data = await maintenanceService.getTruckOdometerHistory(
-        req.params.truckId,
+        targetVehicleId,
         req.query
       );
 
@@ -111,7 +113,8 @@ class MaintenanceController {
    */
   async getTruckInspections(req, res) {
     try {
-      const data = await maintenanceService.getTruckInspections(req.params.truckId, req.query);
+      const targetVehicleId = req.params.vehicleId || req.params.truckId;
+      const data = await maintenanceService.getTruckInspections(targetVehicleId, req.query);
       return res.status(200).json({
         status: 'success',
         data,
@@ -216,7 +219,8 @@ class MaintenanceController {
    */
   async getTruckIncidents(req, res) {
     try {
-      const data = await maintenanceService.getTruckIncidents(req.params.truckId, req.query);
+      const targetVehicleId = req.params.vehicleId || req.params.truckId;
+      const data = await maintenanceService.getTruckIncidents(targetVehicleId, req.query);
       return res.status(200).json({
         status: 'success',
         data,
@@ -386,6 +390,54 @@ class MaintenanceController {
   }
 
   /**
+   * POST /api/fleet/maintenance/work-orders/:id/approval-requests
+   * Submits a cost approval request for a work order (supports revised sequential requests).
+   */
+  async requestApproval(req, res) {
+    try {
+      const data = await maintenanceService.requestApproval(
+        req.user,
+        req.params.id,
+        req.body || {}
+      );
+      return res.status(201).json({
+        status: 'success',
+        message: 'Approval request submitted successfully.',
+        data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/fleet/maintenance/work-orders/:id/approval-requests
+   * Retrieves all historical approval requests for a work order.
+   */
+  async getWorkOrderApprovalRequests(req, res) {
+    try {
+      const data = await maintenanceService.getWorkOrderApprovalRequests(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: data.length,
+          approvalRequests: data,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
    * POST /api/fleet/maintenance/work-orders/:id/finalize
    * Finalizes maintenance servicing, creates permanent maintenance_logs entry,
    * resets PM baseline if PREVENTIVE type, and releases truck back to ACTIVE.
@@ -441,6 +493,70 @@ class MaintenanceController {
       return res.status(200).json({
         status: 'success',
         data,
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/fleet/maintenance/work-orders/:id/receipts
+   * Attaches a receipt document to a work order.
+   */
+  async addWorkOrderReceipt(req, res) {
+    try {
+      const data = await maintenanceService.addWorkOrderReceipt(req.user, req.params.id, req.body || {});
+      return res.status(201).json({
+        status: 'success',
+        message: 'Receipt attached successfully',
+        data: { receipt: data },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/fleet/maintenance/work-orders/:id/receipts
+   * Retrieves all receipts attached to a work order.
+   */
+  async getWorkOrderReceipts(req, res) {
+    try {
+      const data = await maintenanceService.getWorkOrderReceipts(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: data.length,
+          receipts: data,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);
+      return res.status(statusCode).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/fleet/maintenance/receipts/:receiptId
+   * Deletes a receipt attachment.
+   */
+  async deleteWorkOrderReceipt(req, res) {
+    try {
+      const data = await maintenanceService.deleteWorkOrderReceipt(req.user, req.params.receiptId);
+      return res.status(200).json({
+        status: 'success',
+        message: data.message,
       });
     } catch (err) {
       const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);

@@ -79,6 +79,7 @@ Retrieves list and counts of operational vehicles (`status = 'ACTIVE'`) ready fo
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `driverAssigned` | Boolean | No | Filter by driver assignment status (`true` / `false`) |
+| `vehicleType` / `type` | String | No | Filter operational vehicles by type (`DELIVERY_TRUCK`, `SERVICE_PICKUP`, `MOTORCYCLE`, `UTILITY_VAN`) |
 
 #### Response: `200 OK` (Success)
 
@@ -93,8 +94,11 @@ Retrieves list and counts of operational vehicles (`status = 'ACTIVE'`) ready fo
         "plateNumber": "ABC-1001",
         "model": "Isuzu Elf N-Series",
         "yearModel": 2022,
+        "vehicleType": "DELIVERY_TRUCK",
         "currentOdometer": 45000,
         "lastPmOdometer": 40000,
+        "isPmDue": true,
+        "pmDueFlag": true,
         "status": "ACTIVE",
         "operationalStatus": "ACTIVE",
         "isAvailable": true,
@@ -114,8 +118,11 @@ Retrieves list and counts of operational vehicles (`status = 'ACTIVE'`) ready fo
         "plateNumber": "ABC-1002",
         "model": "Fuso Canter FE71",
         "yearModel": 2021,
+        "vehicleType": "DELIVERY_TRUCK",
         "currentOdometer": 62500,
         "lastPmOdometer": 60000,
+        "isPmDue": false,
+        "pmDueFlag": false,
         "status": "ACTIVE",
         "operationalStatus": "ACTIVE",
         "isAvailable": true,
@@ -133,10 +140,10 @@ Retrieves list and counts of operational vehicles (`status = 'ACTIVE'`) ready fo
 
 ### 3. View Vehicle Status
 
-Retrieves the current operational and availability status of a specific vehicle.
+Retrieves the current operational and availability status of a specific vehicle asset.
 
 - **HTTP Method**: `GET`
-- **URL**: `/api/fleet/trucks/:id/status`
+- **URL**: `/api/fleet/vehicles/:id/status`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.view`
 
@@ -146,10 +153,11 @@ Retrieves the current operational and availability status of a specific vehicle.
 {
   "status": "success",
   "data": {
-    "truck": {
+    "vehicle": {
       "id": "33333333-4444-5555-6666-777777777777",
       "plateNumber": "NGX-2045",
       "model": "Isuzu Forward FVR 34P",
+      "vehicleType": "DELIVERY_TRUCK",
       "status": "ACTIVE",
       "operationalStatus": "ACTIVE",
       "isAvailable": true,
@@ -168,7 +176,7 @@ Updates the operational condition of a vehicle (`ACTIVE`, `INACTIVE`, `UNDER_MAI
 - **Decommission**: Setting `INACTIVE` or `RETIRED` releases the driver assignment.
 
 - **HTTP Method**: `PATCH`
-- **URL**: `/api/fleet/trucks/:id/status`
+- **URL**: `/api/fleet/vehicles/:id/status`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.manage`
 
@@ -191,10 +199,11 @@ Updates the operational condition of a vehicle (`ACTIVE`, `INACTIVE`, `UNDER_MAI
   "status": "success",
   "message": "Vehicle availability status updated",
   "data": {
-    "truck": {
+    "vehicle": {
       "id": "33333333-4444-5555-6666-777777777777",
       "plateNumber": "NGX-2045",
       "model": "Isuzu Forward FVR 34P",
+      "vehicleType": "DELIVERY_TRUCK",
       "status": "UNDER_MAINTENANCE",
       "operationalStatus": "UNDER_MAINTENANCE",
       "isAvailable": false,

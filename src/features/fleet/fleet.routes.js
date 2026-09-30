@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const trucksController = require('./trucks/trucks.controller');
+const vehiclesController = require('./vehicles/vehicles.controller');
 const availabilityController = require('./availability/availability.controller');
 const maintenanceRoutes = require('./maintenance/maintenance.routes');
 const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
@@ -46,18 +46,18 @@ router.get(
   '/register-options',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.getRegisterOptions.bind(trucksController))
+  asyncHandler(vehiclesController.getRegisterOptions.bind(vehiclesController))
 );
 
 /**
  * GET /api/fleet/drivers
- * List all eligible drivers with their current truck assignment status.
+ * List all eligible drivers with their current vehicle assignment status.
  */
 router.get(
   '/drivers',
   authenticate,
   requirePermission('fleet.view'),
-  asyncHandler(trucksController.getAllDrivers.bind(trucksController))
+  asyncHandler(vehiclesController.getAllDrivers.bind(vehiclesController))
 );
 
 /**
@@ -68,54 +68,54 @@ router.get(
   '/drivers/available',
   authenticate,
   requirePermission('fleet.view'),
-  asyncHandler(trucksController.getAvailableDrivers.bind(trucksController))
+  asyncHandler(vehiclesController.getAvailableDrivers.bind(vehiclesController))
 );
 
 router.get(
   '/available-drivers',
   authenticate,
   requirePermission('fleet.view'),
-  asyncHandler(trucksController.getAvailableDrivers.bind(trucksController))
+  asyncHandler(vehiclesController.getAvailableDrivers.bind(vehiclesController))
 );
 
 // ============================================================
-// 2. Collection Level Endpoints (/trucks and root /)
+// 2. Collection Level Endpoints (/vehicles and root /)
 // ============================================================
 
 /**
- * GET /api/fleet/trucks & GET /api/fleet
+ * GET /api/fleet/vehicles & GET /api/fleet
  * List all fleet vehicles with optional search, status, and driver filters.
  */
 router.get(
-  '/trucks',
+  '/vehicles',
   authenticate,
   requirePermission('fleet.view'),
-  asyncHandler(trucksController.getAllTrucks.bind(trucksController))
+  asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
 router.get(
   '/',
   authenticate,
   requirePermission('fleet.view'),
-  asyncHandler(trucksController.getAllTrucks.bind(trucksController))
+  asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
 /**
- * POST /api/fleet/trucks & POST /api/fleet
+ * POST /api/fleet/vehicles & POST /api/fleet
  * Register a new vehicle in the fleet.
  */
 router.post(
-  '/trucks',
+  '/vehicles',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.createTruck.bind(trucksController))
+  asyncHandler(vehiclesController.createVehicle.bind(vehiclesController))
 );
 
 router.post(
   '/',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.createTruck.bind(trucksController))
+  asyncHandler(vehiclesController.createVehicle.bind(vehiclesController))
 );
 
 // ============================================================
@@ -123,91 +123,119 @@ router.post(
 // ============================================================
 
 /**
- * GET /api/fleet/trucks/:id/status
+ * GET /api/fleet/vehicles/:id/status
  * View specific vehicle availability status and operational condition.
  */
 router.get(
-  '/trucks/:id/status',
+  '/vehicles/:id/status',
   authenticate,
   requirePermission('fleet.view'),
   asyncHandler(availabilityController.getTruckStatus.bind(availabilityController))
 );
 
 /**
- * PATCH /api/fleet/trucks/:id/status
+ * PATCH /api/fleet/vehicles/:id/status
  * Set vehicle operational availability status (ACTIVE, INACTIVE, UNDER_MAINTENANCE, RETIRED).
  */
 router.patch(
-  '/trucks/:id/status',
+  '/vehicles/:id/status',
   authenticate,
   requirePermission('fleet.manage'),
   asyncHandler(availabilityController.updateTruckStatus.bind(availabilityController))
 );
 
 /**
- * PATCH /api/fleet/trucks/:id/deactivate
+ * PATCH /api/fleet/vehicles/:id/deactivate
  * Deactivate vehicle asset and unassign driver.
  */
 router.patch(
-  '/trucks/:id/deactivate',
+  '/vehicles/:id/deactivate',
   authenticate,
   requirePermission('fleet.manage'),
   requirePasswordConfirmation,
-  asyncHandler(trucksController.deactivateTruck.bind(trucksController))
+  asyncHandler(vehiclesController.deactivateVehicle.bind(vehiclesController))
 );
 
 /**
- * PATCH /api/fleet/trucks/:id/assign and POST /api/fleet/trucks/:id/assign
+ * PATCH /api/fleet/vehicles/:id/assign & POST /api/fleet/vehicles/:id/assign
  * Assign an active driver to vehicle.
  */
 router.patch(
-  '/trucks/:id/assign',
+  '/vehicles/:id/assign',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.assignDriver.bind(trucksController))
+  asyncHandler(vehiclesController.assignDriver.bind(vehiclesController))
 );
 
 router.post(
-  '/trucks/:id/assign',
+  '/vehicles/:id/assign',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.assignDriver.bind(trucksController))
+  asyncHandler(vehiclesController.assignDriver.bind(vehiclesController))
+);
+
+router.patch(
+  '/vehicles/:id/assign-driver',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(vehiclesController.assignDriver.bind(vehiclesController))
+);
+
+router.post(
+  '/vehicles/:id/assign-driver',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(vehiclesController.assignDriver.bind(vehiclesController))
 );
 
 /**
- * PATCH /api/fleet/trucks/:id/unassign and POST /api/fleet/trucks/:id/unassign
+ * PATCH /api/fleet/vehicles/:id/unassign & POST /api/fleet/vehicles/:id/unassign
  * Unassign driver from vehicle, making the driver AVAILABLE again.
  */
 router.patch(
-  '/trucks/:id/unassign',
+  '/vehicles/:id/unassign',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.unassignDriver.bind(trucksController))
+  asyncHandler(vehiclesController.unassignDriver.bind(vehiclesController))
 );
 
 router.post(
-  '/trucks/:id/unassign',
+  '/vehicles/:id/unassign',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.unassignDriver.bind(trucksController))
-);
-
-/**
- * POST /api/fleet/trucks/:id/mileage and PATCH /api/fleet/trucks/:id/mileage
- * Record vehicle mileage reading and calculate usage/maintenance metrics.
- */
-router.post(
-  '/trucks/:id/mileage',
-  authenticate,
-  requirePermission('fleet.manage'),
-  asyncHandler(trucksController.recordMileage.bind(trucksController))
+  asyncHandler(vehiclesController.unassignDriver.bind(vehiclesController))
 );
 
 router.patch(
-  '/trucks/:id/mileage',
+  '/vehicles/:id/unassign-driver',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.recordMileage.bind(trucksController))
+  asyncHandler(vehiclesController.unassignDriver.bind(vehiclesController))
+);
+
+router.post(
+  '/vehicles/:id/unassign-driver',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(vehiclesController.unassignDriver.bind(vehiclesController))
+);
+
+/**
+ * POST /api/fleet/vehicles/:id/mileage and PATCH /api/fleet/vehicles/:id/mileage
+ * Record vehicle mileage reading and calculate usage/maintenance metrics.
+ */
+router.post(
+  '/vehicles/:id/mileage',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(vehiclesController.recordMileage.bind(vehiclesController))
+);
+
+router.patch(
+  '/vehicles/:id/mileage',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(vehiclesController.recordMileage.bind(vehiclesController))
 );
 
 // ============================================================
@@ -215,25 +243,32 @@ router.patch(
 // ============================================================
 
 /**
- * GET /api/fleet/trucks/:id
+ * GET /api/fleet/vehicles/:id
  * Get single vehicle detail by UUID.
  */
 router.get(
-  '/trucks/:id',
+  '/vehicles/:id',
   authenticate,
   requirePermission('fleet.view'),
-  asyncHandler(trucksController.getTruckById.bind(trucksController))
+  asyncHandler(vehiclesController.getVehicleById.bind(vehiclesController))
 );
 
 /**
- * PATCH /api/fleet/trucks/:id
- * Update vehicle information (plate, model, year, odometer readings).
+ * PATCH /api/fleet/vehicles/:id & PUT /api/fleet/vehicles/:id
+ * Update vehicle information (plate, model, year, vehicleType, odometer readings).
  */
 router.patch(
-  '/trucks/:id',
+  '/vehicles/:id',
   authenticate,
   requirePermission('fleet.manage'),
-  asyncHandler(trucksController.updateTruck.bind(trucksController))
+  asyncHandler(vehiclesController.updateVehicle.bind(vehiclesController))
+);
+
+router.put(
+  '/vehicles/:id',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(vehiclesController.updateVehicle.bind(vehiclesController))
 );
 
 module.exports = router;

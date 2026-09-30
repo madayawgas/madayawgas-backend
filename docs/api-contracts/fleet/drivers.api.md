@@ -39,7 +39,7 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 Assigns an active eligible driver to a vehicle as their soft-bounded default driver.
 
 - **HTTP Method**: `PATCH` / `POST`
-- **URL**: `/api/fleet/trucks/:id/assign`
+- **URL**: `/api/fleet/vehicles/:id/assign` (or `/api/fleet/vehicles/:id/assign-driver`)
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.manage`
 
@@ -62,13 +62,40 @@ Assigns an active eligible driver to a vehicle as their soft-bounded default dri
   "status": "success",
   "message": "Driver successfully assigned",
   "data": {
+    "vehicle": {
+      "id": "33333333-4444-5555-6666-777777777777",
+      "plateNumber": "NGX-2045",
+      "model": "Isuzu Forward FVR 34P",
+      "yearModel": 2023,
+      "vehicleType": "DELIVERY_TRUCK",
+      "currentOdometer": 18500,
+      "lastPmOdometer": 15000,
+      "pmDueFlag": false,
+      "isPmDue": false,
+      "status": "ACTIVE",
+      "operationalStatus": "ACTIVE",
+      "isAvailable": true,
+      "driverId": "22222222-3333-4444-5555-666666666666",
+      "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T22:45:00.000Z",
+      "driver": {
+        "id": "22222222-3333-4444-5555-666666666666",
+        "firstName": "Juan",
+        "lastName": "Sales",
+        "phone": "+639170000004",
+        "username": "sales_user"
+      }
+    },
     "truck": {
       "id": "33333333-4444-5555-6666-777777777777",
       "plateNumber": "NGX-2045",
       "model": "Isuzu Forward FVR 34P",
       "yearModel": 2023,
+      "vehicleType": "DELIVERY_TRUCK",
       "currentOdometer": 18500,
       "lastPmOdometer": 15000,
+      "pmDueFlag": false,
+      "isPmDue": false,
       "status": "ACTIVE",
       "operationalStatus": "ACTIVE",
       "isAvailable": true,
@@ -103,7 +130,7 @@ Assigns an active eligible driver to a vehicle as their soft-bounded default dri
 Unassigns the driver currently attached to a vehicle, immediately transitioning the driver's status back to `AVAILABLE`.
 
 - **HTTP Method**: `PATCH` / `POST`
-- **URL**: `/api/fleet/trucks/:id/unassign`
+- **URL**: `/api/fleet/vehicles/:id/unassign` (or `/api/fleet/vehicles/:id/unassign-driver`)
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.manage`
 
@@ -114,13 +141,34 @@ Unassigns the driver currently attached to a vehicle, immediately transitioning 
   "status": "success",
   "message": "Driver successfully unassigned",
   "data": {
+    "vehicle": {
+      "id": "33333333-4444-5555-6666-777777777777",
+      "plateNumber": "NGX-2045",
+      "model": "Isuzu Forward FVR 34P",
+      "yearModel": 2023,
+      "vehicleType": "DELIVERY_TRUCK",
+      "currentOdometer": 18500,
+      "lastPmOdometer": 15000,
+      "pmDueFlag": false,
+      "isPmDue": false,
+      "status": "ACTIVE",
+      "operationalStatus": "ACTIVE",
+      "isAvailable": true,
+      "driverId": null,
+      "driver": null,
+      "createdAt": "2026-08-27T21:40:00.000Z",
+      "updatedAt": "2026-08-27T22:50:00.000Z"
+    },
     "truck": {
       "id": "33333333-4444-5555-6666-777777777777",
       "plateNumber": "NGX-2045",
       "model": "Isuzu Forward FVR 34P",
       "yearModel": 2023,
+      "vehicleType": "DELIVERY_TRUCK",
       "currentOdometer": 18500,
       "lastPmOdometer": 15000,
+      "pmDueFlag": false,
+      "isPmDue": false,
       "status": "ACTIVE",
       "operationalStatus": "ACTIVE",
       "isAvailable": true,

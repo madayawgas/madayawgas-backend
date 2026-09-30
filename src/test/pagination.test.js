@@ -43,7 +43,7 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
     await query(`DELETE FROM history_logs WHERE user_name LIKE '${PREFIX}%' OR details LIKE '%${PREFIX}%' OR details LIKE '%${TRUCK_PREFIX}%' OR details LIKE '%${PROD_PREFIX}%' OR details LIKE '%${CUST_PREFIX}%'`);
     await query(`DELETE FROM customers WHERE name LIKE '${CUST_PREFIX}%'`);
     await query(`DELETE FROM products WHERE name LIKE '${PROD_PREFIX}%'`);
-    await query(`DELETE FROM trucks WHERE plate_number LIKE '${TRUCK_PREFIX}%'`);
+    await query(`DELETE FROM vehicles WHERE plate_number LIKE '${TRUCK_PREFIX}%'`);
     await query(`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username LIKE '${PREFIX}%') OR target_user_id IN (SELECT id FROM users WHERE username LIKE '${PREFIX}%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE '${PREFIX}%')`);
     await query(`DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username LIKE '${PREFIX}%')`);
@@ -97,7 +97,7 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
     // 6. Seed Trucks (5 trucks)
     for (let i = 1; i <= 5; i++) {
       await query(
-        `INSERT INTO trucks (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
+        `INSERT INTO vehicles (plate_number, model, year_model, current_odometer, last_pm_odometer, status)
          VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
         [`${TRUCK_PREFIX}TRK0${i}`, `Model-${i}`, 2020 + i, i * 1000, i * 1000]
       );
@@ -150,7 +150,7 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
   // ============================================================
   await t.test('1. User Management - Opt-in Envelope, Sorting, Malicious Sort Guard & Legacy Fallback', async () => {
     // A. Opt-in pagination with page=1&limit=2
-    const page1Res = await fetch(`${baseUrl}/api/users?page=1&limit=2`, {
+    const page1Res = await fetch(`${baseUrl}/api/users?page=1&limit=2&search=${PREFIX}user`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     assert.equal(page1Res.status, 200);
@@ -160,13 +160,13 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
     assert.equal(page1Json.data.length, 2);
     assert.equal(page1Json.meta.page, 1);
     assert.equal(page1Json.meta.limit, 2);
-    assert.ok(page1Json.meta.totalItems >= 6); // Admin + 5 seeded users
-    assert.ok(page1Json.meta.totalPages >= 3);
+    assert.equal(page1Json.meta.totalItems, 5);
+    assert.equal(page1Json.meta.totalPages, 3);
     assert.equal(page1Json.meta.hasNextPage, true);
     assert.equal(page1Json.meta.hasPrevPage, false);
 
     // B. Page 2 returns next items
-    const page2Res = await fetch(`${baseUrl}/api/users?page=2&limit=2`, {
+    const page2Res = await fetch(`${baseUrl}/api/users?page=2&limit=2&search=${PREFIX}user`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     const page2Json = await page2Res.json();
@@ -209,11 +209,11 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
   });
 
   // ============================================================
-  // Subtest 2: Fleet Trucks Pagination (GET /api/fleet/trucks)
+  // Subtest 2: Fleet Trucks Pagination (GET /api/fleet/vehicles)
   // ============================================================
   await t.test('2. Fleet Trucks - Page Boundary Handling, Limit Clamping & Legacy Fallback', async () => {
     // A. Opt-in pagination
-    const res1 = await fetch(`${baseUrl}/api/fleet/trucks?page=1&limit=2&search=${TRUCK_PREFIX}`, {
+    const res1 = await fetch(`${baseUrl}/api/fleet/vehicles?page=1&limit=2&search=${TRUCK_PREFIX}`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     assert.equal(res1.status, 200);
@@ -229,7 +229,7 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
     assert.equal(json1.meta.hasPrevPage, false);
 
     // B. Last page (page 3)
-    const res3 = await fetch(`${baseUrl}/api/fleet/trucks?page=3&limit=2&search=${TRUCK_PREFIX}`, {
+    const res3 = await fetch(`${baseUrl}/api/fleet/vehicles?page=3&limit=2&search=${TRUCK_PREFIX}`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     const json3 = await res3.json();
@@ -239,7 +239,7 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
     assert.equal(json3.meta.hasPrevPage, true);
 
     // C. Beyond last page (page 999) -> empty array, no error
-    const resOutOfBounds = await fetch(`${baseUrl}/api/fleet/trucks?page=999&limit=2&search=${TRUCK_PREFIX}`, {
+    const resOutOfBounds = await fetch(`${baseUrl}/api/fleet/vehicles?page=999&limit=2&search=${TRUCK_PREFIX}`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     const jsonOutOfBounds = await resOutOfBounds.json();
@@ -249,21 +249,21 @@ test('Standardized Server-Side Pagination Integration Tests', async (t) => {
     assert.equal(jsonOutOfBounds.meta.hasPrevPage, true);
 
     // D. Limit clamping: limit=500 is clamped to 100
-    const resClamped = await fetch(`${baseUrl}/api/fleet/trucks?page=1&limit=500`, {
+    const resClamped = await fetch(`${baseUrl}/api/fleet/vehicles?page=1&limit=500`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     const jsonClamped = await resClamped.json();
     assert.equal(jsonClamped.meta.limit, 100);
 
     // E. Negative page clamped to 1
-    const resNegPage = await fetch(`${baseUrl}/api/fleet/trucks?page=-5&limit=2`, {
+    const resNegPage = await fetch(`${baseUrl}/api/fleet/vehicles?page=-5&limit=2`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     const jsonNegPage = await resNegPage.json();
     assert.equal(jsonNegPage.meta.page, 1);
 
     // F. Legacy fallback
-    const legacyTrucks = await fetch(`${baseUrl}/api/fleet/trucks`, {
+    const legacyTrucks = await fetch(`${baseUrl}/api/fleet/vehicles`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     const legacyTrucksJson = await legacyTrucks.json();

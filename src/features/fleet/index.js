@@ -1,7 +1,7 @@
 const fleetRoutes = require('./fleet.routes');
-const trucksRepository = require('./trucks/trucks.repository');
-const trucksService = require('./trucks/trucks.service');
-const trucksController = require('./trucks/trucks.controller');
+const vehiclesRepository = require('./vehicles/vehicles.repository');
+const vehiclesService = require('./vehicles/vehicles.service');
+const vehiclesController = require('./vehicles/vehicles.controller');
 const availabilityRepository = require('./availability/availability.repository');
 const availabilityService = require('./availability/availability.service');
 const availabilityController = require('./availability/availability.controller');
@@ -14,9 +14,13 @@ const {
 
 module.exports = {
   fleetRoutes,
-  trucksRepository,
-  trucksService,
-  trucksController,
+  vehiclesRepository,
+  vehiclesService,
+  vehiclesController,
+  // Backward compatibility aliases
+  trucksRepository: vehiclesRepository,
+  trucksService: vehiclesService,
+  trucksController: vehiclesController,
   availabilityRepository,
   availabilityService,
   availabilityController,

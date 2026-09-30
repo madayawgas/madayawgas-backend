@@ -1,36 +1,43 @@
 const { query } = require('../../../../database/connection');
 
 /**
- * Trucks Repository
- * Handles all database interactions for vehicles (trucks) and driver relationships.
+ * Vehicles Repository
+ * Handles all database interactions for fleet vehicles and driver relationships.
  */
-class TrucksRepository {
+class VehiclesRepository {
   /**
-   * Retrieves all trucks with optional filtering and joined driver details.
-   * @param {Object} filters - { status, search, driverAssigned }
+   * Retrieves all vehicles with optional filtering and joined driver details.
+   * @param {Object} filters - { status, search, driverAssigned, vehicleType }
+   * @param {Object|null} pagination - Optional { sortColumn, sortOrder, limit, offset }
    */
-  async getAllTrucks(filters = {}, pagination = null) {
-    const { status, search, driverAssigned } = filters;
+  async getAllVehicles(filters = {}, pagination = null) {
+    const { status, search, driverAssigned, vehicleType, type } = filters;
     const conditions = [];
     const params = [];
     let paramIndex = 1;
 
     if (status) {
-      conditions.push(`t.status = $${paramIndex++}`);
+      conditions.push(`v.status = $${paramIndex++}`);
       params.push(status.toUpperCase());
     }
 
+    const selectedType = vehicleType || type;
+    if (selectedType && typeof selectedType === 'string' && selectedType.trim() !== '') {
+      conditions.push(`v.vehicle_type = $${paramIndex++}`);
+      params.push(selectedType.trim().toUpperCase());
+    }
+
     if (search && typeof search === 'string' && search.trim() !== '') {
-      conditions.push(`(t.plate_number ILIKE $${paramIndex} OR t.model ILIKE $${paramIndex})`);
+      conditions.push(`(v.plate_number ILIKE $${paramIndex} OR v.model ILIKE $${paramIndex})`);
       params.push(`%${search.trim()}%`);
       paramIndex++;
     }
 
     if (driverAssigned !== undefined) {
       if (driverAssigned === true || driverAssigned === 'true') {
-        conditions.push(`t.driver_id IS NOT NULL`);
+        conditions.push(`v.driver_id IS NOT NULL`);
       } else if (driverAssigned === false || driverAssigned === 'false') {
-        conditions.push(`t.driver_id IS NULL`);
+        conditions.push(`v.driver_id IS NULL`);
       }
     }
 
@@ -39,31 +46,33 @@ class TrucksRepository {
     if (!pagination) {
       const sql = `
         SELECT 
-          t.id,
-          t.plate_number,
-          t.model,
-          t.year_model,
-          t.current_odometer,
-          t.last_pm_odometer,
-          t.status,
-          t.driver_id,
-          t.created_at,
-          t.updated_at,
+          v.id,
+          v.plate_number,
+          v.model,
+          v.year_model,
+          v.vehicle_type,
+          v.current_odometer,
+          v.last_pm_odometer,
+          v.pm_due_flag,
+          v.status,
+          v.driver_id,
+          v.created_at,
+          v.updated_at,
           u.first_name AS driver_first_name,
           u.last_name AS driver_last_name,
           u.phone AS driver_phone,
           u.username AS driver_username
-        FROM trucks t
-        LEFT JOIN users u ON t.driver_id = u.id
+        FROM vehicles v
+        LEFT JOIN users u ON v.driver_id = u.id
         ${whereClause}
-        ORDER BY t.created_at DESC, t.id DESC
+        ORDER BY v.created_at DESC, v.id DESC
       `;
 
       const result = await query(sql, params);
       return result.rows;
     }
 
-    const sortColumn = pagination.sortColumn || 't.created_at';
+    const sortColumn = pagination.sortColumn || 'v.created_at';
     const sortOrder = pagination.sortOrder === 'ASC' ? 'ASC' : 'DESC';
     const limit = pagination.limit || 20;
     const offset = pagination.offset || 0;
@@ -74,30 +83,32 @@ class TrucksRepository {
 
     const dataSql = `
       SELECT 
-        t.id,
-        t.plate_number,
-        t.model,
-        t.year_model,
-        t.current_odometer,
-        t.last_pm_odometer,
-        t.status,
-        t.driver_id,
-        t.created_at,
-        t.updated_at,
+        v.id,
+        v.plate_number,
+        v.model,
+        v.year_model,
+        v.vehicle_type,
+        v.current_odometer,
+        v.last_pm_odometer,
+        v.pm_due_flag,
+        v.status,
+        v.driver_id,
+        v.created_at,
+        v.updated_at,
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name,
         u.phone AS driver_phone,
         u.username AS driver_username
-      FROM trucks t
-      LEFT JOIN users u ON t.driver_id = u.id
+      FROM vehicles v
+      LEFT JOIN users u ON v.driver_id = u.id
       ${whereClause}
-      ORDER BY ${sortColumn} ${sortOrder}, t.id DESC
+      ORDER BY ${sortColumn} ${sortOrder}, v.id DESC
       LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
     const countSql = `
       SELECT COUNT(*) AS count
-      FROM trucks t
+      FROM vehicles v
       ${whereClause}
     `;
 
@@ -113,29 +124,31 @@ class TrucksRepository {
   }
 
   /**
-   * Retrieves a single truck by ID with joined driver details.
-   * @param {string} id - Truck UUID
+   * Retrieves a single vehicle by ID with joined driver details.
+   * @param {string} id - Vehicle UUID
    */
-  async getTruckById(id) {
+  async getVehicleById(id) {
     const sql = `
       SELECT 
-        t.id,
-        t.plate_number,
-        t.model,
-        t.year_model,
-        t.current_odometer,
-        t.last_pm_odometer,
-        t.status,
-        t.driver_id,
-        t.created_at,
-        t.updated_at,
+        v.id,
+        v.plate_number,
+        v.model,
+        v.year_model,
+        v.vehicle_type,
+        v.current_odometer,
+        v.last_pm_odometer,
+        v.pm_due_flag,
+        v.status,
+        v.driver_id,
+        v.created_at,
+        v.updated_at,
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name,
         u.phone AS driver_phone,
         u.username AS driver_username
-      FROM trucks t
-      LEFT JOIN users u ON t.driver_id = u.id
-      WHERE t.id = $1
+      FROM vehicles v
+      LEFT JOIN users u ON v.driver_id = u.id
+      WHERE v.id = $1
     `;
 
     const result = await query(sql, [id]);
@@ -143,13 +156,13 @@ class TrucksRepository {
   }
 
   /**
-   * Finds a truck by plate number (case-insensitive).
+   * Finds a vehicle by plate number (case-insensitive).
    * @param {string} plateNumber
    */
-  async findTruckByPlateNumber(plateNumber) {
+  async findVehicleByPlateNumber(plateNumber) {
     const sql = `
       SELECT *
-      FROM trucks
+      FROM vehicles
       WHERE UPPER(plate_number) = UPPER($1)
     `;
 
@@ -158,13 +171,13 @@ class TrucksRepository {
   }
 
   /**
-   * Finds a truck by driver ID.
+   * Finds a vehicle by driver ID.
    * @param {string} driverId - User UUID
    */
-  async findTruckByDriverId(driverId) {
+  async findVehicleByDriverId(driverId) {
     const sql = `
       SELECT *
-      FROM trucks
+      FROM vehicles
       WHERE driver_id = $1
     `;
 
@@ -173,29 +186,31 @@ class TrucksRepository {
   }
 
   /**
-   * Creates a new truck record.
-   * @param {Object} truckData
+   * Creates a new vehicle record.
+   * @param {Object} vehicleData
    */
-  async createTruck({
+  async createVehicle({
     plateNumber,
     model,
     yearModel,
+    vehicleType = 'DELIVERY_TRUCK',
     currentOdometer = 0,
     lastPmOdometer = 0,
     status = 'ACTIVE',
     driverId = null,
   }) {
     const sql = `
-      INSERT INTO trucks (
+      INSERT INTO vehicles (
         plate_number,
         model,
         year_model,
+        vehicle_type,
         current_odometer,
         last_pm_odometer,
         status,
         driver_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
 
@@ -203,6 +218,7 @@ class TrucksRepository {
       plateNumber,
       model,
       yearModel,
+      vehicleType,
       currentOdometer,
       lastPmOdometer,
       status,
@@ -213,11 +229,11 @@ class TrucksRepository {
   }
 
   /**
-   * Updates an existing truck record.
-   * @param {string} id - Truck UUID
+   * Updates an existing vehicle record.
+   * @param {string} id - Vehicle UUID
    * @param {Object} updateData
    */
-  async updateTruck(id, updateData) {
+  async updateVehicle(id, updateData) {
     const fields = [];
     const params = [];
     let paramIndex = 1;
@@ -237,6 +253,11 @@ class TrucksRepository {
       params.push(updateData.yearModel);
     }
 
+    if (updateData.vehicleType !== undefined) {
+      fields.push(`vehicle_type = $${paramIndex++}`);
+      params.push(updateData.vehicleType);
+    }
+
     if (updateData.currentOdometer !== undefined) {
       fields.push(`current_odometer = $${paramIndex++}`);
       params.push(updateData.currentOdometer);
@@ -248,12 +269,12 @@ class TrucksRepository {
     }
 
     if (fields.length === 0) {
-      return this.getTruckById(id);
+      return this.getVehicleById(id);
     }
 
     params.push(id);
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET ${fields.join(', ')}
       WHERE id = $${paramIndex}
       RETURNING *
@@ -264,12 +285,12 @@ class TrucksRepository {
   }
 
   /**
-   * Deactivates a truck and clears its driver assignment.
-   * @param {string} id - Truck UUID
+   * Deactivates a vehicle and clears its driver assignment.
+   * @param {string} id - Vehicle UUID
    */
-  async deactivateTruck(id) {
+  async deactivateVehicle(id) {
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET status = 'INACTIVE', driver_id = NULL
       WHERE id = $1
       RETURNING *
@@ -280,19 +301,35 @@ class TrucksRepository {
   }
 
   /**
-   * Assigns or unassigns a driver to/from a truck.
-   * @param {string} truckId - Truck UUID
+   * Assigns or unassigns a driver to/from a vehicle.
+   * @param {string} vehicleId - Vehicle UUID
    * @param {string|null} driverId - Driver UUID or null to unassign
    */
-  async assignDriver(truckId, driverId) {
+  async assignDriver(vehicleId, driverId) {
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET driver_id = $1
       WHERE id = $2
       RETURNING *
     `;
 
-    const result = await query(sql, [driverId, truckId]);
+    const result = await query(sql, [driverId, vehicleId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Unassigns the driver from a vehicle by setting driver_id to NULL.
+   * @param {string} vehicleId - Vehicle UUID
+   */
+  async unassignDriver(vehicleId) {
+    const sql = `
+      UPDATE vehicles
+      SET driver_id = NULL
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await query(sql, [vehicleId]);
     return result.rows[0] || null;
   }
 
@@ -326,13 +363,13 @@ class TrucksRepository {
   }
 
   /**
-   * Updates only the current odometer of a truck.
-   * @param {string} id - Truck UUID
+   * Updates only the current odometer of a vehicle.
+   * @param {string} id - Vehicle UUID
    * @param {number} odometer - New odometer reading
    */
-  async updateTruckOdometer(id, odometer) {
+  async updateVehicleOdometer(id, odometer) {
     const sql = `
-      UPDATE trucks
+      UPDATE vehicles
       SET current_odometer = $1
       WHERE id = $2
       RETURNING *
@@ -343,24 +380,9 @@ class TrucksRepository {
   }
 
   /**
-   * Unassigns the driver from a truck by setting driver_id to NULL.
-   * @param {string} truckId - Truck UUID
-   */
-  async unassignDriver(truckId) {
-    const sql = `
-      UPDATE trucks
-      SET driver_id = NULL
-      WHERE id = $1
-      RETURNING *
-    `;
-
-    const result = await query(sql, [truckId]);
-    return result.rows[0] || null;
-  }
-
-  /**
-   * Retrieves users holding the 'Driver' role with their live truck assignment information.
+   * Retrieves users holding the 'Driver' role with their live vehicle assignment information.
    * @param {Object} filters - { availableOnly, search }
+   * @param {Object|null} pagination - Optional { sortColumn, sortOrder, limit, offset }
    */
   async getAllDrivers(filters = {}, pagination = null) {
     const { availableOnly, search } = filters;
@@ -373,7 +395,7 @@ class TrucksRepository {
     let paramIndex = 1;
 
     if (availableOnly) {
-      conditions.push('t.id IS NULL');
+      conditions.push('v.id IS NULL');
     }
 
     if (search && typeof search === 'string' && search.trim() !== '') {
@@ -393,12 +415,13 @@ class TrucksRepository {
           u.last_name,
           u.phone,
           r.name AS role_name,
-          t.id AS assigned_truck_id,
-          t.plate_number AS assigned_truck_plate,
-          t.model AS assigned_truck_model
+          v.id AS assigned_vehicle_id,
+          v.plate_number AS assigned_vehicle_plate,
+          v.model AS assigned_vehicle_model,
+          v.vehicle_type AS assigned_vehicle_type
         FROM users u
         JOIN roles r ON u.role_id = r.id
-        LEFT JOIN trucks t ON u.id = t.driver_id
+        LEFT JOIN vehicles v ON u.id = v.driver_id
         ${whereClause}
         ORDER BY u.first_name ASC, u.last_name ASC, u.id DESC
       `;
@@ -424,12 +447,13 @@ class TrucksRepository {
         u.last_name,
         u.phone,
         r.name AS role_name,
-        t.id AS assigned_truck_id,
-        t.plate_number AS assigned_truck_plate,
-        t.model AS assigned_truck_model
+        v.id AS assigned_vehicle_id,
+        v.plate_number AS assigned_vehicle_plate,
+        v.model AS assigned_vehicle_model,
+        v.vehicle_type AS assigned_vehicle_type
       FROM users u
       JOIN roles r ON u.role_id = r.id
-      LEFT JOIN trucks t ON u.id = t.driver_id
+      LEFT JOIN vehicles v ON u.id = v.driver_id
       ${whereClause}
       ORDER BY ${sortColumn} ${sortOrder}, u.id DESC
       LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
@@ -439,7 +463,7 @@ class TrucksRepository {
       SELECT COUNT(*) AS count
       FROM users u
       JOIN roles r ON u.role_id = r.id
-      LEFT JOIN trucks t ON u.id = t.driver_id
+      LEFT JOIN vehicles v ON u.id = v.driver_id
       ${whereClause}
     `;
 
@@ -455,11 +479,11 @@ class TrucksRepository {
   }
 
   /**
-   * Retrieves active, unblocked users who are NOT currently assigned to any truck.
+   * Retrieves active, unblocked users who are NOT currently assigned to any vehicle.
    */
   async getAvailableDrivers() {
     return this.getAllDrivers({ availableOnly: true });
   }
 }
 
-module.exports = new TrucksRepository();
+module.exports = new VehiclesRepository();

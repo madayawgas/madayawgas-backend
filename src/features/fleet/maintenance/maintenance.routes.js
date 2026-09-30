@@ -35,10 +35,17 @@ router.get(
 
 /**
  * GET /api/fleet/maintenance/odometer/truck/:truckId
+ * GET /api/fleet/maintenance/odometer/vehicle/:vehicleId
  * Retrieves paginated history of odometer logs for a specific vehicle.
  */
 router.get(
   '/odometer/truck/:truckId',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getTruckOdometerHistory.bind(maintenanceController))
+);
+router.get(
+  '/odometer/vehicle/:vehicleId',
   authenticate,
   requirePermission('fleet.view'),
   asyncHandler(maintenanceController.getTruckOdometerHistory.bind(maintenanceController))
@@ -61,10 +68,17 @@ router.post(
 
 /**
  * GET /api/fleet/maintenance/inspections/truck/:truckId
+ * GET /api/fleet/maintenance/inspections/vehicle/:vehicleId
  * Retrieves paginated safety inspections for a specific vehicle.
  */
 router.get(
   '/inspections/truck/:truckId',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getTruckInspections.bind(maintenanceController))
+);
+router.get(
+  '/inspections/vehicle/:vehicleId',
   authenticate,
   requirePermission('fleet.view'),
   asyncHandler(maintenanceController.getTruckInspections.bind(maintenanceController))
@@ -121,10 +135,17 @@ router.get(
 
 /**
  * GET /api/fleet/maintenance/incidents/truck/:truckId
+ * GET /api/fleet/maintenance/incidents/vehicle/:vehicleId
  * Retrieves paginated incident reports for a specific vehicle.
  */
 router.get(
   '/incidents/truck/:truckId',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getTruckIncidents.bind(maintenanceController))
+);
+router.get(
+  '/incidents/vehicle/:vehicleId',
   authenticate,
   requirePermission('fleet.view'),
   asyncHandler(maintenanceController.getTruckIncidents.bind(maintenanceController))
@@ -227,6 +248,28 @@ router.post(
 );
 
 /**
+ * POST /api/fleet/maintenance/work-orders/:id/approval-requests
+ * Submits a cost approval request for a work order (supports revised sequential requests).
+ */
+router.post(
+  '/work-orders/:id/approval-requests',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(maintenanceController.requestApproval.bind(maintenanceController))
+);
+
+/**
+ * GET /api/fleet/maintenance/work-orders/:id/approval-requests
+ * Retrieves all historical approval requests for a work order.
+ */
+router.get(
+  '/work-orders/:id/approval-requests',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getWorkOrderApprovalRequests.bind(maintenanceController))
+);
+
+/**
  * POST /api/fleet/maintenance/work-orders/:id/finalize
  * Finalizes servicing, creates maintenance log, resets PM odometer if PREVENTIVE, and restores truck to ACTIVE.
  */
@@ -250,6 +293,43 @@ router.get(
   authenticate,
   requirePermission('fleet.view'),
   asyncHandler(maintenanceController.getRecurringIssues.bind(maintenanceController))
+);
+
+// ============================================================
+// Work Order Receipts Routes (0..N Audit Attachments)
+// ============================================================
+
+/**
+ * POST /api/fleet/maintenance/work-orders/:id/receipts
+ * Attaches a receipt document to an existing work order.
+ */
+router.post(
+  '/work-orders/:id/receipts',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(maintenanceController.addWorkOrderReceipt.bind(maintenanceController))
+);
+
+/**
+ * GET /api/fleet/maintenance/work-orders/:id/receipts
+ * Retrieves all receipts attached to a specific work order.
+ */
+router.get(
+  '/work-orders/:id/receipts',
+  authenticate,
+  requirePermission('fleet.view'),
+  asyncHandler(maintenanceController.getWorkOrderReceipts.bind(maintenanceController))
+);
+
+/**
+ * DELETE /api/fleet/maintenance/receipts/:receiptId
+ * Deletes a receipt attachment.
+ */
+router.delete(
+  '/receipts/:receiptId',
+  authenticate,
+  requirePermission('fleet.manage'),
+  asyncHandler(maintenanceController.deleteWorkOrderReceipt.bind(maintenanceController))
 );
 
 module.exports = router;

@@ -13,3 +13,5 @@ logs/
 dist/
 coverage/
 *.db
+
+graphify-out/
