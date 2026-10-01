@@ -500,5 +500,67 @@ test('System Event History Log Subsystem Tests', async (t) => {
     assert.equal(logResolved.actionType, 'Created');
     assert.equal(logResolved.targetType, 'MAINTENANCE_LOG');
     assert.equal(logResolved.details, 'Finalized maintenance log for work order #WO-2026-001 (OR #OR-2026-00891)');
+
+    // F. Verify Phase 2 Inventory Domain Event Definitions
+    const restockResolved = resolveEvent(EVENTS.INVENTORY_SUPPLIER_RESTOCKED, {
+      productName: 'Butane Canister 170g',
+      quantityUnits: 2400,
+      condition: 'FILLED',
+      supplierInvoiceNumber: 'INV-SUP-2026-001',
+    });
+    assert.equal(restockResolved.module, 'Inventory Management');
+    assert.equal(restockResolved.actionType, 'Created');
+    assert.equal(restockResolved.targetType, 'plant_inventory');
+    assert.equal(restockResolved.details, "Recorded supplier restock of 2400 unit(s) of 'Butane Canister 170g' (FILLED) under invoice #INV-SUP-2026-001");
+
+    const quarantineResolved = resolveEvent(EVENTS.INVENTORY_DEFECT_QUARANTINED, {
+      productName: '11kg LPG Cylinder',
+      quantityUnits: 5,
+      sourceCondition: 'FILLED',
+      reason: 'Valve leak during yard inspection',
+    });
+    assert.equal(quarantineResolved.module, 'Inventory Management');
+    assert.equal(quarantineResolved.actionType, 'Updated');
+    assert.equal(quarantineResolved.targetType, 'plant_inventory');
+    assert.equal(quarantineResolved.details, "Quarantined 5 defective unit(s) of '11kg LPG Cylinder' (FILLED -> DEFECTIVE): Valve leak during yard inspection");
+
+    const loadResolved = resolveEvent(EVENTS.INVENTORY_TRIP_LOADED, {
+      tripNumber: 'TRIP-20261001-001',
+      slipNumber: 'LOAD-20261001-001',
+      totalUnits: 120,
+    });
+    assert.equal(loadResolved.module, 'Inventory Management');
+    assert.equal(loadResolved.actionType, 'Created');
+    assert.equal(loadResolved.targetType, 'trip_load');
+    assert.equal(loadResolved.details, 'Dispatched load transfer slip #LOAD-20261001-001 with 120 unit(s) for trip #TRIP-20261001-001');
+
+    const unloadResolved = resolveEvent(EVENTS.INVENTORY_TRIP_UNLOADED, {
+      tripNumber: 'TRIP-20261001-001',
+      slipNumber: 'UNLOAD-20261001-001',
+      totalUnits: 95,
+    });
+    assert.equal(unloadResolved.module, 'Inventory Management');
+    assert.equal(unloadResolved.actionType, 'Created');
+    assert.equal(unloadResolved.targetType, 'trip_load');
+    assert.equal(unloadResolved.details, 'Recorded return unload transfer slip #UNLOAD-20261001-001 with 95 unit(s) for trip #TRIP-20261001-001');
+
+    const settledResolved = resolveEvent(EVENTS.INVENTORY_RECONCILIATION_SETTLED, {
+      tripNumber: 'TRIP-20261001-001',
+    });
+    assert.equal(settledResolved.module, 'Inventory Management');
+    assert.equal(settledResolved.actionType, 'Updated');
+    assert.equal(settledResolved.targetType, 'trip_reconciliation');
+    assert.equal(settledResolved.details, 'Settled stock reconciliation for trip #TRIP-20261001-001 with zero variance');
+
+    const flaggedResolved = resolveEvent(EVENTS.INVENTORY_RECONCILIATION_FLAGGED, {
+      tripNumber: 'TRIP-20261001-001',
+      fullDiscrepancy: 2,
+      emptyDiscrepancy: -1,
+    });
+    assert.equal(flaggedResolved.module, 'Inventory Management');
+    assert.equal(flaggedResolved.actionType, 'Updated');
+    assert.equal(flaggedResolved.targetType, 'trip_reconciliation');
+    assert.equal(flaggedResolved.details, 'Flagged stock reconciliation variance for trip #TRIP-20261001-001 (Full Discrepancy: 2, Empty Discrepancy: -1)');
   });
 });
+

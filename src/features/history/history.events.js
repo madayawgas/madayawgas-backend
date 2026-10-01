@@ -9,6 +9,7 @@ const MODULES = Object.freeze({
   FLEET_MANAGEMENT: 'Fleet Management',
   FLEET: 'Fleet Management',
   INVENTORY_MANAGEMENT: 'Inventory Management',
+  INVENTORY: 'Inventory Management',
   SALES_DELIVERY: 'Sales & Delivery',
   ROUTE_DISPATCH: 'Route Dispatch',
   SCHEDULE: 'SCHEDULE',
@@ -308,6 +309,48 @@ const EVENT_DEFINITIONS = {
     targetType: 'product',
     template: (p) =>
       `Deactivated inventory product '${p.name}'`,
+  },
+  INVENTORY_SUPPLIER_RESTOCKED: {
+    module: MODULES.INVENTORY,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'plant_inventory',
+    template: (p) =>
+      `Recorded supplier restock of ${p.quantityUnits} unit(s) of '${p.productName || p.name}' (${p.condition || 'FILLED'})${p.supplierInvoiceNumber || p.invoiceNumber ? ` under invoice #${p.supplierInvoiceNumber || p.invoiceNumber}` : ''}`,
+  },
+  INVENTORY_DEFECT_QUARANTINED: {
+    module: MODULES.INVENTORY,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'plant_inventory',
+    template: (p) =>
+      `Quarantined ${p.quantityUnits} defective unit(s) of '${p.productName || p.name}' (${p.sourceCondition || 'FILLED'} -> DEFECTIVE)${p.reason ? `: ${p.reason}` : ''}`,
+  },
+  INVENTORY_TRIP_LOADED: {
+    module: MODULES.INVENTORY,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'trip_load',
+    template: (p) =>
+      `Dispatched load transfer slip #${p.slipNumber} with ${p.totalUnits || p.itemCount} unit(s) for trip #${p.tripNumber}`,
+  },
+  INVENTORY_TRIP_UNLOADED: {
+    module: MODULES.INVENTORY,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'trip_load',
+    template: (p) =>
+      `Recorded return unload transfer slip #${p.slipNumber} with ${p.totalUnits || p.itemCount} unit(s) for trip #${p.tripNumber}`,
+  },
+  INVENTORY_RECONCILIATION_SETTLED: {
+    module: MODULES.INVENTORY,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'trip_reconciliation',
+    template: (p) =>
+      `Settled stock reconciliation for trip #${p.tripNumber} with zero variance`,
+  },
+  INVENTORY_RECONCILIATION_FLAGGED: {
+    module: MODULES.INVENTORY,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'trip_reconciliation',
+    template: (p) =>
+      `Flagged stock reconciliation variance for trip #${p.tripNumber} (Full Discrepancy: ${p.fullDiscrepancy ?? 'N/A'}, Empty Discrepancy: ${p.emptyDiscrepancy ?? 'N/A'})`,
   },
 
   // ============================================================

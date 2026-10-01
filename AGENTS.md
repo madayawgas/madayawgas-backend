@@ -49,7 +49,8 @@ madayawgas-backend/
 │   │   ├── 007_multi_role_and_org_chart_roles.sql # Multi-role junction & org chart roles schema
 │   │   ├── 008_maintenance_and_work_orders.sql # Maintenance, odometer logs, inspections, work orders schema
 │   │   ├── 009_vehicles_and_receipts_refactor.sql # Vehicles generalization, receipts & work orders refactor
-│   │   └── 010_schedules_and_trips.sql     # Schedules, templates, zones, trips, loads, reconciliations schema
+│   │   ├── 010_schedules_and_trips.sql     # Schedules, templates, zones, trips, loads, reconciliations schema
+│   │   └── 011_plant_inventory_and_reconciliation.sql # Plant inventory, adjustments, reconciliation fields, views
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -62,7 +63,8 @@ madayawgas-backend/
 │       ├── 003_inventory_products_seed.sql  # Seed product items
 │       ├── 004_sales_customers_seed.sql     # Seed customer profiles
 │       ├── 005_history_logs_seed.sql        # Seed system event historical logs
-│       └── 006_schedules_and_trips_seed.sql # Seed service zones and weekly schedule templates
+│       ├── 006_schedules_and_trips_seed.sql # Seed service zones and weekly schedule templates
+│       └── 007_plant_inventory_seed.sql     # Seed product catalog standardization, plant bulk stock & adjustments
 ├── docs/
 │   ├── api-contracts/
 │   │   ├── README.md                        # Master directory & route matrix
@@ -487,8 +489,58 @@ madayawgas-backend/
       - Created `docs/ERD_mermaid/inventory_erd.md` covering `products` and `container_type_enum`.
       - Created `docs/ERD_mermaid/system_history_logs_erd.md` covering `history_logs`, actor snapshots, and JSONB `metadata`.
     * **Master Database Architecture & Navigation Index**:
-      - Created unified 27-table master system ERD in `docs/ERD_mermaid/master_database_erd.md` displaying all cross-subsystem foreign keys.
-      - Created `docs/ERD_mermaid/README.md` cataloging all subsystem diagrams, PostgreSQL ENUM types, and database conventions.
+       - Created unified 27-table master system ERD in `docs/ERD_mermaid/master_database_erd.md` displaying all cross-subsystem foreign keys.
+       - Created `docs/ERD_mermaid/README.md` cataloging all subsystem diagrams, PostgreSQL ENUM types, and database conventions.
+17. **Inventory Subsystem & Route Reconciliation Engine — Phase 1: Database Migration & Seeds**:
+    * Created migration `011_plant_inventory_and_reconciliation.sql`:
+      - Created `plant_inventory` table (`product_id` UK, non-negative CHECK constraints on `quantity_filled`, `quantity_empty_good`, `quantity_defective`, `last_counted_at`, `BEFORE UPDATE` trigger).
+      - Created `plant_stock_adjustments` table (`product_id`, `recorded_by`, `adjustment_type`, `target_condition`, `delta_quantity`, `source_condition`, `supplier_invoice_number`, `reason`, `recorded_at`).
+      - Created custom ENUM `plant_adjustment_type` (`SUPPLIER_PURCHASE`, `DEFECT_ADJUSTMENT`, `PHYSICAL_COUNT`) and guarded `inventory_transfer_type`.
+      - Enhanced `trip_stock_reconciliations` with `full_discrepancy INT`, `empty_discrepancy INT`, and structured `reconciliation_data JSONB` for per-product SKU variance tracking (canisters vs cylinders).
+      - Added compatibility views `trip_stock_transfers` and `trip_stock_transfer_items` aliasing `trip_loads` and `trip_load_items`.
+      - Granted `dashboard.view`, `inventory.view`, `inventory.manage`, and `route.view` permissions to role `Plant Supervisor` in `role_permissions`.
+    * Created seed `007_plant_inventory_seed.sql`:
+      - Standardized product catalog scope with `Butane Canister 170g` and `50kg LPG Cylinder`.
+      - Initialized Bunawan yard physical inventory unit counts across all active products.
+      - Seeded initial `SUPPLIER_PURCHASE` audit adjustment records logged by `plant_user`.
+    * Updated documentation & Mermaid ERDs:
+      - Synchronized `docs/ERD_mermaid/inventory_erd.md` with table specifications, ENUMs, and compatibility views.
+      - Updated `docs/ERD_mermaid/master_database_erd.md` (29 application domain tables + 2 compatibility views).
+18. **Inventory Subsystem & Route Reconciliation Engine — Phase 2: Centralized Event History Registry**:
+    * Registered domain events in `src/features/history/history.events.js`:
+      - `INVENTORY_SUPPLIER_RESTOCKED` (`module: 'Inventory Management'`, `actionType: 'Created'`)
+      - `INVENTORY_DEFECT_QUARANTINED` (`module: 'Inventory Management'`, `actionType: 'Updated'`)
+      - `INVENTORY_TRIP_LOADED` (`module: 'Inventory Management'`, `actionType: 'Created'`)
+      - `INVENTORY_TRIP_UNLOADED` (`module: 'Inventory Management'`, `actionType: 'Created'`)
+      - `INVENTORY_RECONCILIATION_SETTLED` (`module: 'Inventory Management'`, `actionType: 'Updated'`)
+      - `INVENTORY_RECONCILIATION_FLAGGED` (`module: 'Inventory Management'`, `actionType: 'Updated'`)
+    * Added comprehensive unit test assertions in `src/test/history.test.js` validating template rendering, target entity typing, and action classifications.
+19. **Inventory Subsystem & Route Reconciliation Engine — Phase 3: 3-Layer Feature Implementation**:
+    * **Repository Layer (`src/features/inventory/inventory.repository.js`)**:
+      - Master plant inventory data access (`plant_inventory`), transactional stock adjustments (`plant_stock_adjustments`).
+      - Trip dispatch loading with atomic plant stock validation and deduction (`createTripTransferWithItems`).
+      - Post-dispatch physical return unloads with multi-condition plant replenishment (`FILLED`, `EMPTY_GOOD`, `DEFECTIVE`).
+      - Active on-board cabin stock aggregation per SKU (`getVehicleActiveStockPerProduct`).
+      - Multi-SKU reconciliation upsert (`upsertTripReconciliation`) storing discrete discrepancy totals and JSONB breakdown.
+    * **Service Layer (`src/features/inventory/inventory.service.js`)**:
+      - `restockFromSupplier`: Supplier delivery recording with invoice auditing and event logging.
+      - `quarantineDefects`: Plant yard defect quarantine from filled or empty good to defective bucket.
+      - `getSuggestedEqualSplit`: Mathematical truck allocation helper with floor division and remaining units.
+      - `createDispatchLoad`: Multi-load outbound manifest generation with strict non-negative plant stock protection.
+      - `recordReturnUnload`: Inbound physical return manifests crediting plant condition buckets.
+      - `getVehicleActiveStock`: Cabin visibility with sales ownership scoping (`route.view_own` / `inventory.view_own`).
+      - `reconcileTrip`: Mathematical reconciliation engine evaluating full and empty variances per SKU against mobile sales and canister debt offsets ($fullDiscrepancy = loaded - sold - returnedFull - returnedDefective$; $emptyDiscrepancy = sold - (returnedEmptyGood + netCustomerDebtCreated)$). Transitions to `SETTLED` (discrepancy = 0), `FLAGGED_VARIANCE` (variance present), or `AWAITING_SYNC`.
+    * **Controller & Route Layer (`inventory.controller.js`, `inventory.routes.js`)**:
+      - Express v5 route mounts guarded by `inventory.view`, `inventory.manage`, `route.view`, `route.manage`.
+      - Zod schemas validating payloads: `RestockSupplierSchema`, `QuarantineDefectsSchema`, `DispatchLoadSchema`, `ReturnUnloadSchema`, `ReconcileTripSchema`.
+20. **Inventory Subsystem & Route Reconciliation Engine — Phase 4: Integration Tests & Zero Regression Verification**:
+    * Implemented comprehensive test suite in `src/test/inventory.reconciliation.test.js` covering RBAC, plant restock/quarantine, split helper, dispatch loads, active stock visibility, return unloads, exact reconciliation math, and variance/awaiting sync lifecycles.
+    * Isolated test namespaces (`test_recon_`, `TEST-RECON-`) avoiding concurrent test run collisions.
+    * Fixed cascading foreign keys in `011_plant_inventory_and_reconciliation.sql` (`ON DELETE CASCADE` on `product_id`).
+    * Granted `Plant Supervisor` permissions in `001_user_management_seed.sql`, `007_plant_inventory_seed.sql`, and `docs/permissions.md`.
+    * Verified 100% test pass rate across all 13 test suites (101 out of 101 tests passing) with clean database reset (`npm run db:reset`).
+    * Created dedicated API contract `docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md` and updated `docs/api-contracts/README.md`.
+
 
 ---
 
@@ -504,7 +556,7 @@ The database seed provides permanent accounts for system testing (`must_change_p
 | **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Vehicle driver record for fleet truck assignments. **No login permissions**. |
 | **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & inventory (`inventory.view`, `inventory.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). |
 | **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
-| **`plant_user`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Catalog role defined; permissions deferred (`[]`) until plant inventory implementation. |
+| **`plant_user`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Oversees Bunawan refilling yard bulk stock (`dashboard.view`, `inventory.view`, `inventory.manage`, `route.view`). |
 | **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.*`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
 
 ---

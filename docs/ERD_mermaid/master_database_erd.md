@@ -1,8 +1,8 @@
 # Master Database Architecture — Unified Entity Relationship Diagram (ERD)
 
 > **Database Engine**: PostgreSQL 18.x  
-> **Schema Migrations**: 001 through 010 (`database/migrations/`)  
-> **Total Tables**: 27 application domain tables (+1 internal `schema_migrations`)  
+> **Schema Migrations**: 001 through 011 (`database/migrations/`)  
+> **Total Tables**: 29 application domain tables (+1 internal `schema_migrations`, +2 compatibility views)  
 > **Purpose**: Global enterprise data model showing all 6 core subsystems and all cross-domain foreign key relationships.
 
 ---
@@ -223,7 +223,7 @@ erDiagram
 
 
     %% ========================================================
-    %% 4. INVENTORY SUBSYSTEM (1 Table)
+    %% 4. INVENTORY SUBSYSTEM (3 Tables)
     %% ========================================================
 
     PRODUCTS {
@@ -235,6 +235,31 @@ erDiagram
         boolean is_active
         timestamptz created_at
         timestamptz updated_at
+    }
+
+    PLANT_INVENTORY {
+        uuid id PK
+        uuid product_id FK "UK"
+        int quantity_filled
+        int quantity_empty_good
+        int quantity_defective
+        timestamptz last_counted_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PLANT_STOCK_ADJUSTMENTS {
+        uuid id PK
+        uuid product_id FK
+        uuid recorded_by FK
+        enum adjustment_type "plant_adjustment_type"
+        enum target_condition "stock_condition"
+        int delta_quantity
+        enum source_condition "stock_condition Nullable"
+        string supplier_invoice_number "Nullable"
+        string reason
+        timestamptz recorded_at
+        timestamptz created_at
     }
 
 
@@ -338,6 +363,9 @@ erDiagram
         int total_returned_empty_good
         int total_returned_defective
         int net_customer_debt_created
+        int full_discrepancy
+        int empty_discrepancy
+        jsonb reconciliation_data
         enum status "reconciliation_status"
         string supervisor_notes
         timestamptz reconciled_at
@@ -395,6 +423,13 @@ erDiagram
     USERS ||--o{ TRIP_LOADS : "recorded_by"
     USERS ||--o{ TRIP_STOCK_RECONCILIATIONS : "verified_by"
 
+    %% Users -> Inventory
+    USERS ||--o{ PLANT_STOCK_ADJUSTMENTS : "recorded_by"
+
+    %% Inventory Internal
+    PRODUCTS ||--|| PLANT_INVENTORY : "tracks_stock_for"
+    PRODUCTS ||--o{ PLANT_STOCK_ADJUSTMENTS : "adjusts"
+
     %% Fleet -> Schedules & Trips
     VEHICLES ||--o{ SCHEDULE_TEMPLATES : "assigned_truck (truck_id)"
     VEHICLES ||--o{ TRUCK_SCHEDULES : "assigned_truck (truck_id)"
@@ -427,7 +462,7 @@ erDiagram
 | **User Management & RBAC** | 7 | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [`users_and_rbac_erd.md`](./users_and_rbac_erd.md) |
 | **System Event History Logs** | 1 | `history_logs` | [`system_history_logs_erd.md`](./system_history_logs_erd.md) |
 | **Fleet & Maintenance** | 10 | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts` | [`fleet_and_maintenance_erd.md`](./fleet_and_maintenance_erd.md) |
-| **Inventory** | 1 | `products` | [`inventory_erd.md`](./inventory_erd.md) |
+| **Inventory** | 3 | `products`, `plant_inventory`, `plant_stock_adjustments` | [`inventory_erd.md`](./inventory_erd.md) |
 | **Sales & Customers** | 1 | `customers` | [`sales_and_delivery_erd.md`](./sales_and_delivery_erd.md) |
 | **Schedule & Trips** | 7 | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [`schedule_and_trip_erd.md`](./schedule_and_trip_erd.md) |
 
