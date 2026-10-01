@@ -4,14 +4,14 @@
 
 | Permission | Super Admin | Admin | Plant Supervisor | Logistics Supervisor | Sales Supervisor | Sales Person | Driver | Description |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`dashboard.view`** | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | View the main operational dashboard |
+| **`dashboard.view`** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | View the main operational dashboard |
 | **`fleet.view`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | View fleet and maintenance overview & vehicle profiles |
 | **`fleet.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Register vehicles, update info, set condition, assign drivers, deactivate |
-| **`route.view`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | View all route dispatch schedules and trip logs |
+| **`route.view`** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | View all route dispatch schedules and trip logs |
 | **`route.view_own`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | View routes specifically assigned to the current user |
 | **`route.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Create, update, assign, and dispatch delivery routes |
-| **`inventory.view`** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | View inventory product catalog and stock levels |
-| **`inventory.manage`** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | Register, update, and deactivate inventory items/products |
+| **`inventory.view`** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | View inventory product catalog and stock levels |
+| **`inventory.manage`** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | Register, update, and deactivate inventory items/products |
 | **`sales.view`** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | View all sales and customer profiles across the organization |
 | **`sales.view_own`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | View customer profiles and sales created by the current user |
 | **`sales.create`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | Register new sales customers and create frontline sales orders |
@@ -23,10 +23,11 @@
 | **`delivery.update_own`**| ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | Update delivery progress assigned to the current user |
 | **`users.view`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | View employee profiles and user lists |
 | **`users.manage`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Create accounts, reset credentials, deactivate, manage roles & permissions |
-| **`history.view`** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | View system event historical audit logs |
+| **`history.view`** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | View system event historical audit logs |
 
 > [!NOTE]
-> * **Plant Supervisor**: Seeded role in the database. Permissions are intentionally empty (`permissions: []`) pending plant inventory, cylinder filling, and shift scheduling subsystem development in future phases.
+> * **Plant Supervisor**: Oversees Bunawan refilling yard bulk physical inventory, supplier purchases, defect quarantining, vehicle dispatch staging, return unloads, and route reconciliation.
+
 > * **Multi-Role Employees**: Users assigned multiple roles (such as an employee holding both `Sales Supervisor` and `Logistics Supervisor`) automatically receive the union of all permissions across their assigned roles.
 > * **Driver Role**: The Driver role has no login access or system permissions. Driver records exist in the database for assignment to fleet vehicles.
 > * **Legacy Role Aliases**: `Fleet Manager` maps to `Logistics Supervisor`; `Sales Manager` maps to `Sales Supervisor`.

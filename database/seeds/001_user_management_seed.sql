@@ -216,8 +216,31 @@ ON CONFLICT DO NOTHING;
 -- 5. PLANT SUPERVISOR
 -- ============================================================
 -- Plant Supervisor oversees plant operations, cylinder refilling,
--- and plant inventory. No permissions are assigned yet (placeholder
--- for future plant operations and inventory subsystem implementation).
+-- and plant inventory.
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT
+    r.id,
+    p.id
+FROM roles r
+JOIN permissions p
+    ON p.name IN (
+        -- Dashboard
+        'dashboard.view',
+
+        -- Route Dispatch
+        'route.view',
+
+        -- Inventory
+        'inventory.view',
+        'inventory.manage',
+
+        -- History Logs
+        'history.view'
+    )
+WHERE r.name = 'Plant Supervisor'
+ON CONFLICT DO NOTHING;
+
 
 
 -- ============================================================

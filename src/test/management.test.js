@@ -711,7 +711,10 @@ test('User Administration & Management Tests', async (t) => {
     });
     assert.equal(plantLogin.status, 200);
     const plantProfile = await plantLogin.json();
-    assert.equal(plantProfile.data.user.permissions.length, 0, 'Plant Supervisor must have no permissions assigned yet');
+    assert.ok(Array.isArray(plantProfile.data.user.permissions));
+    assert.ok(plantProfile.data.user.permissions.includes('inventory.view'));
+    assert.ok(plantProfile.data.user.permissions.includes('inventory.manage'));
+
 
     // 5. Admin updates a user to multi-role via PATCH /api/users/:id/role
     const roleUpdateRes = await fetch(`${baseUrl}/api/users/${samanthaUserId}/role`, {
