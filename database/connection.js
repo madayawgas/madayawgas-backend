@@ -1,16 +1,18 @@
 const { Pool } = require("pg");
 require("dotenv").config();
+const { isProduction, isTest, getDatabaseUrl, shouldEnableSsl } = require("../src/config/env");
+
+const connectionString = getDatabaseUrl();
+const requiresSsl = shouldEnableSsl(connectionString, isProduction);
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
 
-    // PostgreSQL providers such as Supabase may require SSL in production
-    ssl:
-        process.env.NODE_ENV === "production"
-            ? { rejectUnauthorized: false }
-            : false,
+    // Supabase and remote PostgreSQL cloud providers require SSL in production
+    ssl: requiresSsl ? { rejectUnauthorized: false } : false,
 
-    max: 50,
+    // Sized for direct / pooler connections (customizable via DB_POOL_MAX)
+    max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : (isProduction ? 20 : 50),
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
 });
@@ -33,8 +35,20 @@ const testConnection = async () => {
     try {
         const result = await pool.query("SELECT NOW()");
 
+        let targetHost = "PostgreSQL";
+        try {
+            const parsed = new URL(connectionString);
+            targetHost = `${parsed.hostname}:${parsed.port || 5432}${parsed.pathname}`;
+        } catch {
+            // fallback if URL parsing fails
+        }
+
+        const mode = isProduction
+            ? "Production (Supabase)"
+            : (isTest ? "Test Environment" : "Local Development");
+
         console.log(
-            `✅ PostgreSQL connected successfully at ${result.rows[0].now}`
+            `✅ PostgreSQL connected successfully [${mode} -> ${targetHost}] at ${result.rows[0].now}`
         );
 
         return true;
@@ -52,4 +66,7 @@ module.exports = {
     pool,
     query,
     testConnection,
+    isProduction,
+    getDatabaseUrl,
 };
+

@@ -3,6 +3,7 @@ const profileService = require('./profile.service');
 const managementService = require('./management.service');
 const permissionService = require('./permission.service');
 const { parsePaginationQuery, formatPaginatedEnvelope } = require('../../utils/pagination');
+const { isProduction } = require('../../config/env');
 
 const ALLOWED_USER_SORT_FIELDS = {
   createdAt: 'u.created_at',
@@ -24,7 +25,7 @@ const COOKIE_NAME = 'mg_sid';
 
 const getCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: isProduction,
   sameSite: 'lax',
   path: '/',
   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in ms

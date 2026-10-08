@@ -1,7 +1,8 @@
 require("dotenv").config();
 
 const app = require("./app");
-const { testConnection } = require("../database/connection");
+const { testConnection, isProduction } = require("../database/connection");
+const { getBaseUrl } = require("./config/env");
 
 const PORT = process.env.PORT || 5000;
 
@@ -24,13 +25,15 @@ async function startServer() {
         await initializeDatabase();
 
         app.listen(PORT, () => {
+            const baseUrl = getBaseUrl(PORT);
+
             console.log("");
             console.log("🚀 MadayawGas Backend");
-            console.log(`Environment : ${process.env.NODE_ENV || "development"}`);
+            console.log(`Environment : ${isProduction ? "production" : (process.env.NODE_ENV || "development")}`);
             console.log("Database    : PostgreSQL");
             console.log(`Port        : ${PORT}`);
-            console.log(`Health      : http://localhost:${PORT}/health`);
-            console.log(`API         : http://localhost:${PORT}/api`);
+            console.log(`Health      : ${baseUrl}/health`);
+            console.log(`API         : ${baseUrl}/api`);
             console.log("");
         });
     } catch (error) {

@@ -1,3 +1,5 @@
+const { isProduction } = require('../config/env');
+
 /**
  * Centralized Global Error Handler Middleware
  */
@@ -8,7 +10,7 @@ const errorHandler = (err, req, res, next) => {
   res.status(statusCode).json({
     status: statusCode >= 500 ? 'error' : 'fail',
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(!isProduction && { stack: err.stack }),
   });
 };
 

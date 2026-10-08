@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { isProduction } = require('./env');
 
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
@@ -7,7 +8,7 @@ const allowedOrigins = process.env.CORS_ORIGIN
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    if (!origin || allowedOrigins.includes(origin) || !isProduction) {
       return callback(null, true);
     }
     return callback(new Error(`CORS Error: Origin ${origin} not allowed`));

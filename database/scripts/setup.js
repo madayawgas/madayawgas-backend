@@ -3,15 +3,15 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { migrate } = require("./migrate");
-const { pool } = require("../connection");
+const { pool, isProduction, getDatabaseUrl } = require("../connection");
 
 require("dotenv").config();
 
 const REQUIRED_POSTGRES_MAJOR = 18;
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = getDatabaseUrl();
 
 if (!databaseUrl) {
-  console.error("✗ DATABASE_URL is not defined in .env");
+  console.error("✗ No active database URL is defined in .env");
   process.exit(1);
 }
 
@@ -132,6 +132,17 @@ async function createDatabaseIfNotExists() {
 async function setup() {
   try {
     console.log("Setting up MadayawGas database...\n");
+
+    if (isProduction) {
+      console.log("⚡ Production environment detected (Supabase / Remote Cloud).");
+      console.log("→ Skipping local pg_dump verification and CREATE DATABASE.");
+      console.log("→ Executing database migrations directly on the remote database...\n");
+
+      await migrate();
+
+      console.log("\n✓ Database setup complete.");
+      return;
+    }
 
     checkPostgresVersion();
 

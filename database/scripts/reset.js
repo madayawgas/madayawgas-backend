@@ -1,14 +1,21 @@
 const { Client } = require("pg");
 const { migrate } = require("./migrate");
 const { seed } = require("./seed");
-const { pool } = require("../connection");
+const { pool, isProduction, getDatabaseUrl } = require("../connection");
 
 require("dotenv").config();
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = getDatabaseUrl();
 
 if (!databaseUrl) {
-  console.error("✗ DATABASE_URL is not defined in .env");
+  console.error("✗ No active database URL is defined in .env");
+  process.exit(1);
+}
+
+if (isProduction) {
+  console.error("❌ Refusing to run db:reset in PRODUCTION mode!");
+  console.error("   Dropping the remote/production database is blocked to prevent accidental data loss.");
+  console.error("   To reset local development data, set PRODUCTION=false in your .env");
   process.exit(1);
 }
 

@@ -1,5 +1,6 @@
 const authService = require('../features/users/auth.service');
 const permissionService = require('../features/users/permission.service');
+const { isProduction } = require('../config/env');
 
 /**
  * Authentication Middleware
@@ -22,7 +23,7 @@ const authenticate = async (req, res, next) => {
     if (!authResult) {
       res.clearCookie('mg_sid', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: isProduction,
         sameSite: 'lax',
         path: '/',
       });

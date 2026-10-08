@@ -1,6 +1,7 @@
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { getDatabaseUrl } = require("../connection");
 require("dotenv").config();
 
 const REQUIRED_POSTGRES_MAJOR = 18;
@@ -123,7 +124,7 @@ function exportSchema(pgDump) {
         "schema.sql"
     );
 
-    const databaseUrl = process.env.DATABASE_URL;
+    const databaseUrl = getDatabaseUrl();
 
     const args = [
         "--schema-only",
@@ -157,8 +158,9 @@ function exportSchema(pgDump) {
 function main() {
     console.log("Exporting database schema...\n");
 
-    if (!process.env.DATABASE_URL) {
-        console.error("✗ DATABASE_URL is not defined in .env");
+    const databaseUrl = getDatabaseUrl();
+    if (!databaseUrl) {
+        console.error("✗ No active database URL is defined in .env");
         process.exit(1);
     }
 
