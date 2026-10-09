@@ -154,11 +154,44 @@ function getBaseUrl(port = process.env.PORT || 5000) {
   return `http://localhost:${port}`;
 }
 
+/**
+ * Returns the name of the environment variable used to resolve the active database URL.
+ */
+function getDatabaseUrlSource() {
+  if (isTest && process.env.DATABASE_URL_TEST && process.env.TEST_USE_PROD !== 'true') {
+    return 'DATABASE_URL_TEST';
+  }
+
+  if (isProduction) {
+    return process.env.DATABASE_URL ? 'DATABASE_URL' : 'DATABASE_URL_TEST';
+  }
+
+  return process.env.DATABASE_URL_TEST ? 'DATABASE_URL_TEST' : 'DATABASE_URL';
+}
+
+/**
+ * Safely masks the password portion of a database connection string.
+ */
+function maskDatabaseUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return 'N/A';
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.password) {
+      parsed.password = '****';
+    }
+    return parsed.toString();
+  } catch {
+    return rawUrl.replace(/:\/\/(.*?):(.*?)@/, '://$1:****@');
+  }
+}
+
 module.exports = {
   isProduction,
   isTest,
   sanitizeDatabaseUrl,
   getDatabaseUrl,
+  getDatabaseUrlSource,
+  maskDatabaseUrl,
   shouldEnableSsl,
   getBaseUrl,
 };

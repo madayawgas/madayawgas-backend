@@ -1,0 +1,8 @@
+{
+  "watch": [
+    "src",
+    "database",
+    ".env"
+  ],
+  "ext": "js,json,sql,env"
+}
