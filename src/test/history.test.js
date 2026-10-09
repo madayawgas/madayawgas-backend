@@ -362,16 +362,14 @@ test('System Event History Log Subsystem Tests', async (t) => {
   await t.test('6. Single History Log Retrieval by ID and 404 Handling', async () => {
     const adminCookie = await loginAsSuperAdmin();
 
-    const listRes = await makeRequest(server, {
-      hostname: '127.0.0.1',
-      port,
-      path: '/api/history?limit=1',
-      method: 'GET',
-      headers: { Cookie: adminCookie },
-    });
-    assert.equal(listRes.statusCode, 200);
-    const targetLog = listRes.body.data.logs[0];
-    assert.ok(targetLog, 'Should have at least one log');
+    // Create an isolated history log specific to this subtest
+    const insertRes = await query(
+      `INSERT INTO history_logs (user_name, user_role, action_type, module, action, details)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, details`,
+      [`${PREFIX}admin`, 'Super Admin', 'Created', 'Media Management', 'Created Test', `${PREFIX} Isolated subtest log`]
+    );
+    const targetLog = insertRes.rows[0];
+    assert.ok(targetLog, 'Should have created test log');
 
     // Get single log
     const singleRes = await makeRequest(server, {

@@ -16,6 +16,7 @@ Welcome to the MadayawGas Backend RESTful API documentation. This directory prov
 | **Inventory** | `/api/inventory` | LPG cylinder & canister product catalog and profile management |
 | **Sales & Delivery** | `/api/sales` | Customer profiles, commercial accounts, and retail distribution |
 | **System History** | `/api/history` | Centralized audit trail and system event historical logs |
+| **Media & Documents** | `/api/media` | Ingestion, validation, cloud/local storage, and resolution of images & receipts |
 
 - **Request / Response Format**: `application/json`
 - **Authentication**: Stateful server-side sessions stored in PostgreSQL, conveyed via HTTP-Only cookie `mg_sid`.
@@ -101,6 +102,9 @@ docs/api-contracts/
 │
 ├── history/                                 # Subsystem: Audit & History Logs
 │   └── history.api.md                       # System event history logs, module filters, search, detail
+│
+├── media/                                   # Subsystem: Media & Documents
+│   └── media.api.md                         # Ingest, validate, store, resolve canonical media assets
 │
 ├── inventory/                               # Subsystem: Inventory
 │   └── products.api.md                      # Product CRUD, cylinder/canister specs, deactivation
@@ -276,3 +280,13 @@ docs/api-contracts/
 | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/history` | Query paginated audit logs with filters | `history.view` | [history/history.api.md](file:///docs/api-contracts/history/history.api.md#1-view-history-logs-list-filter-search--pagination) |
 | `GET` | `/api/history/:id` | View single history log record detail | `history.view` | [history/history.api.md](file:///docs/api-contracts/history/history.api.md#2-view-single-history-log-detail) |
+
+---
+
+### Subsystem: Media & Documents (`/api/media`)
+
+| Method | Endpoint | Description | Permissions | Contract Document |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/media/upload` | Upload binary media asset & generate canonical storage key | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#41-upload-media-post-apimediaupload) |
+| `POST` | `/api/media/resolve` | Resolve canonical relative storage key into public URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#42-resolve-media-key-post-apimediaresolve) |
+

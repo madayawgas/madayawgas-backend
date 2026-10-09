@@ -9,6 +9,8 @@ const { historyRoutes } = require('../features/history');
 const { schedulesRoutes } = require('../features/schedules');
 const { tripsRoutes } = require('../features/trips');
 
+const { mediaRoutes } = require('../features/media');
+
 // Register API Module Routes
 
 router.use('/users', usersRoutes);
@@ -19,5 +21,6 @@ router.use('/history', historyRoutes);
 router.use('/history-logs', historyRoutes);
 router.use('/schedules', schedulesRoutes);
 router.use('/trips', tripsRoutes);
+router.use('/media', mediaRoutes);
 
 module.exports = router;

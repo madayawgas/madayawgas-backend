@@ -137,6 +137,13 @@ madayawgas-backend/
 │   │   │   ├── trips.controller.js          # Trips HTTP controller
 │   │   │   ├── trips.routes.js              # Express route declarations
 │   │   │   └── index.js                     # Barrel export
+│   │   ├── media/                           # Media & Document Storage Subsystem
+│   │   │   ├── media.storage.js             # Dual-mode storage driver (Local vs Supabase Storage)
+│   │   │   ├── media.service.js             # Domain validation, collision-resistant keys, upload/resolve
+│   │   │   ├── media.middleware.js          # Multer memory storage (5MB limit & MIME whitelist)
+│   │   │   ├── media.controller.js          # HTTP parameter parsing & JSON response formatting
+│   │   │   ├── media.routes.js              # Express media routes (/upload, /resolve)
+│   │   │   └── index.js                     # Media barrel export
 │   │   └── sales/
 │   │       ├── customer/                    # Customer CRUD (Repository, Service, Controller)
 │   │       ├── sales.routes.js              # Express sales route definitions
@@ -153,7 +160,10 @@ madayawgas-backend/
 │   │   ├── history.test.js                  # System event history log tests (prefix: test_hist_)
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
+│   │   ├── media.test.js                    # Media subsystem tests (prefix: test_media_)
+│   │   ├── pagination.test.js               # Pagination tests (prefix: test_pagi_)
 │   │   ├── permission.test.js               # RBAC & permission tests (prefix: test_perm_)
+│   │   ├── phone.test.js                    # Phone normalizer unit tests
 │   │   ├── profile.test.js                  # Profile tests (prefix: test_prof_)
 │   │   └── schedules.trips.test.js          # Schedule & Trip Subsystem tests (prefix: test_sched_)
 │   └── utils/
@@ -542,6 +552,25 @@ madayawgas-backend/
     * Granted `Plant Supervisor` permissions in `001_user_management_seed.sql`, `007_plant_inventory_seed.sql`, and `docs/permissions.md`.
     * Verified 100% test pass rate across all 13 test suites (101 out of 101 tests passing) with clean database reset (`npm run db:reset`).
     * Created dedicated API contract `docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md` and updated `docs/api-contracts/README.md`.
+21. **Standardized Backend Media Subsystem (`src/features/media/`)**:
+    * **Dual Runtime Storage Driver (`media.storage.js`)**:
+      - Local Mode (`PRODUCTION=false` or unset): Files written to `./uploads/` (or `LOCAL_MEDIA_PATH`), served statically via Express at `/media/*`.
+      - Cloud Mode (`PRODUCTION=true`): Files streamed directly to Supabase Storage bucket `madayawgas-media` via `@supabase/supabase-js` service client, preventing ephemeral disk leaks on Render.
+    * **In-Memory Streaming & Safety Ceilings (`media.middleware.js`)**:
+      - Configured `multer.memoryStorage()` with 5 MB ceiling (`5 * 1024 * 1024` bytes) rejecting excess payloads with `413 Payload Too Large` (`FILE_TOO_LARGE`).
+      - Whitelisted MIME types: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, rejecting unapproved types with `400 Bad Request` (`UNSUPPORTED_MEDIA_TYPE`).
+    * **Deterministic Relative Storage Keys & Canonical Domains (`media.service.js`)**:
+      - Enforced relative storage key invariant: `{domain}/{timestamp}-{randomHex}{extension}` (e.g. `maintenance/receipts/1775731200000-4b2a8f9c1d0e.jpg`).
+      - Restricted uploads to canonical domain whitelist: `maintenance/receipts`, `maintenance/inspections`, `fleet/vehicles`, `sales/receipts`, `sales/payments`, `users/avatars` with directory traversal protection.
+    * **Endpoints & Routes (`media.controller.js`, `media.routes.js`)**:
+      - `POST /api/media/upload`: Authenticated multipart upload endpoint returning metadata and resolved URL.
+      - `POST /api/media/resolve`: Authenticated endpoint resolving canonical relative storage keys to public URLs.
+    * **Comprehensive Integration Test Suite (`src/test/media.test.js`)**:
+      - 9 integration tests covering RBAC authentication guards, input validation, MIME whitelist rejection, 5MB payload limit enforcement, canonical domain whitelist & path traversal rejection, local storage write and static retrieval via `/media/*`, URL resolution in local and production simulation modes, and safe asset deletion.
+      - 100% pass rate across all 15 test suites (127 out of 127 tests passing) with zero regressions.
+    * **API Contracts & Documentation**:
+      - Created formal API contract `docs/api-contracts/media/media.api.md` and registered endpoints in `docs/api-contracts/README.md`.
+
 
 
 ---

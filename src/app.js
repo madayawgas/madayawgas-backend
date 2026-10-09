@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const corsOptions = require('./config/cors');
 const routes = require('./routes');
@@ -36,6 +37,15 @@ app.get('/health', (req, res) => {
 
 // API Routes (Direct endpoints without versioning)
 app.use('/api', routes);
+
+// Static Media Serving for Local Development
+app.use('/media', (req, res, next) => {
+  if (String(process.env.PRODUCTION).trim().toLowerCase() === 'true') {
+    return next();
+  }
+  const localUploadDir = path.resolve(process.env.LOCAL_MEDIA_PATH || './uploads');
+  return express.static(localUploadDir)(req, res, next);
+});
 
 // Handle 404 (Not Found) Routes
 app.use((req, res, next) => {

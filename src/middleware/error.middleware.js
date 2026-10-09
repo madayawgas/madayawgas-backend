@@ -10,6 +10,7 @@ const errorHandler = (err, req, res, next) => {
   res.status(statusCode).json({
     status: statusCode >= 500 ? 'error' : 'fail',
     message,
+    ...(err.code && { code: err.code }),
     ...(!isProduction && { stack: err.stack }),
   });
 };
