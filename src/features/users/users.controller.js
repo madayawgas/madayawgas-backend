@@ -48,7 +48,10 @@ class UsersController {
 
       return res.status(200).json({
         status: 'success',
-        data: { user },
+        data: {
+          user,
+          token,
+        },
       });
     } catch (err) {
       if (err.message === 'Invalid credentials') {

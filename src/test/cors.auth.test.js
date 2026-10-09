@@ -129,6 +129,9 @@ test('Cross-Origin CORS & Cookie Authentication Tests', async (t) => {
     });
 
     assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.data.token, 'data.token must be present for Safari/Samsung third-party cookie fallback');
+    assert.ok(body.data.user, 'data.user must be present');
     const setCookie = res.headers.get('set-cookie');
     assert.ok(setCookie, 'set-cookie header should be present');
     assert.ok(setCookie.includes('mg_sid='), 'mg_sid cookie should be set');
