@@ -12,11 +12,15 @@ const authenticate = async (req, res, next) => {
     const cookieToken = req.cookies?.[COOKIE_NAME];
     const authHeader = req.headers.authorization;
     const bearerToken =
-      authHeader && authHeader.startsWith('Bearer ')
-        ? authHeader.slice(7).trim()
+      authHeader && /^Bearer\s+/i.test(authHeader)
+        ? authHeader.replace(/^Bearer\s+/i, '').trim()
         : null;
+    const customHeaderToken =
+      (typeof req.headers['x-access-token'] === 'string' && req.headers['x-access-token'].trim()) ||
+      (typeof req.headers['x-auth-token'] === 'string' && req.headers['x-auth-token'].trim()) ||
+      null;
 
-    const rawToken = cookieToken || bearerToken;
+    const rawToken = cookieToken || bearerToken || customHeaderToken;
 
     if (!rawToken) {
       return res.status(401).json({

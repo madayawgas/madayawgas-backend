@@ -7,31 +7,35 @@
 
 ---
 
-## 1. The Most Important Rule: Auth & Cookies (`mg_sid`)
+## 1. Authentication & Cross-Platform Support (Cookies & Bearer Token)
 
-The backend handles login sessions using an **HTTP-Only cookie** named `mg_sid`.
+The backend supports a robust **Dual Authentication Strategy** designed for 100% compatibility across all operating systems and browsers (iOS Safari, Android Chrome, Samsung Internet, macOS, Windows, Linux, and mobile WebViews).
 
-### What does this mean for you?
-- **You do NOT need to save tokens in `localStorage`**.
-- The browser will save the cookie automatically when you log in and send it automatically with every subsequent request.
-- **The Golden Rule**: Every time you call the backend using `fetch`, you **MUST include `credentials: 'include'`**. If you forget this, the backend will not see your session cookie and will return `401 Unauthorized`.
+### Why Dual Authentication?
+- **Desktop & Standard Browsers**: The backend sets an `HttpOnly` cookie named `mg_sid`. When `credentials: 'include'` is set, the browser automatically transmits the session cookie.
+- **iOS Devices (iPhone & iPad)**: Apple mandates WebKit across all iOS browsers (Safari, Chrome iOS, Firefox iOS). WebKit's **Intelligent Tracking Prevention (ITP)** blocks third-party cross-site cookies by default when the frontend (`madayawgas.vercel.app`) calls the backend (`onrender.com`).
+- **Android & Privacy Browsers**: Modern Chromium browsers enforce Third-Party Cookie Deprecation (3PCD) and Private Network Access (PNA) guards.
+- **The Solution**: On login, the backend returns both the session cookie **AND** a raw session token (`data.token`). The frontend client stores this token in `localStorage` and attaches `Authorization: Bearer <token>` on all requests alongside `credentials: 'include'`. The backend automatically accepts whichever is available!
 
 ```javascript
-// Native fetch with credentials enabled:
+// Example native fetch with Dual Auth enabled:
+const token = localStorage.getItem('mg_token');
+
 const response = await fetch('http://localhost:5000/api/users/me', {
   method: 'GET',
-  credentials: 'include', // <-- MUST HAVE THIS!
+  credentials: 'include', // Sends cookie on supported browsers
   headers: {
     'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}), // Guarantees iOS Safari & Android mobile support
   },
 });
 ```
 
 ---
 
-## 2. Local Development: Switching Between Mock Data & Live API
+## 2. Local Development & Mobile Device Testing (LAN / Wi-Fi)
 
-You don't always need the backend running to build UI features. You can build your pages using local `.json` mock files, and switch to the live backend with a single setting in `.env.local`.
+You can test UI features locally against mock `.json` files, a local backend, or across physical mobile devices on the same Wi-Fi.
 
 ### Step 1: Create your `.env.local`
 In the root of your frontend project, create a `.env.local` file:
@@ -42,12 +46,26 @@ In the root of your frontend project, create a `.env.local` file:
 VITE_USE_MOCK=true
 
 # Real backend API URL (used when VITE_USE_MOCK=false)
+# For local desktop testing:
 VITE_API_URL=http://localhost:5000/api
+# For testing from a mobile phone on the same Wi-Fi:
+# VITE_API_URL=http://192.168.1.X:5000/api
 ```
+
+### Step 2: Testing on a Physical Mobile Phone via Local Wi-Fi
+1. Ensure your computer and mobile phone are connected to the same Wi-Fi network.
+2. Run your Vite dev server with the `--host` flag:
+   ```bash
+   npm run dev -- --host
+   ```
+3. Vite will display a Network URL (e.g., `http://192.168.1.15:5173`).
+4. Set `VITE_API_URL=http://192.168.1.15:5000/api` in your `.env.local`.
+5. Open the Network URL in your mobile phone's browser (Safari or Chrome).
+6. **Zero CORS Issues**: The backend automatically whitelists private LAN IP ranges (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`), supports Chromium Private Network Access (PNA), and listens on `0.0.0.0`.
 
 ---
 
-### Step 2: Organize your Mock `.json` Files
+### Step 3: Organize your Mock `.json` Files
 Put your sample mock responses in a `src/mocks/` folder.
 
 Example structure:
@@ -91,7 +109,7 @@ src/
 
 ## 3. Recommended API Helper Files (Using Native `fetch`)
 
-Instead of writing raw `fetch` calls directly inside your UI components, create helper files in `src/api/`. These helpers will automatically handle `credentials: 'include'`, JSON parsing, and switching to mock data when `VITE_USE_MOCK=true`.
+Create helper files in `src/api/` that automatically manage credentials, Bearer tokens, JSON formatting, and switching to mock data.
 
 ### Helper 1: Base Fetch Client (`src/api/client.js`)
 ```javascript
@@ -102,18 +120,21 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:50
 
 /**
  * Lightweight native fetch wrapper
- * Automatically adds credentials: 'include' and handles JSON formatting.
+ * Automatically attaches Authorization Bearer token (for iOS Safari ITP & mobile compatibility)
+ * and credentials: 'include' (for desktop cookie sessions).
  */
 export async function apiClient(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('mg_token') : null;
 
   const config = {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
-    credentials: 'include', // <-- CRITICAL: Sends and receives the mg_sid session cookie
+    credentials: 'include', // Sends and receives the mg_sid session cookie
     ...options,
   };
 
@@ -126,6 +147,10 @@ export async function apiClient(endpoint, options = {}) {
   const data = await response.json();
 
   if (!response.ok) {
+    // Automatically clear invalid token on 401 Unauthorized
+    if (response.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('mg_token');
+    }
     throw new Error(data.message || 'An error occurred while fetching data');
   }
 
@@ -145,7 +170,7 @@ import mockMe from '../mocks/me.json';
 const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
 
 export const authApi = {
-  // 1. Log in
+  // 1. Log in (saves token to localStorage for mobile cross-browser compatibility)
   async login(username, password) {
     if (isMock) {
       await delay();
@@ -155,6 +180,11 @@ export const authApi = {
       method: 'POST',
       body: { username, password },
     });
+
+    if (result.data?.token && typeof window !== 'undefined') {
+      localStorage.setItem('mg_token', result.data.token);
+    }
+
     return result.data.user;
   },
 
@@ -168,13 +198,19 @@ export const authApi = {
     return result.data.user;
   },
 
-  // 3. Log out
+  // 3. Log out (clears token from localStorage)
   async logout() {
     if (isMock) {
       await delay();
       return true;
     }
-    await apiClient('/users/logout', { method: 'POST' });
+    try {
+      await apiClient('/users/logout', { method: 'POST' });
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mg_token');
+      }
+    }
     return true;
   },
 

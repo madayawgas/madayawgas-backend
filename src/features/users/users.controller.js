@@ -44,7 +44,7 @@ class UsersController {
     try {
       const { token, user } = await authService.login(username, password);
 
-      res.cookie(COOKIE_NAME, token, getCookieOptions());
+      res.cookie(COOKIE_NAME, token, getCookieOptions(req));
 
       return res.status(200).json({
         status: 'success',
@@ -68,13 +68,24 @@ class UsersController {
    * POST /api/users/logout
    */
   async logout(req, res) {
-    const rawToken = req.cookies?.[COOKIE_NAME];
+    const cookieToken = req.cookies?.[COOKIE_NAME];
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      authHeader && /^Bearer\s+/i.test(authHeader)
+        ? authHeader.replace(/^Bearer\s+/i, '').trim()
+        : null;
+    const customHeaderToken =
+      (typeof req.headers['x-access-token'] === 'string' && req.headers['x-access-token'].trim()) ||
+      (typeof req.headers['x-auth-token'] === 'string' && req.headers['x-auth-token'].trim()) ||
+      null;
+
+    const rawToken = cookieToken || bearerToken || customHeaderToken;
 
     if (rawToken) {
       await authService.logout(rawToken);
     }
 
-    res.clearCookie(COOKIE_NAME, getClearCookieOptions());
+    res.clearCookie(COOKIE_NAME, getClearCookieOptions(req));
 
     return res.status(200).json({
       status: 'success',

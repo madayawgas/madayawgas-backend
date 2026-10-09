@@ -11,6 +11,14 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Middlewares
+// Support Private Network Access (PNA) for Chrome/Android & local mobile dev
+app.use((req, res, next) => {
+  if (req.headers['access-control-request-private-network']) {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
+  next();
+});
+
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

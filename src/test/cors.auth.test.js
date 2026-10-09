@@ -186,4 +186,150 @@ test('Cross-Origin CORS & Cookie Authentication Tests', async (t) => {
     assert.ok(clearCookieHeader.toLowerCase().includes('samesite=none'));
     assert.ok(clearCookieHeader.toLowerCase().includes('secure'));
   });
+
+  await t.test('9. CORS Whitelist - Allows Local Area Network (LAN) IPv4 origins for mobile testing', async () => {
+    const lanOrigins = [
+      'http://192.168.1.50:5173',
+      'http://192.168.0.10:3000',
+      'http://10.0.0.15:5173',
+      'http://172.20.10.4:5173',
+      'http://100.65.10.5:5173',
+    ];
+
+    for (const origin of lanOrigins) {
+      const res = await fetch(`${baseUrl}/api/users/login`, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+        },
+      });
+
+      assert.equal(res.headers.get('access-control-allow-origin'), origin);
+      assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+    }
+  });
+
+  await t.test('10. CORS Whitelist - Allows Mobile Hybrid WebViews and development tunnels', async () => {
+    const mobileOrigins = [
+      'capacitor://localhost',
+      'ionic://localhost',
+      'https://my-phone-test.ngrok-free.app',
+      'https://madayaw-mobile.localtunnel.me',
+      'https://preview-tunnel.trycloudflare.com',
+    ];
+
+    for (const origin of mobileOrigins) {
+      const res = await fetch(`${baseUrl}/api/users/login`, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+        },
+      });
+
+      assert.equal(res.headers.get('access-control-allow-origin'), origin);
+      assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+    }
+  });
+
+  await t.test('11. Chromium Private Network Access (PNA) - Sets Access-Control-Allow-Private-Network', async () => {
+    const res = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://192.168.1.50:5173',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Private-Network': 'true',
+      },
+    });
+
+    assert.equal(res.headers.get('access-control-allow-private-network'), 'true');
+  });
+
+  await t.test('12. Mobile Browser Preflight - Dynamic header reflection permits mobile Safari & client hint headers', async () => {
+    const res = await fetch(`${baseUrl}/api/users/123/status`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://192.168.1.50:5173',
+        'Access-Control-Request-Method': 'PATCH',
+        'Access-Control-Request-Headers': 'Content-Type, Cache-Control, Pragma, X-Confirm-Password, Sec-CH-UA-Mobile',
+      },
+    });
+
+    const allowedHeaders = res.headers.get('access-control-allow-headers');
+    assert.ok(allowedHeaders);
+    assert.ok(allowedHeaders.toLowerCase().includes('cache-control'));
+    assert.ok(allowedHeaders.toLowerCase().includes('pragma'));
+    assert.ok(allowedHeaders.toLowerCase().includes('x-confirm-password'));
+    assert.ok(allowedHeaders.toLowerCase().includes('sec-ch-ua-mobile'));
+  });
+
+  await t.test('13. Preflight Caching - Returns 24-hour Access-Control-Max-Age for mobile latency reduction', async () => {
+    const res = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://madayawgas.vercel.app',
+        'Access-Control-Request-Method': 'POST',
+      },
+    });
+
+    assert.equal(res.headers.get('access-control-max-age'), '86400');
+  });
+
+  await t.test('14. Authentication - Accepts case-insensitive bearer token and X-Access-Token fallback header', async () => {
+    // 1. Log in to get token
+    const loginRes = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_cors_admin', password: 'TestPass123!' }),
+    });
+    const { data } = await loginRes.json();
+    const token = data.token;
+
+    // 2. Request with lowercase 'bearer <token>'
+    const lowercaseBearerRes = await fetch(`${baseUrl}/api/users/me`, {
+      headers: {
+        Authorization: `bearer ${token}`,
+      },
+    });
+    assert.equal(lowercaseBearerRes.status, 200);
+
+    // 3. Request with custom header 'X-Access-Token: <token>'
+    const customHeaderRes = await fetch(`${baseUrl}/api/users/me`, {
+      headers: {
+        'X-Access-Token': token,
+      },
+    });
+    assert.equal(customHeaderRes.status, 200);
+    const body = await customHeaderRes.json();
+    assert.equal(body.data.user.username, 'test_cors_admin');
+  });
+
+  await t.test('15. Logout via Bearer Token - Successfully revokes session without requiring cookie', async () => {
+    // 1. Log in to obtain session
+    const loginRes = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_cors_admin', password: 'TestPass123!' }),
+    });
+    const { data } = await loginRes.json();
+    const token = data.token;
+
+    // 2. Logout using Authorization Bearer header
+    const logoutRes = await fetch(`${baseUrl}/api/users/logout`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    assert.equal(logoutRes.status, 200);
+
+    // 3. Verify session is revoked in database / subsequent request fails with 401
+    const meRes = await fetch(`${baseUrl}/api/users/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    assert.equal(meRes.status, 401);
+  });
 });
