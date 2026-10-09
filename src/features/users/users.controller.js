@@ -21,15 +21,7 @@ const ALLOWED_USER_SORT_FIELDS = {
   is_blocked: 'u.is_blocked',
 };
 
-const COOKIE_NAME = 'mg_sid';
-
-const getCookieOptions = () => ({
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: 'lax',
-  path: '/',
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
-});
+const { COOKIE_NAME, getCookieOptions, getClearCookieOptions } = require('../../config/cookie');
 
 /**
  * Users Controller
@@ -79,12 +71,7 @@ class UsersController {
       await authService.logout(rawToken);
     }
 
-    res.clearCookie(COOKIE_NAME, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-    });
+    res.clearCookie(COOKIE_NAME, getClearCookieOptions());
 
     return res.status(200).json({
       status: 'success',
@@ -141,12 +128,7 @@ class UsersController {
     try {
       await authService.changePassword(req.user, { currentPassword, newPassword });
 
-      res.clearCookie(COOKIE_NAME, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-      });
+      res.clearCookie(COOKIE_NAME, getClearCookieOptions());
 
       return res.status(200).json({
         status: 'success',

@@ -179,8 +179,10 @@ madayawgas-backend/
    * **Rule**: ALWAYS use parameterized queries (`$1`, `$2`, `$3`) to prevent SQL injection. Never concatenate raw strings into SQL.
 
 ### B. Authentication & Session Management
-* **Stateful Sessions**: Stored in PostgreSQL `sessions` table (`user_id`, `token_hash`, `created_at`, `expires_at`, `revoked_at`).
-* **Session Cookie**: `mg_sid` (`HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` in production).
+* **Session Cookie**: `mg_sid` (`HttpOnly`, `SameSite=None`, `Path=/`, `Secure=true`). Conveys session token cross-origin between frontends (localhost and Vercel) and backend (Render).
+* **Dual Authentication Fallback**: Authenticate middleware accepts token from `req.cookies.mg_sid` or `Authorization: Bearer <token>` fallback.
+* **Express Reverse Proxy**: `app.set('trust proxy', 1)` enables TLS protocol detection behind Render's load balancer.
+* **CORS Dynamic Whitelist**: Dynamic origin validation in `src/config/cors.js` allows `localhost:*`, `127.0.0.1:*`, `https://madayawgas.vercel.app`, Vercel deploy previews, and `CORS_ORIGIN` with `credentials: true`.
 * **Expiration Invariant**: `now < expires_at` (8-hour idle timeout, refreshed on each valid request) AND `now < created_at + 30 days` (absolute maximum session lifetime).
 * **Revocation Invariant**: When a user's role is updated, credentials are reset, status is deactivated/blocked, or password is changed, `authService.revokeAllUserSessions(targetUserId)` is invoked immediately (`revoked_at = NOW()`).
 

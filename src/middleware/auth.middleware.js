@@ -1,15 +1,22 @@
 const authService = require('../features/users/auth.service');
 const permissionService = require('../features/users/permission.service');
-const { isProduction } = require('../config/env');
+const { COOKIE_NAME, getClearCookieOptions } = require('../config/cookie');
 
 /**
  * Authentication Middleware
- * Validates server-side session from HTTP cookie, refreshes idle expiration,
- * and attaches authenticated user & session to request context.
+ * Validates server-side session from HTTP cookie (or Authorization Bearer fallback),
+ * refreshes idle expiration, and attaches authenticated user & session to request context.
  */
 const authenticate = async (req, res, next) => {
   try {
-    const rawToken = req.cookies?.mg_sid;
+    const cookieToken = req.cookies?.[COOKIE_NAME];
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7).trim()
+        : null;
+
+    const rawToken = cookieToken || bearerToken;
 
     if (!rawToken) {
       return res.status(401).json({
@@ -21,12 +28,7 @@ const authenticate = async (req, res, next) => {
     const authResult = await authService.validateSession(rawToken);
 
     if (!authResult) {
-      res.clearCookie('mg_sid', {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'lax',
-        path: '/',
-      });
+      res.clearCookie(COOKIE_NAME, getClearCookieOptions());
       return res.status(401).json({
         status: 'fail',
         message: 'Unauthorized',
