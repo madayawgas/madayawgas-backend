@@ -95,7 +95,7 @@ async function uploadToStorage(buffer, storageKey, mimeType) {
       .from(bucket)
       .upload(storageKey, buffer, {
         contentType: mimeType,
-        upsert: false,
+        upsert: true,
       });
 
     if (error) {
@@ -132,7 +132,7 @@ function resolveMediaUrl(storageKey, req) {
     return trimmedKey;
   }
 
-  const cleanKey = trimmedKey.replace(/^\/+/, '');
+  const cleanKey = trimmedKey.replace(/^(\.\/)?uploads\//i, '').replace(/^\/+/, '');
 
   if (isProductionMode()) {
     const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');

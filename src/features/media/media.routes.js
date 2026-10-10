@@ -28,4 +28,16 @@ router.post(
   asyncHandler(mediaController.resolveMedia)
 );
 
+/**
+ * @route   DELETE /api/media
+ * @desc    Delete media file from storage by relative storage key or URL
+ * @access  Private (Authenticated session required)
+ */
+router.delete(
+  '/',
+  authenticate,
+  asyncHandler(mediaController.deleteMedia)
+);
+
 module.exports = router;
+

@@ -915,19 +915,12 @@ Retrieves single work order details including linked approval requests, inspecti
         {
           "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
           "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+          "fileUrl": "https://tgkxhjoymiffpdzschph.supabase.co/storage/v1/object/public/madayawgas-media/maintenance/receipts/1791553792553-b17622b05d82.jpg",
           "uploadedBy": "00000000-0000-0000-0000-000000000001",
-          "uploaderName": "Fleet Supervisor",
-          "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
-          "receiptNumber": "OR-10001",
-          "vendorName": "Bunawan Parts Depot",
-          "amount": 4500.00,
-          "receiptType": "PARTS",
-          "receiptDate": "2026-09-18T00:00:00.000Z",
           "createdAt": "2026-09-18T10:00:00.000Z"
         }
       ],
       "receiptsCount": 1,
-      "totalReceiptsAmount": 4500.00,
       "maintenanceLog": null
     }
   }
@@ -1144,7 +1137,7 @@ Retrieves all historical approval requests associated with a work order in rever
 
 ### 19. Finalize Maintenance Log & Release Vehicle
 
-Completes the repair lifecycle by logging official parts/labor costs, receipt number, downtime, and odometer reading. Updates the work order status to `'COMPLETED'`, resets the 5,000-km PM baseline if the work order was `PREVENTIVE`, and restores the vehicle operational condition to `'ACTIVE'` while preserving driver assignment.
+Completes the repair lifecycle by logging official parts/labor costs, downtime, and odometer reading, with optional batch receipt image proof URLs. Updates the work order status to `'COMPLETED'`, resets the 5,000-km PM baseline if the work order was `PREVENTIVE`, and restores the vehicle operational condition to `'ACTIVE'` while preserving driver assignment.
 
 - **HTTP Method**: `POST`
 - **URL**: `/api/fleet/maintenance/work-orders/:id/finalize`
@@ -1155,14 +1148,16 @@ Completes the repair lifecycle by logging official parts/labor costs, receipt nu
 
 ```json
 {
-  "officialReceiptNumber": "OR-2026-88991",
   "severity": "MEDIUM",
   "dateStarted": "2026-09-18T08:00:00.000Z",
   "dateResolved": "2026-09-19T17:00:00.000Z",
   "partsCost": 4500.00,
   "laborCost": 2200.50,
   "downtimeDays": 1,
-  "odometerAtService": 46200
+  "odometerAtService": 46200,
+  "receiptUrls": [
+    "https://tgkxhjoymiffpdzschph.supabase.co/storage/v1/object/public/madayawgas-media/maintenance/receipts/1791553792553-b17622b05d82.jpg"
+  ]
 }
 ```
 
@@ -1175,8 +1170,7 @@ Completes the repair lifecycle by logging official parts/labor costs, receipt nu
 | `partsCost` | Number | No | Non-negative parts expense in PHP (default: 0.00) |
 | `laborCost` | Number | No | Non-negative labor expense in PHP (default: 0.00) |
 | `downtimeDays` | Integer | No | Days out of service (auto-calculated from dates if omitted) |
-| `receipts` | Array<Object> | No | Optional array of batch receipt documents (`fileUrl`, `receiptNumber`, `vendorName`, `amount`, `receiptType`) |
-| `officialReceiptNumber` | String | No | Optional single receipt number (supported for backward compatibility) |
+| `receiptUrls` | Array<String> | No | Optional array of canonical storage keys or full image URLs for receipt proof attachments |
 
 #### Response: `201 Created` (Success)
 
@@ -1198,7 +1192,6 @@ Completes the repair lifecycle by logging official parts/labor costs, receipt nu
       "totalCost": 6700.50,
       "downtimeDays": 1,
       "odometerAtService": 46200,
-      "officialReceiptNumber": "OR-2026-88991",
       "createdAt": "2026-09-19T17:05:00.000Z"
     },
     "workOrder": {
@@ -1219,20 +1212,11 @@ Completes the repair lifecycle by logging official parts/labor costs, receipt nu
 }
 ```
 
-#### Response: `409 Conflict` (Duplicate Receipt Number)
-
-```json
-{
-  "status": "fail",
-  "message": "Official receipt number 'OR-2026-88991' has already been registered in maintenance logs"
-}
-```
-
 ---
 
 ### 20. Query Historical Maintenance Logs
 
-Retrieves paginated historical maintenance logs with search across receipt numbers, plate numbers, and repair shops.
+Retrieves paginated historical maintenance logs with search across plate numbers and repair shops.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/fleet/maintenance/logs`
@@ -1249,7 +1233,7 @@ Retrieves paginated historical maintenance logs with search across receipt numbe
 | `maintenanceTypeId` | Integer | No | Filter by maintenance type ID |
 | `startDate` | ISO 8601 | No | Filter logs resolved on or after date |
 | `endDate` | ISO 8601 | No | Filter logs resolved on or before date |
-| `search` | String | No | Search across receipt number, plate number, or shop name |
+| `search` | String | No | Search across plate number or shop name |
 
 #### Response: `200 OK` (Success)
 
@@ -1277,7 +1261,6 @@ Retrieves paginated historical maintenance logs with search across receipt numbe
         "totalCost": 6700.50,
         "downtimeDays": 1,
         "odometerAtService": 46200,
-        "officialReceiptNumber": "OR-2026-88991",
         "createdAt": "2026-09-19T17:05:00.000Z",
         "truck": {
           "id": "3c82ae11-4c79-4a0d-85a2-c1ad6052a748",
@@ -1380,7 +1363,7 @@ Receipt documents serve strictly as supporting audit evidence for completed or o
 
 ### 22. Attach Receipt to Work Order
 
-Uploads and attaches a proof of purchase or service receipt document to a specific work order.
+Uploads and attaches a proof of purchase or service receipt image attachment to a specific work order.
 
 - **HTTP Method**: `POST`
 - **URL**: `/api/fleet/maintenance/work-orders/:id/receipts`
@@ -1391,23 +1374,13 @@ Uploads and attaches a proof of purchase or service receipt document to a specif
 
 ```json
 {
-  "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
-  "receiptNumber": "OR-10001",
-  "vendorName": "Bunawan Parts Depot",
-  "amount": 4500.00,
-  "receiptType": "PARTS",
-  "receiptDate": "2026-09-18"
+  "fileUrl": "maintenance/receipts/1791553792553-b17622b05d82.jpg"
 }
 ```
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `fileUrl` | String | Yes | Storage URI or document download URL |
-| `receiptNumber` | String | No | Official receipt or invoice reference number |
-| `vendorName` | String | No | Supplier or repair center name |
-| `amount` | Number | No | Non-negative receipt amount in PHP (default: 0.00) |
-| `receiptType` | String | No | Category: `'PARTS'`, `'LABOR'`, or `'MISC'` (default: `'PARTS'`) |
-| `receiptDate` | Date | No | Date printed on the receipt document |
+| `fileUrl` | String | Yes | Canonical storage path (e.g. `maintenance/receipts/...`) or full media URL |
 
 #### Response: `201 Created` (Success)
 
@@ -1419,13 +1392,8 @@ Uploads and attaches a proof of purchase or service receipt document to a specif
     "receipt": {
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "fileUrl": "https://tgkxhjoymiffpdzschph.supabase.co/storage/v1/object/public/madayawgas-media/maintenance/receipts/1791553792553-b17622b05d82.jpg",
       "uploadedBy": "00000000-0000-0000-0000-000000000001",
-      "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
-      "receiptNumber": "OR-10001",
-      "vendorName": "Bunawan Parts Depot",
-      "amount": 4500.00,
-      "receiptType": "PARTS",
-      "receiptDate": "2026-09-18T00:00:00.000Z",
       "createdAt": "2026-09-18T10:00:00.000Z"
     }
   }
@@ -1436,7 +1404,7 @@ Uploads and attaches a proof of purchase or service receipt document to a specif
 
 ### 23. List Work Order Receipts
 
-Retrieves all receipts attached to a specific work order.
+Retrieves all receipts attached to a specific work order as a normalized list.
 
 - **HTTP Method**: `GET`
 - **URL**: `/api/fleet/maintenance/work-orders/:id/receipts`
@@ -1448,24 +1416,15 @@ Retrieves all receipts attached to a specific work order.
 ```json
 {
   "status": "success",
-  "data": {
-    "count": 1,
-    "receipts": [
-      {
-        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
-        "uploadedBy": "00000000-0000-0000-0000-000000000001",
-        "uploaderName": "Fleet Supervisor",
-        "fileUrl": "https://storage.madayawgas.com/receipts/rec-505-1.pdf",
-        "receiptNumber": "OR-10001",
-        "vendorName": "Bunawan Parts Depot",
-        "amount": 4500.00,
-        "receiptType": "PARTS",
-        "receiptDate": "2026-09-18T00:00:00.000Z",
-        "createdAt": "2026-09-18T10:00:00.000Z"
-      }
-    ]
-  }
+  "data": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "workOrderId": "e4a5d89b-90f1-43cb-b091-66778899aabb",
+      "fileUrl": "https://tgkxhjoymiffpdzschph.supabase.co/storage/v1/object/public/madayawgas-media/maintenance/receipts/1791553792553-b17622b05d82.jpg",
+      "uploadedBy": "00000000-0000-0000-0000-000000000001",
+      "createdAt": "2026-09-18T10:00:00.000Z"
+    }
+  ]
 }
 ```
 

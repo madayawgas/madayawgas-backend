@@ -1,6 +1,41 @@
 const { pool } = require('../../../../database/connection');
 const maintenanceRepository = require('./maintenance.repository');
 const { historyService, EVENTS } = require('../../../features/history');
+const { mediaStorage, mediaService, extractStorageKey } = require('../../media');
+
+/**
+ * Normalizes and formats receipt file path adhering to the Storage Path Invariant:
+ * - Ensures subfolder path structure: maintenance/receipts/{filename}
+ * - If PRODUCTION=true: stores canonical Supabase storage public URL
+ * - If PRODUCTION=false: stores local server path uploads/maintenance/receipts/{filename}
+ * - Preserves external test/CDN mock URLs if explicitly provided as HTTP/HTTPS
+ */
+function formatReceiptStoragePath(fileUrl) {
+  if (!fileUrl || typeof fileUrl !== 'string') return '';
+  const trimmed = fileUrl.trim();
+
+  const isHttp = /^https?:\/\//i.test(trimmed);
+  const isSystemLocal = trimmed.includes('/media/');
+  const isSupabase = trimmed.includes('/storage/v1/object/public/');
+
+  const extractedKey = extractStorageKey(trimmed);
+  let cleanKey = extractedKey || trimmed.replace(/^(\.\/)?uploads\//i, '').replace(/^\/+/, '');
+
+  if (!cleanKey.includes('/')) {
+    cleanKey = `maintenance/receipts/${cleanKey}`;
+  }
+
+  if (mediaStorage.isProductionMode()) {
+    return mediaStorage.resolveMediaUrl(cleanKey);
+  }
+
+  // Development / Local mode
+  if (isHttp && !isSystemLocal && !isSupabase) {
+    return trimmed;
+  }
+
+  return `uploads/${cleanKey}`;
+}
 
 /**
  * Maintenance Service
@@ -1235,21 +1270,10 @@ class MaintenanceService {
     const receipts = receiptsRows.map((rec) => ({
       id: rec.id,
       workOrderId: rec.work_order_id,
+      fileUrl: mediaStorage.resolveMediaUrl(rec.file_url) || rec.file_url,
       uploadedBy: rec.uploaded_by,
-      uploaderName:
-        rec.uploader_first_name && rec.uploader_last_name
-          ? `${rec.uploader_first_name} ${rec.uploader_last_name}`.trim()
-          : rec.uploader_username || null,
-      fileUrl: rec.file_url,
-      receiptNumber: rec.receipt_number,
-      vendorName: rec.vendor_name,
-      amount: Number(rec.amount),
-      receiptType: rec.receipt_type,
-      receiptDate: rec.receipt_date,
       createdAt: rec.created_at,
     }));
-
-    const totalReceiptsAmount = receipts.reduce((sum, item) => sum + item.amount, 0);
 
     const approvalRequests = approvalRequestsRows.map((ar) => ({
       id: ar.id,
@@ -1324,7 +1348,6 @@ class MaintenanceService {
         approvalRequest: latestApprovalRequest,
         receipts,
         receiptsCount: receipts.length,
-        totalReceiptsAmount,
         maintenanceLog: r.maintenance_log_id
           ? {
               id: r.maintenance_log_id,
@@ -1815,7 +1838,6 @@ class MaintenanceService {
     }
 
     const {
-      officialReceiptNumber,
       severity,
       dateStarted,
       dateResolved,
@@ -1823,14 +1845,10 @@ class MaintenanceService {
       laborCost = 0.0,
       downtimeDays,
       odometerAtService,
+      receiptUrls,
     } = payload;
 
-    // 1. Optional Receipt Number
-    const cleanReceiptNumber = officialReceiptNumber && typeof officialReceiptNumber === 'string' && officialReceiptNumber.trim().length > 0
-      ? officialReceiptNumber.trim()
-      : null;
-
-    // 2. Validation: Severity
+    // 1. Validation: Severity
     const validSeverities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
     if (!severity || typeof severity !== 'string' || !validSeverities.includes(severity.trim().toUpperCase())) {
       const err = new Error(`Severity must be one of: ${validSeverities.join(', ')}`);
@@ -1936,38 +1954,24 @@ class MaintenanceService {
         client
       );
 
-      if (Array.isArray(payload.receipts) && payload.receipts.length > 0) {
-        for (const rec of payload.receipts) {
-          if (rec.fileUrl) {
-            await maintenanceRepository.insertWorkOrderReceipt(
-              {
-                workOrderId: order.id,
-                uploadedBy: actorUser?.id || null,
-                fileUrl: String(rec.fileUrl).trim(),
-                receiptNumber: rec.receiptNumber ? String(rec.receiptNumber).trim() : null,
-                vendorName: rec.vendorName ? String(rec.vendorName).trim() : (order.shop_name || null),
-                amount: Number(rec.amount) || 0,
-                receiptType: rec.receiptType || 'PARTS',
-                receiptDate: rec.receiptDate ? new Date(rec.receiptDate) : parsedDateResolved,
-              },
-              client
-            );
+      if (Array.isArray(receiptUrls) && receiptUrls.length > 0) {
+        for (const rawUrl of receiptUrls) {
+          if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+            const cleanUrl = rawUrl.trim();
+            const invalidPlaceholders = ['receipts/n/a', 'n/a', 'null', 'undefined', '[object object]'];
+            if (!invalidPlaceholders.includes(cleanUrl.toLowerCase())) {
+              const storagePath = formatReceiptStoragePath(cleanUrl);
+              await maintenanceRepository.insertWorkOrderReceipt(
+                {
+                  workOrderId: order.id,
+                  uploadedBy: actorUser?.id || null,
+                  fileUrl: storagePath,
+                },
+                client
+              );
+            }
           }
         }
-      } else if (cleanReceiptNumber) {
-        await maintenanceRepository.insertWorkOrderReceipt(
-          {
-            workOrderId: order.id,
-            uploadedBy: actorUser?.id || null,
-            fileUrl: payload.fileUrl || `receipts/${cleanReceiptNumber}`,
-            receiptNumber: cleanReceiptNumber,
-            vendorName: order.shop_name || null,
-            amount: numPartsCost + numLaborCost,
-            receiptType: 'MISC',
-            receiptDate: parsedDateResolved,
-          },
-          client
-        );
       }
 
       // Transition work order status to COMPLETED
@@ -2020,7 +2024,6 @@ class MaintenanceService {
         targetId: createdLog.id,
         payload: {
           workOrderId: order.id,
-          receiptNumber: cleanReceiptNumber,
         },
         metadata: {
           workOrderId: order.id,
@@ -2032,7 +2035,6 @@ class MaintenanceService {
           totalCost: numPartsCost + numLaborCost,
           downtimeDays: numDowntimeDays,
           odometerAtService: numOdometerAtService,
-          officialReceiptNumber: cleanReceiptNumber,
           isPmReset: isPreventive,
         },
       });
@@ -2055,8 +2057,6 @@ class MaintenanceService {
         totalCost: Number(createdLog.total_cost || (Number(createdLog.parts_cost) + Number(createdLog.labor_cost))),
         downtimeDays: createdLog.downtime_days,
         odometerAtService: createdLog.odometer_at_service,
-        officialReceiptNumber: cleanReceiptNumber,
-        receiptNumber: cleanReceiptNumber,
         createdAt: createdLog.created_at,
       },
       workOrder: {
@@ -2133,8 +2133,6 @@ class MaintenanceService {
       downtimeDays: r.downtime_days,
       odometerAtService: r.odometer_at_service,
       receiptsCount: Number(r.receipts_count || 0),
-      receiptNumber: r.primary_receipt_number || null,
-      officialReceiptNumber: r.primary_receipt_number || null,
       createdAt: r.created_at,
       vehicle: {
         id: r.vehicle_id || r.truck_id,
@@ -2233,53 +2231,28 @@ class MaintenanceService {
       throw err;
     }
 
-    const { fileUrl, receiptNumber, vendorName, amount = 0, receiptType = 'PARTS', receiptDate } = payload;
+    const { fileUrl } = payload;
 
     if (!fileUrl || typeof fileUrl !== 'string' || fileUrl.trim().length === 0) {
-      const err = new Error('Receipt file URL is required');
+      const err = new Error('Receipt file URL is required and must be valid');
       err.statusCode = 400;
       throw err;
     }
 
-    const validReceiptTypes = ['PARTS', 'LABOR', 'MISC'];
-    const cleanType = receiptType && typeof receiptType === 'string' && validReceiptTypes.includes(receiptType.trim().toUpperCase())
-      ? receiptType.trim().toUpperCase()
-      : 'PARTS';
-
-    const numAmount = Number(amount) || 0.0;
-    if (isNaN(numAmount) || numAmount < 0) {
-      const err = new Error('Receipt amount must be a non-negative number');
+    const cleanFileUrl = fileUrl.trim();
+    const invalidPlaceholders = ['receipts/n/a', 'n/a', 'null', 'undefined', '[object object]'];
+    if (invalidPlaceholders.includes(cleanFileUrl.toLowerCase())) {
+      const err = new Error('Receipt file URL cannot be a placeholder');
       err.statusCode = 400;
       throw err;
     }
 
-    let parsedDate = null;
-    if (receiptDate) {
-      parsedDate = new Date(receiptDate);
-      if (isNaN(parsedDate.getTime())) {
-        const err = new Error('Invalid receipt date format');
-        err.statusCode = 400;
-        throw err;
-      }
-    }
-
-    const cleanReceiptNumber = receiptNumber && typeof receiptNumber === 'string' && receiptNumber.trim().length > 0
-      ? receiptNumber.trim()
-      : null;
-
-    const cleanVendor = vendorName && typeof vendorName === 'string' && vendorName.trim().length > 0
-      ? vendorName.trim()
-      : null;
+    const formattedStoragePath = formatReceiptStoragePath(cleanFileUrl);
 
     const createdReceipt = await maintenanceRepository.insertWorkOrderReceipt({
       workOrderId: order.id,
       uploadedBy: actorUser?.id || null,
-      fileUrl: fileUrl.trim(),
-      receiptNumber: cleanReceiptNumber,
-      vendorName: cleanVendor,
-      amount: numAmount,
-      receiptType: cleanType,
-      receiptDate: parsedDate ? parsedDate.toISOString() : null,
+      fileUrl: formattedStoragePath,
     });
 
     try {
@@ -2288,8 +2261,6 @@ class MaintenanceService {
         targetId: createdReceipt.id,
         payload: {
           workOrderId: order.id,
-          receiptNumber: cleanReceiptNumber,
-          amount: numAmount,
         },
       });
     } catch (auditErr) {
@@ -2299,13 +2270,8 @@ class MaintenanceService {
     return {
       id: createdReceipt.id,
       workOrderId: createdReceipt.work_order_id,
+      fileUrl: mediaStorage.resolveMediaUrl(createdReceipt.file_url) || createdReceipt.file_url,
       uploadedBy: createdReceipt.uploaded_by,
-      fileUrl: createdReceipt.file_url,
-      receiptNumber: createdReceipt.receipt_number,
-      vendorName: createdReceipt.vendor_name,
-      amount: Number(createdReceipt.amount),
-      receiptType: createdReceipt.receipt_type,
-      receiptDate: createdReceipt.receipt_date,
       createdAt: createdReceipt.created_at,
     };
   }
@@ -2331,14 +2297,8 @@ class MaintenanceService {
     return rows.map((r) => ({
       id: r.id,
       workOrderId: r.work_order_id,
+      fileUrl: mediaStorage.resolveMediaUrl(r.file_url) || r.file_url,
       uploadedBy: r.uploaded_by,
-      uploaderName: r.uploader_first_name && r.uploader_last_name ? `${r.uploader_first_name} ${r.uploader_last_name}`.trim() : r.uploader_username || null,
-      fileUrl: r.file_url,
-      receiptNumber: r.receipt_number,
-      vendorName: r.vendor_name,
-      amount: Number(r.amount),
-      receiptType: r.receipt_type,
-      receiptDate: r.receipt_date,
       createdAt: r.created_at,
     }));
   }
@@ -2360,6 +2320,15 @@ class MaintenanceService {
       throw err;
     }
 
+    // Attempt physical cleanup in storage if stored key exists
+    if (existing.file_url) {
+      try {
+        await mediaService.deleteMedia(existing.file_url);
+      } catch (mediaErr) {
+        console.warn('Failed to delete media asset during receipt deletion:', mediaErr.message);
+      }
+    }
+
     await maintenanceRepository.deleteReceipt(existing.id);
 
     try {
@@ -2368,7 +2337,6 @@ class MaintenanceService {
         targetId: existing.id,
         payload: {
           workOrderId: existing.work_order_id,
-          receiptNumber: existing.receipt_number,
         },
       });
     } catch (auditErr) {

@@ -80,22 +80,71 @@ function resolveSanitizedExtension(originalName, mimeType) {
 }
 
 /**
- * Generates a deterministic, collision-resistant canonical relative storage key.
- * Format: {domain}/{timestamp}-{randomHex}{extension}
- * Example: maintenance/receipts/1775731200000-4b2a8f9c1d0e.jpg
+ * Normalizes and extracts the canonical relative storage key from any input,
+ * whether it is a fully qualified Supabase storage URL, a local /media/ URL,
+ * or already a relative storage key.
+ *
+ * @param {string} input - Full URL or relative key
+ * @returns {string|null} Canonical relative storage key or null
+ */
+function extractStorageKey(input) {
+  if (!input || typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (trimmed === '') return null;
+
+  // Pattern 1: Supabase Public Storage URL
+  // e.g. https://<project>.supabase.co/storage/v1/object/public/<bucket>/maintenance/receipts/abc.jpg
+  const supabaseMatch = trimmed.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/i);
+  if (supabaseMatch) {
+    return supabaseMatch[1].replace(/^\/+/, '');
+  }
+
+  // Pattern 2: Local static media URL
+  // e.g. http://localhost:5000/media/maintenance/receipts/abc.jpg
+  const localMatch = trimmed.match(/\/media\/(.+)$/i);
+  if (localMatch) {
+    return localMatch[1].replace(/^\/+/, '');
+  }
+
+  // Pattern 3: If an external http/https URL that is not part of this system
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Strip leading ./uploads/ or uploads/
+  const strippedUploads = trimmed.replace(/^(\.\/)?uploads\//i, '');
+
+  // Pattern 4: Already a relative storage key
+  return strippedUploads.replace(/^\/+/, '');
+}
+
+/**
+ * Generates a deterministic, content-addressed canonical relative storage key.
+ * If a buffer is provided, computes a SHA-256 hash to deduplicate identical files.
+ * Format: {domain}/{contentHash}{extension}
+ * Example: maintenance/receipts/bbd42de30c5f1be8.jpg
  *
  * @param {string} domain - Whitelisted domain directory
  * @param {string} originalName - Original uploaded filename
  * @param {string} mimeType - Validated MIME type
+ * @param {Buffer} [buffer] - Optional file binary buffer for content-hashing
  * @returns {string} Canonical relative storage key
  */
-function generateStorageKey(domain, originalName, mimeType) {
+function generateStorageKey(domain, originalName, mimeType, buffer) {
   const validDomain = validateDomain(domain);
   const extension = resolveSanitizedExtension(originalName, mimeType);
-  const timestamp = Date.now();
-  const randomHex = crypto.randomBytes(6).toString('hex'); // 12 random hex characters
 
-  return `${validDomain}/${timestamp}-${randomHex}${extension}`;
+  let fileIdentifier;
+  if (buffer && Buffer.isBuffer(buffer)) {
+    // 16 hex chars (64-bit cryptographic hash) providing collision-free content addressing
+    fileIdentifier = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);
+  } else {
+    const timestamp = Date.now();
+    const randomHex = crypto.randomBytes(6).toString('hex');
+    fileIdentifier = `${timestamp}-${randomHex}`;
+  }
+
+  return `${validDomain}/${fileIdentifier}${extension}`;
 }
 
 /**
@@ -116,7 +165,7 @@ async function uploadMedia({ file, domain, req }) {
   }
 
   const validDomain = validateDomain(domain);
-  const storageKey = generateStorageKey(validDomain, file.originalname, file.mimetype);
+  const storageKey = generateStorageKey(validDomain, file.originalname, file.mimetype, file.buffer);
 
   await mediaStorage.uploadToStorage(file.buffer, storageKey, file.mimetype);
   const url = mediaStorage.resolveMediaUrl(storageKey, req);
@@ -145,9 +194,10 @@ function resolveMedia(storageKey, req) {
     throw error;
   }
 
-  const url = mediaStorage.resolveMediaUrl(storageKey.trim(), req);
+  const cleanKey = extractStorageKey(storageKey.trim());
+  const url = mediaStorage.resolveMediaUrl(cleanKey, req);
   return {
-    storageKey: storageKey.trim(),
+    storageKey: cleanKey,
     url,
   };
 }
@@ -155,7 +205,7 @@ function resolveMedia(storageKey, req) {
 /**
  * Safely removes a media asset from active storage.
  *
- * @param {string} storageKey
+ * @param {string} storageKey - Relative key or full URL
  * @returns {Promise<{ success: boolean, storageKey: string }>}
  */
 async function deleteMedia(storageKey) {
@@ -166,10 +216,15 @@ async function deleteMedia(storageKey) {
     throw error;
   }
 
-  const success = await mediaStorage.deleteFromStorage(storageKey.trim());
+  const cleanKey = extractStorageKey(storageKey.trim());
+  if (!cleanKey) {
+    return { success: false, storageKey };
+  }
+
+  const success = await mediaStorage.deleteFromStorage(cleanKey);
   return {
     success,
-    storageKey: storageKey.trim(),
+    storageKey: cleanKey,
   };
 }
 
@@ -179,6 +234,7 @@ module.exports = {
   validateDomain,
   resolveSanitizedExtension,
   generateStorageKey,
+  extractStorageKey,
   uploadMedia,
   resolveMedia,
   deleteMedia,

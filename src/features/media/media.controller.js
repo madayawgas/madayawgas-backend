@@ -61,7 +61,33 @@ async function resolveMedia(req, res) {
   });
 }
 
+/**
+ * Deletes a media asset from storage.
+ *
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+async function deleteMedia(req, res) {
+  const storageKey = req.body?.storageKey || req.query?.storageKey;
+
+  if (!storageKey || typeof storageKey !== 'string' || storageKey.trim() === '') {
+    return res.status(400).json({
+      status: 'fail',
+      code: 'STORAGE_KEY_REQUIRED',
+      message: 'storageKey must be provided as a non-empty string in request body or query parameter',
+    });
+  }
+
+  const result = await mediaService.deleteMedia(storageKey.trim());
+
+  return res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+}
+
 module.exports = {
   uploadMedia,
   resolveMedia,
+  deleteMedia,
 };

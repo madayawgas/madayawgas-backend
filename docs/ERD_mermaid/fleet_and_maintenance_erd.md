@@ -170,11 +170,6 @@ erDiagram
         uuid work_order_id FK "0..N supporting audit attachments"
         uuid uploaded_by FK "Nullable"
         string file_url "Audit evidence URI / storage path"
-        string receipt_number "Nullable"
-        string vendor_name "Nullable"
-        numeric amount "NUMERIC(12, 2)"
-        string receipt_type "PARTS, LABOR, MISC"
-        timestamptz receipt_date "Nullable"
         timestamptz created_at
     }
 
@@ -363,7 +358,7 @@ Operational closing record created when a work order transitions to `COMPLETED`.
 ---
 
 ### `work_order_receipts`
-Decoupled supporting audit attachments (0..N) for work orders.
+Decoupled supporting audit attachments (0..N) for work orders. Pure visual proof/media attachment ledger.
 
 | Column | Data Type | Nullable | Default / Constraints | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -371,11 +366,6 @@ Decoupled supporting audit attachments (0..N) for work orders.
 | `work_order_id` | `UUID` | No | `FK -> work_orders(id) ON DELETE CASCADE` | Target work order |
 | `uploaded_by` | `UUID` | Yes | `FK -> users(id) ON DELETE SET NULL` | User who uploaded the receipt |
 | `file_url` | `TEXT` | No | Non-empty | Storage URL or file path |
-| `receipt_number` | `VARCHAR(100)` | Yes | `NULL` | Official vendor invoice / OR number |
-| `vendor_name` | `VARCHAR(150)` | Yes | `NULL` | Issuing vendor / supplier name |
-| `amount` | `NUMERIC(12, 2)` | No | `DEFAULT 0.00, CHECK >= 0` | Receipt financial amount |
-| `receipt_type` | `VARCHAR(30)` | No | `DEFAULT 'PARTS', CHECK IN ('PARTS', 'LABOR', 'MISC')` | Receipt categorization |
-| `receipt_date` | `TIMESTAMPTZ` | Yes | `NULL` | Date printed on the receipt |
 | `created_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Upload timestamp |
 
 ---

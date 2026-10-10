@@ -269,14 +269,14 @@ const EVENT_DEFINITIONS = {
     actionType: ACTION_TYPES.CREATED,
     targetType: 'MAINTENANCE_LOG',
     template: (p) =>
-      `Finalized maintenance log for work order #${p.workOrderId}${p.receiptNumber ? ` (OR #${p.receiptNumber})` : ''}`,
+      `Finalized maintenance log for work order #${p.workOrderId}`,
   },
   MAINTENANCE_RECEIPT_ADDED: {
     module: MODULES.FLEET,
     actionType: ACTION_TYPES.CREATED,
     targetType: 'RECEIPT',
     template: (p) =>
-      `Attached receipt #${p.receiptNumber || 'N/A'} (₱${p.amount}) to work order #${p.workOrderId}`,
+      `Attached receipt image to work order #${p.workOrderId}`,
   },
   MAINTENANCE_RECEIPT_DELETED: {
     module: MODULES.FLEET,

@@ -244,21 +244,17 @@ ON CONFLICT (work_order_id) DO UPDATE SET
 -- 10. WORK ORDER RECEIPTS (0..N AUDIT ATTACHMENTS)
 -- ============================================================
 
-INSERT INTO work_order_receipts (work_order_id, uploaded_by, file_url, receipt_number, vendor_name, amount, receipt_type, receipt_date)
+INSERT INTO work_order_receipts (work_order_id, uploaded_by, file_url)
 SELECT
     wo.id,
     u.id,
-    'https://storage.madayawgas.com/receipts/2026/09/OR-2026-00891.pdf',
-    'OR-2026-00891',
-    'Davao Diesel & Fleet Services',
-    7500.00,
-    'PARTS',
-    NOW() - INTERVAL '7 days'
+    'https://storage.madayawgas.com/receipts/2026/09/OR-2026-00891.pdf'
 FROM work_orders wo
 CROSS JOIN users u
 WHERE wo.description LIKE 'Scheduled 60,000 km%'
   AND u.username = 'logistics_supervisor'
   AND NOT EXISTS (
       SELECT 1 FROM work_order_receipts wor
-      WHERE wor.work_order_id = wo.id AND wor.receipt_number = 'OR-2026-00891'
+      WHERE wor.work_order_id = wo.id
   );
+

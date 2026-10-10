@@ -56,6 +56,7 @@ Upload requests must supply a valid `domain` string strictly matching one of the
 | :--- | :--- | :--- | :--- | :--- |
 | `POST` | `/api/media/upload` | Upload file into canonical storage | Yes (Session/Bearer) | `multipart/form-data` |
 | `POST` | `/api/media/resolve` | Resolve relative key to fully qualified URL | Yes (Session/Bearer) | `application/json` |
+| `DELETE` | `/api/media` | Delete media asset from active storage | Yes (Session/Bearer) | `application/json` or query params |
 | `GET` | `/media/*` | Static delivery of local files (Local Mode only) | No (Public access) | URL path |
 
 ---
@@ -201,18 +202,58 @@ In production mode (`PRODUCTION=true`), the resolved URL reflects the public Sup
 
 ---
 
-## 5. Storage Key Generation Standard
+### 4.3 Delete Media (`DELETE /api/media`)
 
-Canonical relative storage keys follow this deterministic formula:
+Safely unlinks and purges a media asset from storage (local disk or Supabase Storage). Can be supplied via JSON body or query parameter `storageKey`.
+Accepts either a canonical storage key or a full public URL (automatically normalized).
+
+#### Headers
+```http
+Authorization: Bearer <session_token>
+Cookie: mg_sid=<session_token>
+Content-Type: application/json
+```
+
+#### Request Body
+```json
+{
+  "storageKey": "maintenance/receipts/bbd42de30c5f1be8.jpg"
+}
+```
+*Alternatively, query string parameter:* `DELETE /api/media?storageKey=maintenance/receipts/bbd42de30c5f1be8.jpg`
+
+#### Success Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "data": {
+    "success": true,
+    "storageKey": "maintenance/receipts/bbd42de30c5f1be8.jpg"
+  }
+}
+```
+
+---
+
+## 5. Storage Key Generation Standard & Deduplication
+
+Canonical relative storage keys follow a **content-addressed deduplication** formula:
+```text
+{domain}/{contentHash}{extension}
+```
+- `{domain}`: One of the 6 whitelisted domain directories.
+- `{contentHash}`: First 16 hexadecimal characters of the SHA-256 cryptographic digest of the file buffer.
+  - Guarantees that identical files uploaded across repeated attempts or form edits resolve to the exact same storage key without creating orphaned duplicate assets in Supabase Storage.
+  - The storage driver runs with `upsert: true`, so repeated uploads cleanly overwrite identical content.
+- `{extension}`: Sanitized file extension matching the MIME type (`.jpg`, `.png`, `.webp`, `.pdf`).
+
+**Fallback (when buffer is not supplied):**
 ```text
 {domain}/{timestamp}-{randomHex}{extension}
 ```
-- `{domain}`: One of the 6 whitelisted domain directories.
-- `{timestamp}`: Unix timestamp in milliseconds (`Date.now()`).
-- `{randomHex}`: 12 cryptographically random hexadecimal characters (`crypto.randomBytes(6).toString('hex')`).
-- `{extension}`: Sanitized file extension matching the MIME type (`.jpg`, `.png`, `.webp`, `.pdf`).
 
 **Example Keys:**
-- `maintenance/receipts/1775731200000-4b2a8f9c1d0e.jpg`
-- `maintenance/inspections/1775731200150-e8a71c2b9f34.png`
-- `sales/receipts/1775731200300-9a8b7c6d5e4f.pdf`
+- `maintenance/receipts/bbd42de30c5f1be8.jpg`
+- `maintenance/inspections/a1f893e4bc029712.png`
+- `sales/receipts/7c8e9b01243fa56b.pdf`
+

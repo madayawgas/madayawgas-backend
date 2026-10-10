@@ -50,7 +50,8 @@ madayawgas-backend/
 │   │   ├── 008_maintenance_and_work_orders.sql # Maintenance, odometer logs, inspections, work orders schema
 │   │   ├── 009_vehicles_and_receipts_refactor.sql # Vehicles generalization, receipts & work orders refactor
 │   │   ├── 010_schedules_and_trips.sql     # Schedules, templates, zones, trips, loads, reconciliations schema
-│   │   └── 011_plant_inventory_and_reconciliation.sql # Plant inventory, adjustments, reconciliation fields, views
+│   │   ├── 011_plant_inventory_and_reconciliation.sql # Plant inventory, adjustments, reconciliation fields, views
+│   │   └── 012_normalize_work_order_receipts.sql # Normalized work order receipts media attachment ledger
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -570,6 +571,27 @@ madayawgas-backend/
       - 100% pass rate across all 15 test suites (127 out of 127 tests passing) with zero regressions.
     * **API Contracts & Documentation**:
       - Created formal API contract `docs/api-contracts/media/media.api.md` and registered endpoints in `docs/api-contracts/README.md`.
+22. **Work Order Receipts Normalization & Attachment Ledger Refactor (`src/features/fleet/maintenance/`)**:
+    * **Database Migration & Schema Normalization (`012_normalize_work_order_receipts.sql`)**:
+      - Dropped redundant and misused columns from `work_order_receipts`: `receipt_number`, `vendor_name`, `amount`, `receipt_type`, and `receipt_date`.
+      - Normalized table into a lean visual media proof attachment ledger: `id (UUID PK)`, `work_order_id (UUID FK -> work_orders ON DELETE CASCADE)`, `uploaded_by (UUID FK -> users ON DELETE SET NULL)`, `file_url (TEXT NOT NULL)`, `created_at (TIMESTAMPTZ)`.
+      - Cleaned placeholder and corrupted rows (`receipts/N/A`) and updated seed `002_fleet_and_maintenance_seed.sql`.
+    * **Storage Invariant & Media Subsystem Interoperability**:
+      - Storage keys/URLs seamlessly supported across both environments: local server paths (`uploads/maintenance/receipts/...`) when `PRODUCTION=false`, and Supabase CDN URLs (`https://<ref>.supabase.co/storage/v1/object/public/madayawgas-media/maintenance/receipts/...`) when `PRODUCTION=true`.
+      - Canonical subfolder invariant: `maintenance/receipts/{filename}`.
+      - Updated `media.storage.js` and `media.service.js` to strip leading `./uploads/` or `uploads/` path prefixes safely when extracting storage keys.
+    * **3-Layer Architecture Refactor & Endpoint Standardization**:
+      - **Repository Layer (`maintenance.repository.js`)**: Updated `insertWorkOrderReceipt` and `getReceiptsByWorkOrderId` to query strictly the normalized 5 columns. Removed `checkReceiptNumberExists` and dropped the subquery on `receipt_number` from `getMaintenanceLogs`.
+      - **Service Layer (`maintenance.service.js`)**: Updated `addWorkOrderReceipt` (validates `fileUrl`, rejects placeholders, formats path), `getWorkOrderReceipts` (returns array of normalized 5-field DTOs: `id`, `workOrderId`, `fileUrl`, `uploadedBy`, `createdAt`), `finalizeMaintenanceLog` (strictly accepts batch `receiptUrls: string[]`), `getWorkOrderDetails` (normalized receipts, dropped `totalReceiptsAmount`), and `getMaintenanceLogs` (dropped `receiptNumber`).
+      - **Controller Layer (`maintenance.controller.js`)**: Implemented Zod schemas `AttachReceiptSchema` (`fileUrl` required string) and `FinalizeWorkOrderSchema` (`receiptUrls` optional string array). Updated `getWorkOrderReceipts` to return `{ status: 'success', data }` where `data` is a direct array.
+    * **Centralized Event History Registry (`src/features/history/history.events.js`)**:
+      - Updated `MAINTENANCE_LOG_FINALIZED` template (`Finalized maintenance log for work order #${p.workOrderId}`) and `MAINTENANCE_RECEIPT_ADDED` template (`Attached receipt image to work order #${p.workOrderId}`).
+    * **Testing & Zero Regression Verification**:
+      - Added Subtest 13 (`Normalized work_order_receipts Attachment Ledger & Storage Invariants`) to `src/test/fleet.maintenance.test.js`.
+      - Updated `src/test/history.test.js` template resolver assertions.
+      - 100% test pass rate across all 15 test suites (130 out of 130 tests passing) with `npm test`.
+    * **Documentation & Contracts**:
+      - Synchronized `docs/ERD_mermaid/fleet_and_maintenance_erd.md`, `docs/ERD_mermaid/master_database_erd.md`, and `docs/api-contracts/fleet/maintenance.api.md` (Sections 16, 19, 20, 22, 23).
 
 
 

@@ -1,4 +1,42 @@
+const { z } = require('zod');
 const maintenanceService = require('./maintenance.service');
+
+// Zod Validation Schemas for Work Order Receipts & Finalization
+const AttachReceiptSchema = z.object({
+  fileUrl: z
+    .string({ required_error: 'Receipt file URL is required and must be valid' })
+    .trim()
+    .min(1, 'Receipt file URL cannot be empty')
+    .refine(
+      (val) => !['receipts/n/a', 'n/a', 'null', 'undefined', '[object object]'].includes(val.toLowerCase()),
+      'Receipt file URL cannot be a placeholder'
+    ),
+});
+
+const FinalizeWorkOrderSchema = z.object({
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], {
+    errorMap: () => ({ message: 'Severity must be one of: LOW, MEDIUM, HIGH, CRITICAL' }),
+  }),
+  dateStarted: z.string().min(1, 'Date started is required'),
+  dateResolved: z.string().min(1, 'Date resolved is required'),
+  partsCost: z.coerce.number().min(0, 'Parts cost must be a non-negative number').optional().default(0),
+  laborCost: z.coerce.number().min(0, 'Labor cost must be a non-negative number').optional().default(0),
+  downtimeDays: z.coerce.number().int().min(0, 'Downtime days must be a non-negative integer').optional(),
+  odometerAtService: z.coerce.number().int().min(0, 'Odometer at service must be a non-negative integer'),
+  receiptUrls: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .refine(
+          (val) => !['receipts/n/a', 'n/a', 'null', 'undefined', '[object object]'].includes(val.toLowerCase()),
+          'Receipt file URL cannot be a placeholder'
+        )
+    )
+    .optional()
+    .default([]),
+});
 
 /**
  * Maintenance Controller
@@ -444,10 +482,17 @@ class MaintenanceController {
    */
   async finalizeMaintenanceLog(req, res) {
     try {
+      const parsed = FinalizeWorkOrderSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          status: 'fail',
+          message: parsed.error.issues[0]?.message || 'Invalid finalize data',
+        });
+      }
       const data = await maintenanceService.finalizeMaintenanceLog(
         req.user,
         req.params.id,
-        req.body || {}
+        parsed.data
       );
       return res.status(201).json({
         status: 'success',
@@ -509,7 +554,14 @@ class MaintenanceController {
    */
   async addWorkOrderReceipt(req, res) {
     try {
-      const data = await maintenanceService.addWorkOrderReceipt(req.user, req.params.id, req.body || {});
+      const parsed = AttachReceiptSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          status: 'fail',
+          message: parsed.error.issues[0]?.message || 'Receipt file URL is required and must be valid',
+        });
+      }
+      const data = await maintenanceService.addWorkOrderReceipt(req.user, req.params.id, parsed.data);
       return res.status(201).json({
         status: 'success',
         message: 'Receipt attached successfully',
@@ -533,10 +585,7 @@ class MaintenanceController {
       const data = await maintenanceService.getWorkOrderReceipts(req.params.id);
       return res.status(200).json({
         status: 'success',
-        data: {
-          count: data.length,
-          receipts: data,
-        },
+        data,
       });
     } catch (err) {
       const statusCode = err.statusCode || (err.message.includes('not found') ? 404 : 400);

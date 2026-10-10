@@ -1152,19 +1152,6 @@ class MaintenanceRepository {
   }
 
   /**
-   * Checks if an official receipt number already exists in maintenance_logs.
-   */
-  async checkReceiptNumberExists(receiptNumber, client = null) {
-    const db = client || { query };
-    const sql = `
-      SELECT id FROM work_order_receipts
-      WHERE LOWER(receipt_number) = LOWER($1)
-    `;
-    const res = await db.query(sql, [receiptNumber.trim()]);
-    return Boolean(res.rows[0]);
-  }
-
-  /**
    * Inserts permanent maintenance log record.
    */
   async insertMaintenanceLog(
@@ -1284,7 +1271,6 @@ class MaintenanceRepository {
         ml.odometer_at_service,
         ml.created_at,
         (SELECT COUNT(*)::int FROM work_order_receipts wor WHERE wor.work_order_id = wo.id) AS receipts_count,
-        (SELECT wor.receipt_number FROM work_order_receipts wor WHERE wor.work_order_id = wo.id ORDER BY wor.created_at DESC LIMIT 1) AS primary_receipt_number,
         wo.vehicle_id,
         wo.shop_name,
         wo.description AS work_order_description,
@@ -1419,13 +1405,8 @@ class MaintenanceRepository {
   async insertWorkOrderReceipt(
     {
       workOrderId,
-      uploadedBy,
+      uploadedBy = null,
       fileUrl,
-      receiptNumber = null,
-      vendorName = null,
-      amount = 0.0,
-      receiptType = 'PARTS',
-      receiptDate = null,
     },
     client = null
   ) {
@@ -1434,25 +1415,15 @@ class MaintenanceRepository {
       INSERT INTO work_order_receipts (
         work_order_id,
         uploaded_by,
-        file_url,
-        receipt_number,
-        vendor_name,
-        amount,
-        receipt_type,
-        receipt_date
+        file_url
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3)
       RETURNING *
     `;
     const res = await db.query(sql, [
       workOrderId,
       uploadedBy || null,
       fileUrl,
-      receiptNumber ? receiptNumber.trim() : null,
-      vendorName ? vendorName.trim() : null,
-      amount,
-      receiptType,
-      receiptDate || null,
     ]);
     return res.rows[0];
   }
@@ -1467,11 +1438,6 @@ class MaintenanceRepository {
         wor.work_order_id,
         wor.uploaded_by,
         wor.file_url,
-        wor.receipt_number,
-        wor.vendor_name,
-        wor.amount,
-        wor.receipt_type,
-        wor.receipt_date,
         wor.created_at,
         u.username AS uploader_username,
         u.first_name AS uploader_first_name,

@@ -213,11 +213,6 @@ erDiagram
         uuid work_order_id FK
         uuid uploaded_by FK
         string file_url
-        string receipt_number
-        string vendor_name
-        numeric amount
-        string receipt_type
-        timestamptz receipt_date
         timestamptz created_at
     }
 

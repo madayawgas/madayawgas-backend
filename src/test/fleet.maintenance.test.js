@@ -1467,18 +1467,16 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
     }, {
       fileUrl: 'https://storage.madayawgas.com/receipts/rec-505-1.pdf',
-      receiptNumber: `${PREFIX}OR-10001`,
-      vendorName: 'Bunawan Heavy Service Center',
-      amount: 4700.50,
-      receiptType: 'PARTS',
     });
     assert.equal(addReceiptRes.statusCode, 201);
     assert.equal(addReceiptRes.body.status, 'success');
-    assert.equal(addReceiptRes.body.data.receipt.receiptNumber, `${PREFIX}OR-10001`);
-    assert.equal(addReceiptRes.body.data.receipt.amount, 4700.50);
+    assert.equal(addReceiptRes.body.data.receipt.fileUrl, 'https://storage.madayawgas.com/receipts/rec-505-1.pdf');
+    assert.equal(addReceiptRes.body.data.receipt.uploadedBy, supervisorId);
+    assert.equal(addReceiptRes.body.data.receipt.receiptNumber, undefined);
+    assert.equal(addReceiptRes.body.data.receipt.amount, undefined);
     const receiptId = addReceiptRes.body.data.receipt.id;
 
-    // Retrieve Receipts for Work Order
+    // Retrieve Receipts for Work Order (Normalized Array in data)
     const listReceiptsRes = await makeRequest(server, {
       hostname: '127.0.0.1',
       port,
@@ -1487,8 +1485,12 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       headers: { Cookie: supervisorCookie },
     });
     assert.equal(listReceiptsRes.statusCode, 200);
-    assert.equal(listReceiptsRes.body.data.receipts.length, 1);
-    assert.equal(listReceiptsRes.body.data.receipts[0].receiptNumber, `${PREFIX}OR-10001`);
+    assert.ok(Array.isArray(listReceiptsRes.body.data));
+    assert.equal(listReceiptsRes.body.data.length, 1);
+    assert.equal(listReceiptsRes.body.data[0].id, receiptId);
+    assert.equal(listReceiptsRes.body.data[0].fileUrl, 'https://storage.madayawgas.com/receipts/rec-505-1.pdf');
+    assert.equal(listReceiptsRes.body.data[0].uploadedBy, supervisorId);
+    assert.equal(listReceiptsRes.body.data[0].receiptNumber, undefined);
 
     // 5. Finalize Maintenance Log (Success)
     const finalizeRes = await makeRequest(server, {
@@ -1981,10 +1983,6 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
     }, {
       fileUrl: 'https://storage.madayawgas.com/receipts/rec-p2-leaf.pdf',
-      receiptNumber: `${P2_PREFIX}OR-201`,
-      vendorName: 'Davao Heavy Fix Parts',
-      amount: 5500.00,
-      receiptType: 'PARTS',
     });
     assert.equal(rec1Res.statusCode, 201);
     const rec1Id = rec1Res.body.data.receipt.id;
@@ -1997,10 +1995,6 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
     }, {
       fileUrl: 'https://storage.madayawgas.com/receipts/rec-p2-labor.pdf',
-      receiptNumber: `${P2_PREFIX}INV-202`,
-      vendorName: 'Davao Heavy Fix Labor',
-      amount: 2800.00,
-      receiptType: 'LABOR',
     });
     assert.equal(rec2Res.statusCode, 201);
 
@@ -2014,8 +2008,9 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     });
     assert.equal(singleWoRes.statusCode, 200);
     assert.equal(singleWoRes.body.data.workOrder.receiptsCount, 2);
-    assert.equal(singleWoRes.body.data.workOrder.totalReceiptsAmount, 8300.00);
     assert.equal(singleWoRes.body.data.workOrder.receipts.length, 2);
+    assert.equal(singleWoRes.body.data.workOrder.receipts[0].uploadedBy, supervisorId);
+    assert.equal(singleWoRes.body.data.workOrder.receipts[0].uploaderName, undefined);
     assert.equal(singleWoRes.body.data.workOrder.approvalRequests.length, 2);
 
     // Delete one receipt and verify aggregate update
@@ -2037,9 +2032,8 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     });
     assert.equal(singleWoAfterDelRes.statusCode, 200);
     assert.equal(singleWoAfterDelRes.body.data.workOrder.receiptsCount, 1);
-    assert.equal(singleWoAfterDelRes.body.data.workOrder.totalReceiptsAmount, 2800.00);
 
-    // 6. Finalize Maintenance Log with Batch Receipts Payload
+    // 6. Finalize Maintenance Log with Batch Receipts Payload (receiptUrls array)
     const finalizeBatchRes = await makeRequest(server, {
       hostname: '127.0.0.1',
       port,
@@ -2054,14 +2048,8 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
       laborCost: 2800.00,
       downtimeDays: 2,
       odometerAtService: 15300,
-      receipts: [
-        {
-          fileUrl: 'https://storage.madayawgas.com/receipts/batch-leaf-spring.pdf',
-          receiptNumber: `${P2_PREFIX}BATCH-OR-301`,
-          vendorName: 'Direct Leaf Warehouse',
-          amount: 5500.00,
-          receiptType: 'PARTS',
-        }
+      receiptUrls: [
+        'https://storage.madayawgas.com/receipts/batch-leaf-spring.pdf',
       ],
     });
     assert.equal(finalizeBatchRes.statusCode, 201);
@@ -2078,6 +2066,178 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     );
     assert.ok(histLogs.rows.length >= 2);
     assert.ok(histLogs.rows.some((l) => l.action_type === 'Updated' && l.details.includes('approval decision: APPROVED')));
+  });
+
+  await t.test('13. Normalized work_order_receipts Attachment Ledger & Storage Invariants', async () => {
+    const P3_PREFIX = `${PREFIX}p3_`;
+    const TRUCK_P3_PREFIX = `${TRUCK_PREFIX}80`;
+
+    // 1. Setup vehicle and work order
+    const vehicleRes = await query(
+      `INSERT INTO vehicles (plate_number, model, year_model, current_odometer, last_pm_odometer, status, vehicle_type)
+       VALUES ($1, 'Isuzu Elf PM3', 2024, 30000, 25000, 'ACTIVE', 'DELIVERY_TRUCK')
+       RETURNING id`,
+      [`${TRUCK_P3_PREFIX}TEST`]
+    );
+    const vehicleId = vehicleRes.rows[0].id;
+
+    const maintTypeRes = await query(`SELECT id FROM maintenance_types WHERE type_name = 'CORRECTIVE' LIMIT 1`);
+    const maintenanceTypeId = maintTypeRes.rows[0].id;
+
+    const woRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/fleet/maintenance/work-orders',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      truckId: vehicleId,
+      maintenanceTypeId,
+      shopName: 'Davao Modern Fleet Hub',
+      description: 'Normalized Receipts Architecture Validation Work Order',
+      estimatedCost: 3500.00,
+    });
+    assert.equal(woRes.statusCode, 201);
+    const workOrderId = woRes.body.data.workOrder.id;
+
+    // 2. Validation Rejection: Missing fileUrl
+    const missingUrlRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/receipts`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {});
+    assert.equal(missingUrlRes.statusCode, 400);
+
+    // 3. Validation Rejection: Corrupted / Placeholder fileUrl ('receipts/N/A')
+    const placeholderUrlRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/receipts`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      fileUrl: 'receipts/N/A',
+    });
+    assert.equal(placeholderUrlRes.statusCode, 400);
+    assert.ok(placeholderUrlRes.body.message.includes('placeholder'));
+
+    // 4. Attach Valid Receipt: Stores path, returns normalized DTO
+    const attachRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/receipts`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      fileUrl: 'maintenance/receipts/1791553792553-b17622b05d82.jpg',
+    });
+    assert.equal(attachRes.statusCode, 201);
+    assert.equal(attachRes.body.status, 'success');
+    const attachedReceipt = attachRes.body.data.receipt;
+    assert.ok(attachedReceipt.id);
+    assert.equal(attachedReceipt.workOrderId, workOrderId);
+    assert.equal(attachedReceipt.uploadedBy, supervisorId);
+    assert.ok(attachedReceipt.fileUrl.includes('1791553792553-b17622b05d82.jpg'));
+    assert.ok(attachedReceipt.createdAt);
+    // Invariant: Dropped fields are strictly undefined
+    assert.equal(attachedReceipt.receiptNumber, undefined);
+    assert.equal(attachedReceipt.vendorName, undefined);
+    assert.equal(attachedReceipt.amount, undefined);
+    assert.equal(attachedReceipt.receiptType, undefined);
+    assert.equal(attachedReceipt.receiptDate, undefined);
+    const receiptId = attachedReceipt.id;
+
+    // 5. List Receipts: Returns direct array in data
+    const listRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/receipts`,
+      method: 'GET',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(listRes.statusCode, 200);
+    assert.ok(Array.isArray(listRes.body.data));
+    assert.equal(listRes.body.data.length, 1);
+    assert.equal(listRes.body.data[0].id, receiptId);
+    assert.equal(listRes.body.data[0].workOrderId, workOrderId);
+    assert.equal(listRes.body.data[0].uploadedBy, supervisorId);
+    assert.ok(listRes.body.data[0].fileUrl.includes('1791553792553-b17622b05d82.jpg'));
+    assert.equal(listRes.body.data[0].uploaderName, undefined);
+    assert.equal(listRes.body.data[0].receiptNumber, undefined);
+
+    // 6. Direct PostgreSQL Schema Introspection
+    const schemaRes = await query(
+      `SELECT column_name FROM information_schema.columns 
+       WHERE table_name = 'work_order_receipts' 
+       ORDER BY column_name`
+    );
+    const columnNames = schemaRes.rows.map((r) => r.column_name);
+    assert.deepEqual(columnNames, ['created_at', 'file_url', 'id', 'uploaded_by', 'work_order_id']);
+    assert.ok(!columnNames.includes('receipt_number'));
+    assert.ok(!columnNames.includes('vendor_name'));
+    assert.ok(!columnNames.includes('amount'));
+    assert.ok(!columnNames.includes('receipt_type'));
+    assert.ok(!columnNames.includes('receipt_date'));
+
+    // 7. Advance Work Order status to IN_PROGRESS
+    await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/status`,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      status: 'IN_PROGRESS',
+    });
+
+    // 8. Finalize with Batch receiptUrls array
+    const finalizeRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/work-orders/${workOrderId}/finalize`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: supervisorCookie },
+    }, {
+      severity: 'LOW',
+      dateStarted: '2026-10-01T08:00:00Z',
+      dateResolved: '2026-10-02T16:00:00Z',
+      partsCost: 3500.00,
+      laborCost: 1500.00,
+      downtimeDays: 1,
+      odometerAtService: 30500,
+      receiptUrls: [
+        'maintenance/receipts/batch-service-proof-01.jpg',
+        'maintenance/receipts/batch-service-proof-02.jpg',
+      ],
+    });
+    assert.equal(finalizeRes.statusCode, 201);
+    assert.equal(finalizeRes.body.data.workOrder.status, 'COMPLETED');
+    assert.equal(finalizeRes.body.data.maintenanceLog.officialReceiptNumber, undefined);
+    assert.equal(finalizeRes.body.data.maintenanceLog.receiptNumber, undefined);
+    assert.equal(finalizeRes.body.data.maintenanceLog.totalCost, 5000.00);
+
+    // Verify all 3 receipts are attached to this work order in DB
+    const totalReceiptsInDb = await query(
+      `SELECT COUNT(*)::int AS count FROM work_order_receipts WHERE work_order_id = $1`,
+      [workOrderId]
+    );
+    assert.equal(totalReceiptsInDb.rows[0].count, 3);
+
+    // 9. Delete First Receipt and verify deletion
+    const delRes = await makeRequest(server, {
+      hostname: '127.0.0.1',
+      port,
+      path: `/api/fleet/maintenance/receipts/${receiptId}`,
+      method: 'DELETE',
+      headers: { Cookie: supervisorCookie },
+    });
+    assert.equal(delRes.statusCode, 200);
+    assert.equal(delRes.body.status, 'success');
+
+    const checkDelDb = await query(`SELECT id FROM work_order_receipts WHERE id = $1`, [receiptId]);
+    assert.equal(checkDelDb.rows.length, 0);
   });
 });
 

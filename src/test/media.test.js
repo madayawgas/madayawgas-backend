@@ -11,6 +11,7 @@ const {
   ALLOWED_DOMAINS,
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE_BYTES,
+  extractStorageKey,
 } = require('../features/media');
 
 const PREFIX = 'test_media_';
@@ -256,8 +257,8 @@ test('Media Subsystem Integration Tests', async (t) => {
       assert.ok(storageKey.startsWith(`${domain}/`), `Storage key must start with domain ${domain}`);
       assert.match(
         storageKey,
-        new RegExp(`^${domain}/\\d+-[a-f0-9]{12}\\.jpg$`),
-        'Storage key must match canonical pattern {domain}/{timestamp}-{hex}.jpg'
+        new RegExp(`^${domain}/([a-f0-9]{16}|\\d+-[a-f0-9]{12})\\.jpg$`),
+        'Storage key must match canonical pattern {domain}/{hash}.jpg'
       );
       assert.equal(mimeType, 'image/jpeg');
       assert.equal(sizeBytes, testBuffer.length);
@@ -372,7 +373,7 @@ test('Media Subsystem Integration Tests', async (t) => {
     }
   });
 
-  await t.test('9. Storage Deletion Lifecycle (media.service.deleteMedia)', async () => {
+  await t.test('9. Storage Deletion Lifecycle (media.service.deleteMedia & DELETE /api/media)', async () => {
     // Upload a test file
     const form = new FormData();
     form.append('domain', 'sales/receipts');
@@ -391,13 +392,98 @@ test('Media Subsystem Integration Tests', async (t) => {
 
     assert.ok(fs.existsSync(localPath), 'File should exist prior to deletion');
 
-    // Delete
-    const deleteResult = await mediaService.deleteMedia(key);
-    assert.equal(deleteResult.success, true);
+    // Delete via HTTP DELETE /api/media
+    const deleteRes = await fetch(`${baseUrl}/api/media`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: adminCookie,
+      },
+      body: JSON.stringify({ storageKey: key }),
+    });
+
+    assert.equal(deleteRes.status, 200);
+    const deleteJson = await deleteRes.json();
+    assert.equal(deleteJson.status, 'success');
+    assert.equal(deleteJson.data.success, true);
     assert.equal(fs.existsSync(localPath), false, 'File must be unlinked after deletion');
 
-    // Deleting nonexistent returns false without error
-    const repeatDelete = await mediaService.deleteMedia(key);
-    assert.equal(repeatDelete.success, false);
+    // Repeating delete returns success: false
+    const repeatRes = await fetch(`${baseUrl}/api/media?storageKey=${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+      headers: { Cookie: adminCookie },
+    });
+    assert.equal(repeatRes.status, 200);
+    const repeatJson = await repeatRes.json();
+    assert.equal(repeatJson.data.success, false);
+  });
+
+  await t.test('10. Content-Addressable Deduplication (Identical uploads produce identical keys)', async () => {
+    const identicalData = Buffer.from('IDENTICAL_CONTENT_FOR_DEDUPLICATION_TEST');
+
+    const form1 = new FormData();
+    form1.append('domain', 'maintenance/receipts');
+    form1.append('file', new Blob([identicalData], { type: 'image/jpeg' }), 'receipt_attempt_1.jpg');
+
+    const res1 = await fetch(`${baseUrl}/api/media/upload`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+      body: form1,
+    });
+    assert.equal(res1.status, 201);
+    const body1 = await res1.json();
+
+    const form2 = new FormData();
+    form2.append('domain', 'maintenance/receipts');
+    form2.append('file', new Blob([identicalData], { type: 'image/jpeg' }), 'receipt_attempt_2.jpg');
+
+    const res2 = await fetch(`${baseUrl}/api/media/upload`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+      body: form2,
+    });
+    assert.equal(res2.status, 201);
+    const body2 = await res2.json();
+
+    assert.equal(
+      body1.data.storageKey,
+      body2.data.storageKey,
+      'Identical content must produce identical storageKey (deduplication)'
+    );
+
+    createdStorageKeys.add(body1.data.storageKey);
+  });
+
+  await t.test('11. extractStorageKey URL Normalization Utility', async () => {
+    // Relative key
+    assert.equal(
+      extractStorageKey('maintenance/receipts/abc.jpg'),
+      'maintenance/receipts/abc.jpg'
+    );
+    assert.equal(
+      extractStorageKey('/maintenance/receipts/abc.jpg'),
+      'maintenance/receipts/abc.jpg'
+    );
+
+    // Supabase public URL
+    assert.equal(
+      extractStorageKey('https://example.supabase.co/storage/v1/object/public/madayawgas-media/maintenance/receipts/abc.jpg'),
+      'maintenance/receipts/abc.jpg'
+    );
+
+    // Local media URL
+    assert.equal(
+      extractStorageKey('http://localhost:5000/media/maintenance/receipts/abc.jpg'),
+      'maintenance/receipts/abc.jpg'
+    );
+    assert.equal(
+      extractStorageKey('https://madayawgas-backend.onrender.com/media/maintenance/receipts/abc.jpg'),
+      'maintenance/receipts/abc.jpg'
+    );
+
+    // Null or invalid
+    assert.equal(extractStorageKey(null), null);
+    assert.equal(extractStorageKey(''), null);
+    assert.equal(extractStorageKey('   '), null);
   });
 });

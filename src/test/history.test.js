@@ -492,12 +492,19 @@ test('System Event History Log Subsystem Tests', async (t) => {
 
     const logResolved = resolveEvent(EVENTS.MAINTENANCE_LOG_FINALIZED, {
       workOrderId: 'WO-2026-001',
-      receiptNumber: 'OR-2026-00891',
     });
     assert.equal(logResolved.module, 'Fleet Management');
     assert.equal(logResolved.actionType, 'Created');
     assert.equal(logResolved.targetType, 'MAINTENANCE_LOG');
-    assert.equal(logResolved.details, 'Finalized maintenance log for work order #WO-2026-001 (OR #OR-2026-00891)');
+    assert.equal(logResolved.details, 'Finalized maintenance log for work order #WO-2026-001');
+
+    const receiptResolved = resolveEvent(EVENTS.MAINTENANCE_RECEIPT_ADDED, {
+      workOrderId: 'WO-2026-001',
+    });
+    assert.equal(receiptResolved.module, 'Fleet Management');
+    assert.equal(receiptResolved.actionType, 'Created');
+    assert.equal(receiptResolved.targetType, 'RECEIPT');
+    assert.equal(receiptResolved.details, 'Attached receipt image to work order #WO-2026-001');
 
     // F. Verify Phase 2 Inventory Domain Event Definitions
     const restockResolved = resolveEvent(EVENTS.INVENTORY_SUPPLIER_RESTOCKED, {
