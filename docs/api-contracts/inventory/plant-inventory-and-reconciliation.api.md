@@ -2,7 +2,7 @@
 
 > **Subsystem**: Inventory Management  
 > **Base Path**: `/api/inventory`  
-> **Primary Roles**: Plant Supervisor (`plant_user`), Super Admin, Admin, Logistics Supervisor, Sales Person (Cabin View)  
+> **Primary Roles**: Plant Supervisor (`plant_supervisor`), Super Admin, Admin, Logistics Supervisor, Sales Person (Cabin View)  
 > **Authentication**: Stateful session cookie (`mg_sid`), `HttpOnly`, `SameSite=Lax`.
 
 ---
@@ -26,6 +26,7 @@
 | `POST` | `/api/inventory/plant/quarantine-defects` | `inventory.manage` | Quarantines yard leakers/defective stock into defective bucket |
 | `GET` | `/api/inventory/plant/adjustments` | `inventory.view`, `inventory.manage` | Historical plant stock adjustments audit log |
 | `GET` | `/api/inventory/plant/suggested-split` | `inventory.view`, `inventory.manage` | Equal truck loading split suggestion helper |
+| `GET` | `/api/inventory/transfers` | `inventory.view` | Global cross-fleet paginated ledger of all transfer slips & plant restocks |
 | `POST` | `/api/inventory/trips/:tripId/dispatch-load` | `inventory.manage`, `route.manage` | Staging/dispatch load or midday reload (deducts plant stock) |
 | `POST` | `/api/inventory/trips/:tripId/return-unload` | `inventory.manage`, `route.manage` | Post-dispatch physical return unload manifest |
 | `GET` | `/api/inventory/trips/:tripId/transfers` | `inventory.view`, `route.view` | Retrieves all multi-load and return transfer slips for a trip |
@@ -280,3 +281,99 @@
   }
 }
 ```
+
+### 3.9 Global Cross-Fleet Inventory Transfers Ledger
+- **`GET /api/inventory/transfers`**
+- Global cross-fleet feed combining truck multi-load slips (`DISPATCH_LOAD`, `RETURN_UNLOAD`) and plant bulk stock adjustments (`SUPPLIER_PURCHASE`, `DEFECT_ADJUSTMENT`, `PHYSICAL_COUNT`).
+- **Permissions**: `inventory.view`
+- **Query Parameters**:
+  - `page` (`integer`, optional, default: 1): 1-indexed page number
+  - `limit` (`integer`, optional, default: 20, max: 100): Page slice size
+  - `transferType` (`string`, optional): Filter by `'DISPATCH_LOAD'`, `'RETURN_UNLOAD'`, `'SUPPLIER_PURCHASE'`, `'DEFECT_ADJUSTMENT'`, `'PHYSICAL_COUNT'`
+  - `sourceType` (`string`, optional): Filter by `'TRIP_LOAD'` or `'PLANT_ADJUSTMENT'`
+  - `productId` (`UUID`, optional): Filter movements containing specific product UUID
+  - `tripId` (`UUID`, optional): Filter movements scoped to specific delivery trip UUID
+  - `truckId` (`UUID`, optional): Filter movements scoped to specific vehicle UUID
+  - `startDate` (`string` / ISO date, optional): Filter movements on or after timestamp
+  - `endDate` (`string` / ISO date, optional): Filter movements on or before timestamp
+  - `search` (`string`, optional): Case-insensitive search on slip number, trip number, truck plate number, supplier invoice number, or remarks
+- **Response `200 OK` (Standard Paginated Envelope)**:
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "8c593b16-52c7-4ee4-90a8-b648109bf426",
+      "sourceType": "TRIP_LOAD",
+      "transferType": "DISPATCH_LOAD",
+      "slipNumber": "LOAD-20261001-A1B2C3",
+      "recordedAt": "2026-10-01T08:00:00.000Z",
+      "recordedBy": {
+        "id": "2b145a33-22f3-4cc0-96f8-4fbd109ee592",
+        "username": "plant_supervisor",
+        "firstName": "Plant",
+        "lastName": "Supervisor"
+      },
+      "remarks": "Morning dispatch load manifest",
+      "trip": {
+        "id": "e21350a4-348b-4b2a-8b17-74fbd38a5b28",
+        "tripNumber": "TRIP-20261001-001",
+        "truckId": "f7842e61-6d7b-403d-82d1-9d7a2245b73a",
+        "plateNumber": "ABC-1234"
+      },
+      "supplierInvoiceNumber": null,
+      "items": [
+        {
+          "id": "a9104bc1-5374-4b55-a226-c2f810aa7013",
+          "productId": "8f517e0c-1213-46eb-a128-48b3b875374b",
+          "productName": "Butane Canister 170g",
+          "productCategory": "Canister",
+          "containerType": "CANISTER",
+          "netWeightKg": 0.17,
+          "condition": "FILLED",
+          "quantityUnits": 120,
+          "crates": 5
+        }
+      ]
+    },
+    {
+      "id": "6d1234ea-78bc-4521-b3f9-8fa90123cb45",
+      "sourceType": "PLANT_ADJUSTMENT",
+      "transferType": "SUPPLIER_PURCHASE",
+      "slipNumber": "INV-SUP-2026-100",
+      "recordedAt": "2026-10-01T06:00:00.000Z",
+      "recordedBy": {
+        "id": "2b145a33-22f3-4cc0-96f8-4fbd109ee592",
+        "username": "plant_supervisor",
+        "firstName": "Plant",
+        "lastName": "Supervisor"
+      },
+      "remarks": "Direct factory delivery from manufacturer",
+      "trip": null,
+      "supplierInvoiceNumber": "INV-SUP-2026-100",
+      "items": [
+        {
+          "id": "6d1234ea-78bc-4521-b3f9-8fa90123cb45",
+          "productId": "8f517e0c-1213-46eb-a128-48b3b875374b",
+          "productName": "Butane Canister 170g",
+          "productCategory": "Canister",
+          "containerType": "CANISTER",
+          "netWeightKg": 0.17,
+          "condition": "FILLED",
+          "quantityUnits": 2400,
+          "crates": 100
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "totalItems": 45,
+    "totalPages": 3,
+    "hasNextPage": true,
+    "hasPrevPage": false
+  }
+}
+```
+

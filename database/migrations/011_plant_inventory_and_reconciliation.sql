@@ -131,9 +131,7 @@ JOIN "permissions" p
     ON p.name IN (
         'dashboard.view',
         'inventory.view',
-        'inventory.manage',
-        'route.view',
-        'history.view'
+        'inventory.manage'
     )
 WHERE r.name = 'Plant Supervisor'
 ON CONFLICT DO NOTHING;

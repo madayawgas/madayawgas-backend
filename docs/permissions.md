@@ -7,7 +7,7 @@
 | **`dashboard.view`** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | View the main operational dashboard |
 | **`fleet.view`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | View fleet and maintenance overview & vehicle profiles |
 | **`fleet.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Register vehicles, update info, set condition, assign drivers, deactivate |
-| **`route.view`** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | View all route dispatch schedules and trip logs |
+| **`route.view`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | View all route dispatch schedules and trip logs |
 | **`route.view_own`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | View routes specifically assigned to the current user |
 | **`route.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Create, update, assign, and dispatch delivery routes |
 | **`inventory.view`** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | View inventory product catalog and stock levels |
@@ -23,7 +23,7 @@
 | **`delivery.update_own`**| ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | Update delivery progress assigned to the current user |
 | **`users.view`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | View employee profiles and user lists |
 | **`users.manage`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Create accounts, reset credentials, deactivate, manage roles & permissions |
-| **`history.view`** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | View system event historical audit logs |
+| **`history.view`** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | View system event historical audit logs |
 
 > [!NOTE]
 > * **Plant Supervisor**: Oversees Bunawan refilling yard bulk physical inventory, supplier purchases, defect quarantining, vehicle dispatch staging, return unloads, and route reconciliation.

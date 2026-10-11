@@ -911,6 +911,23 @@ class InventoryService {
       isSettled: rec.status === 'SETTLED',
     };
   }
+
+  /**
+   * Retrieves global cross-fleet inventory transfer slips and plant adjustments.
+   *
+   * @param {Object} [filters]
+   * @param {Object} [pagination]
+   */
+  async getGlobalTransfers(filters = {}, pagination = null) {
+    if (!pagination || !pagination.isPaginated) {
+      return inventoryRepository.getGlobalTransfers(filters, null);
+    }
+
+    const { rows, total } = await inventoryRepository.getGlobalTransfers(filters, pagination);
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+
+    return { items: rows, meta };
+  }
 }
 
 module.exports = new InventoryService();

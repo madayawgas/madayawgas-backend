@@ -515,7 +515,7 @@ madayawgas-backend/
     * Created seed `007_plant_inventory_seed.sql`:
       - Standardized product catalog scope with `Butane Canister 170g` and `50kg LPG Cylinder`.
       - Initialized Bunawan yard physical inventory unit counts across all active products.
-      - Seeded initial `SUPPLIER_PURCHASE` audit adjustment records logged by `plant_user`.
+      - Seeded initial `SUPPLIER_PURCHASE` audit adjustment records logged by `plant_supervisor`.
     * Updated documentation & Mermaid ERDs:
       - Synchronized `docs/ERD_mermaid/inventory_erd.md` with table specifications, ENUMs, and compatibility views.
       - Updated `docs/ERD_mermaid/master_database_erd.md` (29 application domain tables + 2 compatibility views).
@@ -592,6 +592,19 @@ madayawgas-backend/
       - 100% test pass rate across all 15 test suites (130 out of 130 tests passing) with `npm test`.
     * **Documentation & Contracts**:
       - Synchronized `docs/ERD_mermaid/fleet_and_maintenance_erd.md`, `docs/ERD_mermaid/master_database_erd.md`, and `docs/api-contracts/fleet/maintenance.api.md` (Sections 16, 19, 20, 22, 23).
+23. **Global Cross-Fleet Inventory Transfers Ledger (`GET /api/inventory/transfers`)**:
+    * **Cross-Fleet Unified Transfers Endpoint (`src/features/inventory/`)**:
+      - Implemented `GET /api/inventory/transfers` guarded with `inventory.view`.
+      - Supports opt-in standardized server-side pagination (`parsePaginationQuery` with default limit: 20, max: 100, sort: `recordedAt DESC`) as well as unpaginated envelope fallback (`{ status: 'success', data: { count, transfers } }`).
+      - Combines route transfers (`trip_loads` + `trip_load_items` with types `DISPATCH_LOAD`, `RETURN_UNLOAD`) and plant bulk stock adjustments (`plant_stock_adjustments` with types `SUPPLIER_PURCHASE`, `DEFECT_ADJUSTMENT`, `PHYSICAL_COUNT`) into a unified reverse-chronological ledger via parameterized SQL `UNION ALL`.
+      - Dynamic filtering support: `transferType`, `sourceType` (`TRIP_LOAD` vs `PLANT_ADJUSTMENT`), `productId`, `tripId`, `truckId`, `startDate`, `endDate`, and `search`.
+      - Formats line items with canister crate calculation (1 crate = 24 canisters).
+    * **Testing & Zero Regression Verification**:
+      - Added Subtest 9 (`Global Cross-Fleet Inventory Transfers Ledger - Pagination, Unified Records, and Filters`) to `src/test/inventory.reconciliation.test.js` and updated RBAC assertions in Subtest 1.
+      - 100% test pass rate across all test suites with `npm test`.
+    * **Documentation & Contracts**:
+      - Updated `docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md` (Endpoints Matrix + Section 3.9).
+      - Updated `docs/api-contracts/README.md` master routing matrix.
 
 
 
@@ -609,7 +622,7 @@ The database seed provides permanent accounts for system testing (`must_change_p
 | **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Vehicle driver record for fleet truck assignments. **No login permissions**. |
 | **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & inventory (`inventory.view`, `inventory.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). |
 | **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
-| **`plant_user`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Oversees Bunawan refilling yard bulk stock (`dashboard.view`, `inventory.view`, `inventory.manage`, `route.view`). |
+| **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Oversees Bunawan refilling yard bulk stock (`dashboard.view`, `inventory.view`, `inventory.manage`). Routes, fleet, sales, and user admin are strictly blocked. |
 | **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.*`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
 
 ---
