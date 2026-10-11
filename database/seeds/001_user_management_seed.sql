@@ -228,15 +228,9 @@ JOIN permissions p
         -- Dashboard
         'dashboard.view',
 
-        -- Route Dispatch
-        'route.view',
-
         -- Inventory
         'inventory.view',
-        'inventory.manage',
-
-        -- History Logs
-        'history.view'
+        'inventory.manage'
     )
 WHERE r.name = 'Plant Supervisor'
 ON CONFLICT DO NOTHING;
@@ -405,7 +399,7 @@ ON CONFLICT (username) DO UPDATE SET
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
     'logistics_supervisor',
-    '$2b$10$NyLLNftp8wfMY4Df7m.QlO.kwjdsplUTBepucbswgz2rXSq/nr.wO',
+    '$2b$10$56nsx0uG2s4z3bnqAdWhj.IUNx2WfuL062gBrrGKzuUOApJEzlGSu',
     'Carlos',
     'Logistics',
     '+639170000003',
@@ -498,8 +492,8 @@ ON CONFLICT (username) DO UPDATE SET
 
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
-    'plant_user',
-    '$2b$10$0axa4jTJYzHFEpL2wKKOq.HDDez0ahaSATrPZJIhdD2LM7M.w2yFy',
+    'plant_supervisor',
+    '$2b$10$UK0JoGm5oyEYt/ZU8Ed3iuGjjygA7SyzEl5v15Gdq6yA6rmahNlU2',
     'Pedro',
     'Plant',
     '+639170000007',
@@ -523,7 +517,7 @@ ON CONFLICT (username) DO UPDATE SET
 INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
 SELECT
     'samantha_supervisor',
-    '$2b$10$4VxKnRqkfjC2yZMkE4/BzONuL6vYN20ySY2UQi.iQ2qvbruHbj0Rq',
+    '$2b$10$/3w/eoUL2RF6hxPSm/CXP.5ewt8h84HjSCjvtAcQkKpVECRxeC8gO',
     'Samantha',
     'Doe',
     '+639170000008',

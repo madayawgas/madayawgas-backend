@@ -34,11 +34,13 @@ function parseCookieHeader(res) {
 test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
   let adminCookie;
   let plantCookie;
+  let logisticsCookie;
   let salesRep1Cookie;
   let salesRep2Cookie;
 
   let adminUser;
   let plantUser;
+  let logisticsUser;
   let salesRep1User;
   let salesRep2User;
   let driverUser;
@@ -131,6 +133,7 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     // 2. Fetch role IDs
     const adminRoleId = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
     const plantRoleId = (await query(`SELECT id FROM roles WHERE name = 'Plant Supervisor'`)).rows[0].id;
+    const logisticsRoleId = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
     const salesRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
     const driverRoleId = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 
@@ -152,6 +155,14 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
       ['test_recon_plant', passwordHash, 'InvPlant', 'Supervisor', '+639178000002', plantRoleId]
     );
     plantUser = plantRes.rows[0];
+
+    const logRes = await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
+       RETURNING *`,
+      ['test_recon_logistics', passwordHash, 'InvLogistics', 'Supervisor', '+639178000006', logisticsRoleId]
+    );
+    logisticsUser = logRes.rows[0];
 
     const sales1Res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -185,6 +196,10 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     await query(`INSERT INTO user_roles (user_id, role_id, is_primary) VALUES ($1, $2, TRUE)`, [
       plantUser.id,
       plantRoleId,
+    ]);
+    await query(`INSERT INTO user_roles (user_id, role_id, is_primary) VALUES ($1, $2, TRUE)`, [
+      logisticsUser.id,
+      logisticsRoleId,
     ]);
     await query(`INSERT INTO user_roles (user_id, role_id, is_primary) VALUES ($1, $2, TRUE)`, [
       salesRep1User.id,
@@ -254,6 +269,7 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
 
     adminCookie = await loginUser('test_recon_admin', 'TestPass123!');
     plantCookie = await loginUser('test_recon_plant', 'TestPass123!');
+    logisticsCookie = await loginUser('test_recon_logistics', 'TestPass123!');
     salesRep1Cookie = await loginUser('test_recon_sales1', 'TestPass123!');
     salesRep2Cookie = await loginUser('test_recon_sales2', 'TestPass123!');
   });
@@ -288,6 +304,94 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     const overviewJson = await plantOverviewRes.json();
     assert.equal(overviewJson.status, 'success');
     assert.ok(Array.isArray(overviewJson.data.inventory));
+
+    // Global transfers RBAC: Unauthenticated -> 401
+    const unauthTransfers = await fetch(`${baseUrl}/api/inventory/transfers`);
+    assert.equal(unauthTransfers.status, 401);
+
+    // Global transfers RBAC: Sales representative without inventory.view -> 403
+    const salesTransfersRes = await fetch(`${baseUrl}/api/inventory/transfers`, {
+      headers: { Cookie: `mg_sid=${salesRep1Cookie}` },
+    });
+    assert.equal(salesTransfersRes.status, 403);
+
+    // Global transfers RBAC: Plant Supervisor with inventory.view -> 200 OK
+    const plantTransfersRes = await fetch(`${baseUrl}/api/inventory/transfers`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(plantTransfersRes.status, 200);
+
+    // Plant Supervisor scope isolation: Non-plant domains return 403 Forbidden
+    const plantRoutesRes = await fetch(`${baseUrl}/api/schedules/zones`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(plantRoutesRes.status, 403);
+
+    const plantTripsRes = await fetch(`${baseUrl}/api/trips`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(plantTripsRes.status, 403);
+
+    const plantFleetRes = await fetch(`${baseUrl}/api/fleet/overview`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(plantFleetRes.status, 403);
+
+    const plantSalesRes = await fetch(`${baseUrl}/api/sales/customers`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(plantSalesRes.status, 403);
+
+    const plantUsersRes = await fetch(`${baseUrl}/api/users`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(plantUsersRes.status, 403);
+
+    // Logistics Supervisor access to suggested-split helper (User Story 2) -> 200 OK
+    const logSplitRes = await fetch(
+      `${baseUrl}/api/inventory/plant/suggested-split?productId=${testButaneProduct.id}&activeTripCount=4`,
+      { headers: { Cookie: `mg_sid=${logisticsCookie}` } }
+    );
+    assert.equal(logSplitRes.status, 200);
+
+    // Logistics Supervisor access to dispatch-load and return-unload (User Stories 3 & 4)
+    const testRbacTripRes = await query(`
+      INSERT INTO trips (trip_number, truck_id, driver_id, sales_user_id, zone_id, status)
+      VALUES ('TEST-RECON-RBAC-001', $1, $2, $3, $4, 'IN_PROGRESS')
+      RETURNING *
+    `, [testTruck.id, driverUser.id, salesRep1User.id, testZone.id]);
+    const rbacTrip = testRbacTripRes.rows[0];
+
+    const logDispatchRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/dispatch-load`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Logistics dispatch load',
+        items: [{ productId: testButaneProduct.id, quantityUnits: 10 }],
+      }),
+    });
+    assert.equal(logDispatchRes.status, 201);
+
+    const logTransfersRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/transfers`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(logTransfersRes.status, 200);
+
+    const logUnloadRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/return-unload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Logistics return unload',
+        items: [{ productId: testButaneProduct.id, condition: 'FILLED', quantityUnits: 10 }],
+      }),
+    });
+    assert.equal(logUnloadRes.status, 201);
   });
 
   // ============================================================
@@ -813,5 +917,176 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
       [trip2.id]
     );
     assert.equal(flaggedEvent.rows.length, 1);
+  });
+
+  // ============================================================
+  // 9. GLOBAL CROSS-FLEET INVENTORY TRANSFERS LEDGER
+  // ============================================================
+  await t.test('9. Global Cross-Fleet Inventory Transfers Ledger - Pagination, Unified Records, and Filters', async () => {
+    // 1. Setup a dedicated test trip
+    const tripRes = await query(`
+      INSERT INTO trips (truck_id, driver_id, sales_user_id, zone_id, trip_number, status)
+      VALUES ($1, $2, $3, $4, 'TEST-RECON-TRIP-GLOBAL-99', 'IN_PROGRESS')
+      RETURNING *
+    `, [testTruck.id, driverUser.id, salesRep1User.id, testZone.id]);
+    const trip = tripRes.rows[0];
+
+    // 2. Create a DISPATCH_LOAD on this trip
+    const loadRes = await fetch(`${baseUrl}/api/inventory/trips/${trip.id}/dispatch-load`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Morning Global Dispatch Slip',
+        items: [
+          { productId: testButaneProduct.id, quantityUnits: 60 },
+          { productId: testLpgProduct.id, quantityUnits: 20 },
+        ],
+      }),
+    });
+    assert.equal(loadRes.status, 201);
+    const loadJson = await loadRes.json();
+    const loadSlip = loadJson.data.load;
+
+    // 3. Create a RETURN_UNLOAD on this trip
+    const unloadRes = await fetch(`${baseUrl}/api/inventory/trips/${trip.id}/return-unload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Evening Global Return Slip',
+        items: [
+          { productId: testButaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 50 },
+          { productId: testButaneProduct.id, condition: 'DEFECTIVE', quantityUnits: 10 },
+        ],
+      }),
+    });
+    assert.equal(unloadRes.status, 201);
+    const unloadJson = await unloadRes.json();
+    const unloadSlip = unloadJson.data.unload;
+
+    // 4. Create a plant SUPPLIER_PURCHASE restock
+    const restockRes = await fetch(`${baseUrl}/api/inventory/plant/restock`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        productId: testButaneProduct.id,
+        condition: 'FILLED',
+        quantityUnits: 240,
+        supplierInvoiceNumber: 'TEST-RECON-SUP-GLOBAL-88',
+        reason: 'TEST-RECON- Bulk purchase direct factory shipment',
+      }),
+    });
+    assert.equal(restockRes.status, 201);
+
+    // 5. Create a plant DEFECT_ADJUSTMENT quarantine
+    const defectRes = await fetch(`${baseUrl}/api/inventory/plant/quarantine-defects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        productId: testButaneProduct.id,
+        sourceCondition: 'FILLED',
+        quantityUnits: 12,
+        reason: 'TEST-RECON- Plant valve leak quarantine defect',
+      }),
+    });
+    assert.equal(defectRes.status, 200);
+
+    // A. Unpaginated query: returns all transfers envelope { status: 'success', data: { count, transfers } }
+    const unpaginatedRes = await fetch(`${baseUrl}/api/inventory/transfers?search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(unpaginatedRes.status, 200);
+    const unpaginatedJson = await unpaginatedRes.json();
+    assert.equal(unpaginatedJson.status, 'success');
+    assert.ok(unpaginatedJson.data.count >= 4);
+    assert.ok(Array.isArray(unpaginatedJson.data.transfers));
+
+    // B. Standard server-side pagination: page=1&limit=2
+    const pagiRes = await fetch(`${baseUrl}/api/inventory/transfers?page=1&limit=2&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(pagiRes.status, 200);
+    const pagiJson = await pagiRes.json();
+    assert.equal(pagiJson.status, 'success');
+    assert.ok(Array.isArray(pagiJson.data));
+    assert.equal(pagiJson.data.length, 2);
+    assert.equal(pagiJson.meta.page, 1);
+    assert.equal(pagiJson.meta.limit, 2);
+    assert.ok(pagiJson.meta.totalItems >= 4);
+    assert.equal(pagiJson.meta.hasNextPage, true);
+    assert.equal(pagiJson.meta.hasPrevPage, false);
+
+    // Check page 2
+    const page2Res = await fetch(`${baseUrl}/api/inventory/transfers?page=2&limit=2&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    assert.equal(page2Res.status, 200);
+    const page2Json = await page2Res.json();
+    assert.equal(page2Json.meta.page, 2);
+    assert.equal(page2Json.meta.hasPrevPage, true);
+
+    // C. Verify unified record structure (TRIP_LOAD vs PLANT_ADJUSTMENT)
+    const allSearchRes = await fetch(`${baseUrl}/api/inventory/transfers?limit=50&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    const allSearchJson = await allSearchRes.json();
+    const tripLoad = allSearchJson.data.find((t) => t.slipNumber === loadSlip.slip_number);
+    assert.ok(tripLoad);
+    assert.equal(tripLoad.sourceType, 'TRIP_LOAD');
+    assert.equal(tripLoad.transferType, 'DISPATCH_LOAD');
+    assert.equal(tripLoad.trip.tripNumber, 'TEST-RECON-TRIP-GLOBAL-99');
+    assert.equal(tripLoad.trip.plateNumber, testTruck.plate_number);
+    assert.equal(tripLoad.items.length, 2);
+    // Canisters calculate crates: 60 canisters = 2 crates
+    const butaneLoadItem = tripLoad.items.find((i) => i.productId === testButaneProduct.id);
+    assert.equal(butaneLoadItem.crates, 2);
+
+    const supplierAdj = allSearchJson.data.find((t) => t.supplierInvoiceNumber === 'TEST-RECON-SUP-GLOBAL-88');
+    assert.ok(supplierAdj);
+    assert.equal(supplierAdj.sourceType, 'PLANT_ADJUSTMENT');
+    assert.equal(supplierAdj.transferType, 'SUPPLIER_PURCHASE');
+    assert.equal(supplierAdj.trip, null);
+    assert.equal(supplierAdj.items[0].quantityUnits, 240);
+    assert.equal(supplierAdj.items[0].crates, 10); // 240 / 24 = 10 crates
+
+    // D. Filter by transferType: DISPATCH_LOAD
+    const dispatchOnlyRes = await fetch(`${baseUrl}/api/inventory/transfers?transferType=DISPATCH_LOAD&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    const dispatchOnlyJson = await dispatchOnlyRes.json();
+    assert.ok(dispatchOnlyJson.data.transfers.every((t) => t.transferType === 'DISPATCH_LOAD'));
+
+    // E. Filter by transferType: SUPPLIER_PURCHASE
+    const supplierOnlyRes = await fetch(`${baseUrl}/api/inventory/transfers?transferType=SUPPLIER_PURCHASE&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    const supplierOnlyJson = await supplierOnlyRes.json();
+    assert.ok(supplierOnlyJson.data.transfers.every((t) => t.transferType === 'SUPPLIER_PURCHASE'));
+
+    // F. Filter by sourceType: TRIP_LOAD
+    const tripOnlyRes = await fetch(`${baseUrl}/api/inventory/transfers?sourceType=TRIP_LOAD&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    const tripOnlyJson = await tripOnlyRes.json();
+    assert.ok(tripOnlyJson.data.transfers.every((t) => t.sourceType === 'TRIP_LOAD'));
+
+    // G. Filter by productId
+    const prodFilterRes = await fetch(`${baseUrl}/api/inventory/transfers?productId=${testLpgProduct.id}&search=TEST-RECON-`, {
+      headers: { Cookie: `mg_sid=${plantCookie}` },
+    });
+    const prodFilterJson = await prodFilterRes.json();
+    assert.ok(prodFilterJson.data.transfers.length >= 1);
+    assert.ok(prodFilterJson.data.transfers.every((t) => t.items.some((i) => i.productId === testLpgProduct.id)));
   });
 });

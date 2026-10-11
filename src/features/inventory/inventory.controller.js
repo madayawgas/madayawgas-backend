@@ -369,6 +369,62 @@ class InventoryController {
       });
     }
   }
+
+  /**
+   * GET /api/inventory/transfers
+   * Global cross-fleet paginated transfer slips & plant restocks ledger.
+   */
+  async getGlobalTransfers(req, res) {
+    try {
+      const {
+        transferType,
+        sourceType,
+        productId,
+        tripId,
+        truckId,
+        startDate,
+        endDate,
+        search,
+      } = req.query || {};
+
+      const pagination = parsePaginationQuery(req.query, {
+        defaultLimit: 20,
+        maxLimit: 100,
+        defaultSort: 'recordedAt',
+        defaultOrder: 'DESC',
+      });
+
+      const filters = {
+        transferType,
+        sourceType,
+        productId,
+        tripId,
+        truckId,
+        startDate,
+        endDate,
+        search,
+      };
+
+      if (!pagination.isPaginated) {
+        const transfers = await inventoryService.getGlobalTransfers(filters);
+        return res.status(200).json({
+          status: 'success',
+          data: {
+            count: transfers.length,
+            transfers,
+          },
+        });
+      }
+
+      const { items, meta } = await inventoryService.getGlobalTransfers(filters, pagination);
+      return res.status(200).json(formatPaginatedEnvelope(items, meta));
+    } catch (err) {
+      return res.status(err.statusCode || 500).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
 }
 
 module.exports = new InventoryController();

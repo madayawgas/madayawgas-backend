@@ -258,7 +258,7 @@ When adding a new domain feature (e.g. `fleet` or `sales`):
   * `driver_user` / `DriverPass123!` (Driver)
   * `sales_supervisor` / `SalesSupPass123!` (Sales Supervisor)
   * `sales_user` / `SalesPass123!` (Sales Person)
-  * `plant_user` / `PlantPass123!` (Plant Supervisor)
+  * `plant_supervisor` / `PlantPass123!` (Plant Supervisor)
   * `samantha_supervisor` / `SamanthaPass123!` (Sales Supervisor + Logistics Supervisor)
 
 ---

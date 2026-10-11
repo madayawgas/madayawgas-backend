@@ -43,7 +43,7 @@ router.get(
 router.get(
   '/plant/suggested-split',
   authenticate,
-  requirePermission('inventory.view'),
+  requirePermission(['inventory.view', 'route.view', 'route.manage']),
   asyncHandler(inventoryController.getSuggestedEqualSplit.bind(inventoryController))
 );
 
@@ -71,7 +71,24 @@ router.post(
 
 
 // ============================================================
-// 2. Trip Transfers, Route Stock & Reconciliation (/trips/:tripId)
+// 2. Global Cross-Fleet Inventory Transfers Ledger (/transfers)
+// ============================================================
+
+/**
+ * GET /api/inventory/transfers
+ * Global cross-fleet paginated ledger of all inventory transfers
+ * (Dispatch loads, midday reloads, return unloads, plant restocks, defect quarantines).
+ */
+router.get(
+  '/transfers',
+  authenticate,
+  requirePermission('inventory.view'),
+  asyncHandler(inventoryController.getGlobalTransfers.bind(inventoryController))
+);
+
+
+// ============================================================
+// 3. Trip Transfers, Route Stock & Reconciliation (/trips/:tripId)
 // ============================================================
 
 /**
@@ -82,7 +99,7 @@ router.post(
 router.post(
   '/trips/:tripId/dispatch-load',
   authenticate,
-  requirePermission('inventory.manage'),
+  requirePermission(['inventory.manage', 'route.manage']),
   asyncHandler(inventoryController.createDispatchLoad.bind(inventoryController))
 );
 
@@ -94,7 +111,7 @@ router.post(
 router.post(
   '/trips/:tripId/return-unload',
   authenticate,
-  requirePermission('inventory.manage'),
+  requirePermission(['inventory.manage', 'route.manage']),
   asyncHandler(inventoryController.recordReturnUnload.bind(inventoryController))
 );
 
@@ -105,7 +122,7 @@ router.post(
 router.get(
   '/trips/:tripId/transfers',
   authenticate,
-  requirePermission('inventory.view'),
+  requirePermission(['inventory.view', 'route.view', 'route.manage']),
   asyncHandler(inventoryController.getTripTransfers.bind(inventoryController))
 );
 
@@ -128,7 +145,7 @@ router.get(
 router.post(
   '/trips/:tripId/reconcile',
   authenticate,
-  requirePermission('inventory.manage'),
+  requirePermission(['inventory.manage', 'route.manage']),
   asyncHandler(inventoryController.reconcileTrip.bind(inventoryController))
 );
 
@@ -139,13 +156,13 @@ router.post(
 router.get(
   '/trips/:tripId/reconciliation',
   authenticate,
-  requirePermission('inventory.view'),
+  requirePermission(['inventory.view', 'route.view', 'route.manage']),
   asyncHandler(inventoryController.getTripReconciliation.bind(inventoryController))
 );
 
 
 // ============================================================
-// 3. Products Catalog CRUD Endpoints (/products)
+// 4. Products Catalog CRUD Endpoints (/products)
 // ============================================================
 
 /**

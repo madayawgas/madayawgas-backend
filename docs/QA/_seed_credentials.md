@@ -17,7 +17,7 @@ This document lists the pre-configured seed user accounts for testing authentica
 | **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | **Vehicle driver**: Registered driver for fleet truck assignments. Has no login portal permissions. |
 | **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | **Sales & inventory oversight**: `inventory.*`, `sales.view`, `sales.update`, `sales.delete`, `delivery.*`, `history.view`. |
 | **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | **Sales representative**: `sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`. |
-| **`plant_user`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | **Plant Operations**: Catalog role defined; permissions deferred (`[]`) until plant inventory implementation. |
+| **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | **Plant Operations**: Oversees Bunawan refilling yard bulk stock (`dashboard.view`, `inventory.view`, `inventory.manage`). Routes, fleet, sales, and user admin are strictly blocked. |
 | **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | **Multi-role Employee**: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.*`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
 
 ---
@@ -72,11 +72,11 @@ This document lists the pre-configured seed user accounts for testing authentica
 
 ---
 
-### 7. Plant Supervisor (`plant_user`)
+### 7. Plant Supervisor (`plant_supervisor`)
 * **Password**: `PlantPass123!`
 * **Phone**: `+639170000007`
 * **Role**: `Plant Supervisor`
-* **Permissions**: None (`[]`). Initial catalog role placeholder for plant inventory & cylinder operations.
+* **Permissions**: `['dashboard.view', 'inventory.view', 'inventory.manage']`. Manages Bunawan plant bulk inventory, supplier purchases, defect quarantines, and cylinder transfer manifests. Routes and history logs are strictly blocked (`403 Forbidden`).
 
 ---
 

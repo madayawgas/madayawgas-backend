@@ -4,7 +4,7 @@
 > **Target Database**: PostgreSQL 18.x  
 > **Schema Migrations**: `003_products.sql`, `010_schedules_and_trips.sql`, `011_plant_inventory_and_reconciliation.sql`  
 > **Operational Tiers**:
-> 1. **Plant Bulk Inventory**: Master physical stock at the Bunawan refilling yard managed by the Plant Supervisor (`plant_user` / `plant_supervisor`).
+> 1. **Plant Bulk Inventory**: Master physical stock at the Bunawan refilling yard managed by the Plant Supervisor (`plant_supervisor`).
 > 2. **Vehicle Route Inventory**: Stock loaded onto delivery vehicles acting as mobile storefronts during trips, tracking morning dispatch loads, midday reloads, cabin on-board stock visibility, post-trip physical return unloads, and variance settlement.
 
 ---

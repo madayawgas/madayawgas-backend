@@ -489,6 +489,308 @@ class InventoryRepository {
     const res = await query(sql, [tripId]);
     return res.rows[0] || null;
   }
+
+  /**
+   * Retrieves a unified cross-fleet ledger of all transfer slips (DISPATCH_LOAD, RETURN_UNLOAD)
+   * and plant stock adjustments (SUPPLIER_PURCHASE, DEFECT_ADJUSTMENT, PHYSICAL_COUNT).
+   *
+   * @param {Object} [filters]
+   * @param {string} [filters.transferType] - DISPATCH_LOAD, RETURN_UNLOAD, SUPPLIER_PURCHASE, DEFECT_ADJUSTMENT, PHYSICAL_COUNT
+   * @param {string} [filters.sourceType] - TRIP_LOAD, PLANT_ADJUSTMENT
+   * @param {string} [filters.productId] - UUID of product
+   * @param {string} [filters.tripId] - UUID of trip
+   * @param {string} [filters.truckId] - UUID of vehicle
+   * @param {string} [filters.startDate] - ISO timestamp or date
+   * @param {string} [filters.endDate] - ISO timestamp or date
+   * @param {string} [filters.search] - Search string
+   * @param {Object} [pagination] - Sanitized pagination options from parsePaginationQuery
+   */
+  async getGlobalTransfers(filters = {}, pagination = null) {
+    let includeTripLoads = true;
+    let includePlantAdjustments = true;
+
+    if (filters.sourceType) {
+      const st = String(filters.sourceType).toUpperCase().trim();
+      if (st === 'TRIP_LOAD') includePlantAdjustments = false;
+      if (st === 'PLANT_ADJUSTMENT') includeTripLoads = false;
+    }
+
+    if (filters.transferType) {
+      const tt = String(filters.transferType).toUpperCase().trim();
+      if (['DISPATCH_LOAD', 'RETURN_UNLOAD'].includes(tt)) {
+        includePlantAdjustments = false;
+      } else if (['SUPPLIER_PURCHASE', 'DEFECT_ADJUSTMENT', 'PHYSICAL_COUNT'].includes(tt)) {
+        includeTripLoads = false;
+      }
+    }
+
+    if (filters.tripId || filters.truckId) {
+      includePlantAdjustments = false;
+    }
+
+    if (!includeTripLoads && !includePlantAdjustments) {
+      if (pagination && pagination.isPaginated) {
+        return { rows: [], total: 0 };
+      }
+      return [];
+    }
+
+    const values = [];
+    const tlConditions = [];
+    const psaConditions = [];
+
+    if (includeTripLoads) {
+      if (filters.transferType) {
+        values.push(filters.transferType.toUpperCase().trim());
+        tlConditions.push(`tl.transfer_type = $${values.length}::transfer_type`);
+      }
+      if (filters.productId) {
+        values.push(filters.productId.trim());
+        tlConditions.push(
+          `EXISTS (SELECT 1 FROM trip_load_items tli WHERE tli.load_id = tl.id AND tli.product_id = $${values.length})`
+        );
+      }
+      if (filters.tripId) {
+        values.push(filters.tripId.trim());
+        tlConditions.push(`tl.trip_id = $${values.length}`);
+      }
+      if (filters.truckId) {
+        values.push(filters.truckId.trim());
+        tlConditions.push(`t.truck_id = $${values.length}`);
+      }
+      if (filters.startDate) {
+        values.push(filters.startDate);
+        tlConditions.push(`tl.recorded_at >= $${values.length}`);
+      }
+      if (filters.endDate) {
+        values.push(filters.endDate);
+        tlConditions.push(`tl.recorded_at <= $${values.length}`);
+      }
+      if (filters.search) {
+        values.push(`%${filters.search.trim()}%`);
+        tlConditions.push(
+          `(tl.slip_number ILIKE $${values.length} OR t.trip_number ILIKE $${values.length} OR v.plate_number ILIKE $${values.length} OR tl.remarks ILIKE $${values.length})`
+        );
+      }
+    }
+
+    if (includePlantAdjustments) {
+      if (filters.transferType) {
+        values.push(filters.transferType.toUpperCase().trim());
+        psaConditions.push(`psa.adjustment_type = $${values.length}::plant_adjustment_type`);
+      }
+      if (filters.productId) {
+        values.push(filters.productId.trim());
+        psaConditions.push(`psa.product_id = $${values.length}`);
+      }
+      if (filters.startDate) {
+        values.push(filters.startDate);
+        psaConditions.push(`psa.recorded_at >= $${values.length}`);
+      }
+      if (filters.endDate) {
+        values.push(filters.endDate);
+        psaConditions.push(`psa.recorded_at <= $${values.length}`);
+      }
+      if (filters.search) {
+        values.push(`%${filters.search.trim()}%`);
+        psaConditions.push(
+          `(psa.supplier_invoice_number ILIKE $${values.length} OR psa.reason ILIKE $${values.length} OR p.name ILIKE $${values.length})`
+        );
+      }
+    }
+
+    const subqueries = [];
+
+    if (includeTripLoads) {
+      const whereTL = tlConditions.length > 0 ? `WHERE ${tlConditions.join(' AND ')}` : '';
+      subqueries.push(`
+        SELECT
+          tl.id,
+          'TRIP_LOAD'::text AS source_type,
+          tl.transfer_type::text AS transfer_type,
+          tl.slip_number,
+          tl.recorded_at,
+          tl.recorded_by,
+          tl.remarks,
+          t.id AS trip_id,
+          t.trip_number::text AS trip_number,
+          v.id AS truck_id,
+          v.plate_number::text AS truck_plate_number,
+          NULL::text AS supplier_invoice_number,
+          NULL::uuid AS product_id,
+          NULL::text AS product_name,
+          NULL::text AS product_category,
+          NULL::text AS container_type,
+          NULL::numeric AS net_weight_kg,
+          NULL::text AS target_condition,
+          NULL::int AS delta_quantity,
+          u.username AS recorded_by_username,
+          u.first_name AS recorded_by_first_name,
+          u.last_name AS recorded_by_last_name
+        FROM trip_loads tl
+        LEFT JOIN trips t ON tl.trip_id = t.id
+        LEFT JOIN vehicles v ON t.truck_id = v.id
+        LEFT JOIN users u ON tl.recorded_by = u.id
+        ${whereTL}
+      `);
+    }
+
+    if (includePlantAdjustments) {
+      const wherePSA = psaConditions.length > 0 ? `WHERE ${psaConditions.join(' AND ')}` : '';
+      subqueries.push(`
+        SELECT
+          psa.id,
+          'PLANT_ADJUSTMENT'::text AS source_type,
+          psa.adjustment_type::text AS transfer_type,
+          COALESCE(psa.supplier_invoice_number, 'ADJ-' || UPPER(SUBSTRING(psa.id::text, 1, 8))) AS slip_number,
+          psa.recorded_at,
+          psa.recorded_by,
+          psa.reason AS remarks,
+          NULL::uuid AS trip_id,
+          NULL::text AS trip_number,
+          NULL::uuid AS truck_id,
+          NULL::text AS truck_plate_number,
+          psa.supplier_invoice_number::text AS supplier_invoice_number,
+          psa.product_id,
+          p.name AS product_name,
+          p.category AS product_category,
+          p.container_type::text AS container_type,
+          p.net_weight_kg,
+          psa.target_condition::text AS target_condition,
+          psa.delta_quantity::int AS delta_quantity,
+          u.username AS recorded_by_username,
+          u.first_name AS recorded_by_first_name,
+          u.last_name AS recorded_by_last_name
+        FROM plant_stock_adjustments psa
+        JOIN products p ON psa.product_id = p.id
+        LEFT JOIN users u ON psa.recorded_by = u.id
+        ${wherePSA}
+      `);
+    }
+
+    const unionSql = subqueries.join(' UNION ALL ');
+
+    let total = null;
+    if (pagination && pagination.isPaginated) {
+      const countSql = `SELECT COUNT(*)::int AS count FROM (${unionSql}) AS combined`;
+      const countRes = await query(countSql, values);
+      total = countRes.rows[0].count;
+    }
+
+    let limitOffsetClause = '';
+    const queryValues = [...values];
+    if (pagination && pagination.isPaginated) {
+      const offset = (pagination.page - 1) * pagination.limit;
+      queryValues.push(pagination.limit);
+      const limitParam = `$${queryValues.length}`;
+      queryValues.push(offset);
+      const offsetParam = `$${queryValues.length}`;
+      limitOffsetClause = `LIMIT ${limitParam} OFFSET ${offsetParam}`;
+    }
+
+    const selectSql = `
+      SELECT * FROM (${unionSql}) AS combined
+      ORDER BY recorded_at DESC, id DESC
+      ${limitOffsetClause}
+    `;
+
+    const res = await query(selectSql, queryValues);
+    const rows = res.rows;
+
+    const tripLoadIds = rows.filter((r) => r.source_type === 'TRIP_LOAD').map((r) => r.id);
+    const itemsByLoad = {};
+    if (tripLoadIds.length > 0) {
+      const itemsSql = `
+        SELECT 
+          tli.id,
+          tli.load_id,
+          tli.product_id,
+          tli.condition,
+          tli.quantity_units,
+          p.name AS product_name,
+          p.category AS product_category,
+          p.container_type,
+          p.net_weight_kg
+        FROM trip_load_items tli
+        JOIN products p ON tli.product_id = p.id
+        WHERE tli.load_id = ANY($1::uuid[])
+        ORDER BY p.name ASC, tli.condition ASC
+      `;
+      const itemsRes = await query(itemsSql, [tripLoadIds]);
+      for (const it of itemsRes.rows) {
+        if (!itemsByLoad[it.load_id]) {
+          itemsByLoad[it.load_id] = [];
+        }
+        const isCanister = it.container_type === 'CANISTER';
+        itemsByLoad[it.load_id].push({
+          id: it.id,
+          productId: it.product_id,
+          productName: it.product_name,
+          productCategory: it.product_category,
+          containerType: it.container_type,
+          netWeightKg: it.net_weight_kg != null ? parseFloat(it.net_weight_kg) : null,
+          condition: it.condition,
+          quantityUnits: it.quantity_units,
+          crates: isCanister ? Math.floor(it.quantity_units / 24) : null,
+        });
+      }
+    }
+
+    const formattedTransfers = rows.map((r) => {
+      let items = [];
+      if (r.source_type === 'TRIP_LOAD') {
+        items = itemsByLoad[r.id] || [];
+      } else if (r.source_type === 'PLANT_ADJUSTMENT') {
+        const isCanister = r.container_type === 'CANISTER';
+        const qty = Math.abs(r.delta_quantity);
+        items = [
+          {
+            id: r.id,
+            productId: r.product_id,
+            productName: r.product_name,
+            productCategory: r.product_category,
+            containerType: r.container_type,
+            netWeightKg: r.net_weight_kg != null ? parseFloat(r.net_weight_kg) : null,
+            condition: r.target_condition,
+            quantityUnits: qty,
+            crates: isCanister ? Math.floor(qty / 24) : null,
+          },
+        ];
+      }
+
+      return {
+        id: r.id,
+        sourceType: r.source_type,
+        transferType: r.transfer_type,
+        slipNumber: r.slip_number,
+        recordedAt: r.recorded_at,
+        recordedBy: r.recorded_by
+          ? {
+              id: r.recorded_by,
+              username: r.recorded_by_username,
+              firstName: r.recorded_by_first_name,
+              lastName: r.recorded_by_last_name,
+            }
+          : null,
+        remarks: r.remarks,
+        trip: r.trip_id
+          ? {
+              id: r.trip_id,
+              tripNumber: r.trip_number,
+              truckId: r.truck_id,
+              plateNumber: r.truck_plate_number,
+            }
+          : null,
+        supplierInvoiceNumber: r.supplier_invoice_number || null,
+        items,
+      };
+    });
+
+    if (pagination && pagination.isPaginated) {
+      return { rows: formattedTransfers, total };
+    }
+    return formattedTransfers;
+  }
 }
 
 module.exports = new InventoryRepository();
