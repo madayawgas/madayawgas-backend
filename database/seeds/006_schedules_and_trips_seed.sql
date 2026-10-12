@@ -127,7 +127,7 @@ ON CONFLICT (truck_id, day_of_week) DO UPDATE SET
 
 INSERT INTO truck_schedules (scheduled_date, truck_id, sales_user_id, zone_id, created_by, status, notes)
 SELECT
-    CURRENT_DATE,
+    CURRENT_DATE + INTERVAL '2 days',
     v.id,
     u.id,
     z.id,
@@ -142,4 +142,37 @@ WHERE v.plate_number = 'ABC-1001'
   AND u.username = 'sales_user'
   AND z.code = 'TORIL'
   AND admin.username = 'logistics_supervisor'
-ON CONFLICT (truck_id, scheduled_date) DO NOTHING;
+  AND NOT EXISTS (
+      SELECT 1 FROM truck_schedules ts
+      WHERE ts.scheduled_date = (CURRENT_DATE + INTERVAL '2 days')::date
+        AND (ts.truck_id = v.id OR ts.sales_user_id = u.id)
+        AND ts.status != 'CANCELLED'
+  )
+ON CONFLICT (truck_id, scheduled_date) WHERE status != 'CANCELLED' DO NOTHING;
+
+
+-- ============================================================
+-- 4. HISTORY LOGS FOR SCHEDULES
+-- ============================================================
+
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    admin.id,
+    admin.first_name || ' ' || admin.last_name,
+    'Logistics Supervisor',
+    'Created',
+    'SCHEDULE',
+    'SCHEDULE_CREATED',
+    'Scheduled route for vehicle ''' || v.plate_number || ''' on ' || ts.scheduled_date::text,
+    ts.id::text,
+    'schedule',
+    ts.created_at
+FROM truck_schedules ts
+JOIN vehicles v ON ts.truck_id = v.id
+JOIN users admin ON ts.created_by = admin.id
+WHERE ts.notes = 'Standard recurring deployment generated from template'
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'SCHEDULE_CREATED' AND hl.target_id = ts.id::text
+  );
+

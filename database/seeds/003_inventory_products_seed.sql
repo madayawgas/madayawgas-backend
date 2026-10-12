@@ -14,6 +14,13 @@ VALUES
         TRUE
     ),
     (
+        'Butane Canister 170g',
+        'Canister',
+        'CANISTER',
+        0.170,
+        TRUE
+    ),
+    (
         '11kg LPG Cylinder',
         'LPG Cylinder',
         'CYLINDER',
@@ -25,6 +32,13 @@ VALUES
         'LPG Cylinder',
         'CYLINDER',
         22.000,
+        TRUE
+    ),
+    (
+        '50kg LPG Cylinder',
+        'LPG Cylinder',
+        'CYLINDER',
+        50.000,
         TRUE
     )
 ON CONFLICT (name) DO UPDATE SET

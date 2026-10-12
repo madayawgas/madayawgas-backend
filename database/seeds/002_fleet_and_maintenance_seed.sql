@@ -57,10 +57,50 @@ ON CONFLICT (plate_number) DO UPDATE SET
     status = EXCLUDED.status;
 
 INSERT INTO vehicles (plate_number, driver_id, vehicle_type, model, year_model, current_odometer, last_pm_odometer, status)
+SELECT
+    'ABC-1002',
+    u.id,
+    'DELIVERY_TRUCK',
+    'Fuso Canter FE71',
+    2021,
+    62500,
+    60000,
+    'ACTIVE'
+FROM users u
+WHERE u.username = 'driver_user2'
+ON CONFLICT (plate_number) DO UPDATE SET
+    driver_id = EXCLUDED.driver_id,
+    vehicle_type = EXCLUDED.vehicle_type,
+    model = EXCLUDED.model,
+    year_model = EXCLUDED.year_model,
+    current_odometer = EXCLUDED.current_odometer,
+    last_pm_odometer = EXCLUDED.last_pm_odometer,
+    status = EXCLUDED.status;
+
+INSERT INTO vehicles (plate_number, driver_id, vehicle_type, model, year_model, current_odometer, last_pm_odometer, status)
+SELECT
+    'ABC-1004',
+    u.id,
+    'SERVICE_PICKUP',
+    'Toyota Hilux Single Cab',
+    2020,
+    115000,
+    110000,
+    'ACTIVE'
+FROM users u
+WHERE u.username = 'driver_user3'
+ON CONFLICT (plate_number) DO UPDATE SET
+    driver_id = EXCLUDED.driver_id,
+    vehicle_type = EXCLUDED.vehicle_type,
+    model = EXCLUDED.model,
+    year_model = EXCLUDED.year_model,
+    current_odometer = EXCLUDED.current_odometer,
+    last_pm_odometer = EXCLUDED.last_pm_odometer,
+    status = EXCLUDED.status;
+
+INSERT INTO vehicles (plate_number, driver_id, vehicle_type, model, year_model, current_odometer, last_pm_odometer, status)
 VALUES
-    ('ABC-1002', NULL, 'DELIVERY_TRUCK', 'Fuso Canter FE71', 2021, 62500, 60000, 'ACTIVE'),
     ('ABC-1003', NULL, 'DELIVERY_TRUCK', 'Hino 300 Series', 2023, 28000, 25000, 'UNDER_MAINTENANCE'),
-    ('ABC-1004', NULL, 'SERVICE_PICKUP', 'Toyota Hilux Single Cab', 2020, 115000, 110000, 'ACTIVE'),
     ('ABC-1005', NULL, 'UTILITY_VAN', 'Hyundai HD78 GT', 2019, 148000, 140000, 'INACTIVE')
 ON CONFLICT (plate_number) DO UPDATE SET
     driver_id = EXCLUDED.driver_id,
