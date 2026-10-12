@@ -42,8 +42,10 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
   let salesRep1User;
   let salesRep2User;
   let driverUser;
+  let driverUser2;
 
   let activeTruck;
+  let activeTruck2;
   let maintenanceTruck;
   let testZone;
   let butaneProduct;
@@ -127,6 +129,8 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_sched_%')`);
     await query(`DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_sched_%')`);
     await query(`DELETE FROM users WHERE username LIKE 'test_sched_%'`);
+    await query(`DELETE FROM plant_inventory WHERE product_id IN (SELECT id FROM products WHERE name LIKE 'TEST-SCHED-%')`);
+    await query(`DELETE FROM products WHERE name LIKE 'TEST-SCHED-%'`);
 
     // 2. Fetch role IDs
     const adminRoleId = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
@@ -172,6 +176,13 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     );
     driverUser = drvRes.rows[0];
 
+    const drv2Res = await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE) RETURNING *`,
+      ['test_sched_driver2', passwordHash, 'Ramon', 'DriverTwo', '+639174000006', driverRoleId]
+    );
+    driverUser2 = drv2Res.rows[0];
+
     // 4. Create vehicles
     const truck1Res = await query(`
       INSERT INTO vehicles (plate_number, model, year_model, vehicle_type, current_odometer, last_pm_odometer, status, driver_id)
@@ -187,6 +198,13 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     `);
     maintenanceTruck = truck2Res.rows[0];
 
+    const truck3Res = await query(`
+      INSERT INTO vehicles (plate_number, model, year_model, vehicle_type, current_odometer, last_pm_odometer, status, driver_id)
+      VALUES ('TEST-SCHED-TRK3', 'Mitsubishi Canter', 2023, 'DELIVERY_TRUCK', 15000, 15000, 'ACTIVE', $1)
+      RETURNING *
+    `, [driverUser2.id]);
+    activeTruck2 = truck3Res.rows[0];
+
     // 5. Create service zone
     const zoneRes = await query(`
       INSERT INTO service_zones (code, name, description, is_active)
@@ -195,10 +213,25 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     `);
     testZone = zoneRes.rows[0];
 
-    // 6. Fetch products
+    // 6. Fetch products & guarantee test plant stock
     const prodRes = await query(`SELECT id, name FROM products WHERE is_active = TRUE LIMIT 2`);
     butaneProduct = prodRes.rows[0];
     lpgProduct = prodRes.rows[1] || prodRes.rows[0];
+
+    if (butaneProduct) {
+      await query(`
+        INSERT INTO plant_inventory (product_id, quantity_filled, quantity_empty_good, quantity_defective)
+        VALUES ($1, 5000, 1000, 50)
+        ON CONFLICT (product_id) DO UPDATE SET quantity_filled = GREATEST(plant_inventory.quantity_filled, 5000)
+      `, [butaneProduct.id]);
+    }
+    if (lpgProduct && lpgProduct.id !== butaneProduct?.id) {
+      await query(`
+        INSERT INTO plant_inventory (product_id, quantity_filled, quantity_empty_good, quantity_defective)
+        VALUES ($1, 5000, 1000, 50)
+        ON CONFLICT (product_id) DO UPDATE SET quantity_filled = GREATEST(plant_inventory.quantity_filled, 5000)
+      `, [lpgProduct.id]);
+    }
 
     // 7. Obtain session cookies
     const adminLogin = await fetch(`${baseUrl}/api/users/login`, {
@@ -386,7 +419,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     await query(`
       INSERT INTO schedule_templates (truck_id, zone_id, day_of_week, default_sales_user_id, is_active)
       VALUES ($1, $2, 1, $3, TRUE)
-    `, [maintenanceTruck.id, testZone.id, salesRep1User.id]);
+    `, [maintenanceTruck.id, testZone.id, salesRep2User.id]);
 
     // 3.2 Generate schedules for a Monday: 2026-10-05 is a Monday
     const genRes = await fetch(`${baseUrl}/api/schedules/generate`, {
@@ -847,5 +880,688 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     assert.ok(actions.includes('TRIP_STOCK_LOADED'), 'TRIP_STOCK_LOADED should be logged');
     assert.ok(actions.includes('TRIP_COMPLETED'), 'TRIP_COMPLETED should be logged');
     assert.ok(actions.includes('TRIP_RECONCILED'), 'TRIP_RECONCILED should be logged');
+  });
+
+  // ------------------------------------------------------------
+  // Subtest 9: Scheduling Hardening & Anti-Collision Constraints
+  // ------------------------------------------------------------
+  await t.test('9. Scheduling Hardening - Sales Double-Booking & Cancelled Rescheduling', async () => {
+    // 9.1 Double-booking sales person on same scheduled_date (409 Conflict)
+    const sched1 = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-15',
+        truckId: activeTruck.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_double_book_1',
+      }),
+    });
+    assert.equal(sched1.status, 201);
+    const sched1Data = (await sched1.json()).data.schedule;
+
+    // Attempting to schedule activeTruck2 with salesRep1User on the SAME date
+    const dupSalesSched = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-15',
+        truckId: activeTruck2.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_double_book_2',
+      }),
+    });
+    assert.equal(dupSalesSched.status, 409);
+    const dupBody = await dupSalesSched.json();
+    assert.match(dupBody.message, /already has a schedule for 2026-10-15/i);
+
+    // 9.2 Updating an existing schedule to an already-booked sales rep triggers 409
+    const sched2 = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-15',
+        truckId: activeTruck2.id,
+        salesUserId: salesRep2User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_truck2_sched',
+      }),
+    });
+    assert.equal(sched2.status, 201);
+    const sched2Data = (await sched2.json()).data.schedule;
+
+    const patchSalesConflict = await fetch(`${baseUrl}/api/schedules/${sched2Data.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        salesUserId: salesRep1User.id,
+      }),
+    });
+    assert.equal(patchSalesConflict.status, 409);
+
+    // 9.3 Rescheduling truck on same date after previous schedule is CANCELLED (201 OK)
+    const cancelRes = await fetch(`${baseUrl}/api/schedules/${sched1Data.id}/cancel`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({ reason: 'Morning cancellation for rescheduling test' }),
+    });
+    assert.equal(cancelRes.status, 200);
+
+    // Now reschedule activeTruck on 2026-10-15 (should succeed because sched1 is CANCELLED)
+    const rescheduleRes = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-15',
+        truckId: activeTruck.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_rescheduled_after_cancellation',
+      }),
+    });
+    assert.equal(rescheduleRes.status, 201);
+
+    // 9.4 Weekly template sales person uniqueness on the same day_of_week
+    const tpl1 = await fetch(`${baseUrl}/api/schedules/templates`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        zoneId: testZone.id,
+        dayOfWeek: 2,
+        defaultSalesUserId: salesRep1User.id,
+      }),
+    });
+    assert.equal(tpl1.status, 201);
+
+    const tplDupSales = await fetch(`${baseUrl}/api/schedules/templates`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck2.id,
+        zoneId: testZone.id,
+        dayOfWeek: 2,
+        defaultSalesUserId: salesRep1User.id,
+      }),
+    });
+    assert.equal(tplDupSales.status, 409);
+    const tplDupBody = await tplDupSales.json();
+    assert.match(tplDupBody.message, /is already the default sales rep/i);
+  });
+
+  // ------------------------------------------------------------
+  // Subtest 10: Trip Crew Collisions & Unclosed Overnight Trips
+  // ------------------------------------------------------------
+  await t.test('10. Trip Crew Collisions, Unclosed Trips & Retroactive Clock-Out', async () => {
+    // 10.1 Dispatch trip 1 for activeTruck with driverUser & salesRep1User
+    const trip1Res = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        driverId: driverUser.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_crew_trip_1',
+      }),
+    });
+    assert.equal(trip1Res.status, 201);
+    const trip1 = (await trip1Res.json()).data.trip;
+
+    // 10.2 Attempting to dispatch activeTruck2 with the SAME driverUser (409 Conflict)
+    const dupDriverDispatch = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck2.id,
+        driverId: driverUser.id,
+        salesUserId: salesRep2User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_dup_driver',
+      }),
+    });
+    assert.equal(dupDriverDispatch.status, 409);
+    const dupDriverBody = await dupDriverDispatch.json();
+    assert.match(dupDriverBody.message, /already has an ongoing trip.*currently in progress/i);
+
+    // 10.3 Attempting to dispatch activeTruck2 with the SAME salesRep1User (409 Conflict)
+    const dupSalesDispatch = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck2.id,
+        driverId: driverUser2.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_dup_sales',
+      }),
+    });
+    assert.equal(dupSalesDispatch.status, 409);
+    const dupSalesBody = await dupSalesDispatch.json();
+    assert.match(dupSalesBody.message, /already has an ongoing trip.*currently in progress/i);
+
+    // 10.4 Unclosed Day 1 trip blocking Day 2 dispatch with descriptive 409 error
+    await query(`
+      UPDATE trips 
+      SET departure_time = NOW() - INTERVAL '1 day'
+      WHERE id = $1
+    `, [trip1.id]);
+
+    const day2BlockedRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        driverId: driverUser2.id,
+        salesUserId: salesRep2User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_day_2_attempt',
+      }),
+    });
+    assert.equal(day2BlockedRes.status, 409);
+    const day2BlockedBody = await day2BlockedRes.json();
+    assert.match(day2BlockedBody.message, /unclosed trip/i);
+    assert.match(day2BlockedBody.message, /Complete yesterday's check-in/i);
+
+    // 10.5 Graceful retroactive clock-out with returnTime unblocks Day 2 dispatch
+    const retroactiveTime = new Date(Date.now() - 3600000).toISOString();
+    const completeRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/complete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        returnOdometerKm: 10450,
+        returnTime: retroactiveTime,
+        supervisorNotes: 'Retroactive evening clock-out for Day 1',
+      }),
+    });
+    assert.equal(completeRes.status, 200);
+    const completedTrip = (await completeRes.json()).data.trip;
+    assert.equal(completedTrip.status, 'COMPLETED');
+    assert.ok(completedTrip.return_time);
+
+    // Now Day 2 dispatch succeeds
+    const day2SuccessRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        driverId: driverUser.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_day_2_unblocked',
+      }),
+    });
+    assert.equal(day2SuccessRes.status, 201);
+  });
+
+  // ------------------------------------------------------------
+  // Subtest 11: Inventory Stock Integrity, Multi-Load & Reconciliation
+  // ------------------------------------------------------------
+  await t.test('11. Inventory Integrity - Atomic Plant Stock Adjustments, Inactive Product Rejection & Cancel Reversal', async () => {
+    // 11.1 Check initial plant stock
+    const initialPlantRes = await query(
+      `SELECT quantity_filled, quantity_empty_good, quantity_defective FROM plant_inventory WHERE product_id = $1`,
+      [butaneProduct.id]
+    );
+    const initialFilled = initialPlantRes.rows[0].quantity_filled;
+    const initialEmpty = initialPlantRes.rows[0].quantity_empty_good;
+    const initialDefective = initialPlantRes.rows[0].quantity_defective;
+
+    // Dispatch trip with 40 units filled butane
+    const dispatchRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        driverId: driverUser.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_inv_trip',
+        initialLoads: [
+          { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 40 },
+        ],
+      }),
+    });
+    assert.equal(dispatchRes.status, 201);
+    const trip = (await dispatchRes.json()).data.trip;
+
+    // Verify plant stock was atomically decremented by 40
+    const afterDispatchPlant = await query(
+      `SELECT quantity_filled FROM plant_inventory WHERE product_id = $1`,
+      [butaneProduct.id]
+    );
+    assert.equal(afterDispatchPlant.rows[0].quantity_filled, initialFilled - 40);
+
+    // 11.2 Midday reload (DISPATCH_LOAD) decrements plant stock further
+    const reloadRes = await fetch(`${baseUrl}/api/trips/${trip.id}/loads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        transferType: 'DISPATCH_LOAD',
+        remarks: 'Midday reload',
+        items: [
+          { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 15 },
+        ],
+      }),
+    });
+    assert.equal(reloadRes.status, 201);
+
+    const afterReloadPlant = await query(
+      `SELECT quantity_filled FROM plant_inventory WHERE product_id = $1`,
+      [butaneProduct.id]
+    );
+    assert.equal(afterReloadPlant.rows[0].quantity_filled, initialFilled - 55);
+
+    // 11.3 Inactive product rejection (400 Bad Request)
+    const inactProdRes = await query(`
+      INSERT INTO products (name, category, container_type, net_weight_kg, is_active)
+      VALUES ('TEST-SCHED-DEACT-PROD', 'Canister', 'CANISTER', 0.250, FALSE)
+      RETURNING *
+    `);
+    const deactivatedProduct = inactProdRes.rows[0];
+
+    const inactLoadRes = await fetch(`${baseUrl}/api/trips/${trip.id}/loads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        transferType: 'DISPATCH_LOAD',
+        remarks: 'Attempt to load deactivated item',
+        items: [
+          { productId: deactivatedProduct.id, condition: 'FILLED', quantityUnits: 5 },
+        ],
+      }),
+    });
+    assert.equal(inactLoadRes.status, 400);
+    const inactLoadBody = await inactLoadRes.json();
+    assert.match(inactLoadBody.message, /is inactive and cannot be transferred/i);
+
+    // 11.4 Premature reconciliation rejection while trip is IN_PROGRESS (400 Bad Request)
+    const prematureRecRes = await fetch(`${baseUrl}/api/inventory/trips/${trip.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        syncCompleted: true,
+        salesData: [{ productId: butaneProduct.id, soldFull: 30 }],
+      }),
+    });
+    assert.equal(prematureRecRes.status, 400);
+    const prematureRecBody = await prematureRecRes.json();
+    assert.match(prematureRecBody.message, /Cannot reconcile a trip that has not completed plant return check-in/i);
+
+    // 11.5 Plant return check-in with returnLoads replenishes plant buckets
+    const returnCheckinRes = await fetch(`${baseUrl}/api/trips/${trip.id}/complete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        returnOdometerKm: 10600,
+        supervisorNotes: 'End of shift check-in',
+        returnLoads: [
+          { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 10 },
+          { productId: butaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 25 },
+          { productId: butaneProduct.id, condition: 'DEFECTIVE', quantityUnits: 2 },
+        ],
+      }),
+    });
+    assert.equal(returnCheckinRes.status, 200);
+
+    const afterReturnPlant = await query(
+      `SELECT quantity_filled, quantity_empty_good, quantity_defective FROM plant_inventory WHERE product_id = $1`,
+      [butaneProduct.id]
+    );
+    assert.equal(afterReturnPlant.rows[0].quantity_filled, initialFilled - 45);
+    assert.equal(afterReturnPlant.rows[0].quantity_empty_good, initialEmpty + 25);
+    assert.equal(afterReturnPlant.rows[0].quantity_defective, initialDefective + 2);
+
+    // 11.6 Reconcile trip and verify fullDiscrepancy includes defective cylinders
+    // Loaded: 40 + 15 = 55
+    // Sold: 20
+    // Returned filled: 10
+    // Returned defective: 2
+    // Discrepancy = 55 - 20 - 10 - 2 = 23
+    const recRes = await fetch(`${baseUrl}/api/trips/${trip.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        totalSoldFull: 20,
+        netCustomerDebtCreated: 0,
+        supervisorNotes: 'Variance check with defective cylinders',
+      }),
+    });
+    assert.equal(recRes.status, 200);
+    const recBody = await recRes.json();
+    assert.equal(recBody.data.reconciliation.fullDiscrepancy, 23);
+    assert.equal(recBody.data.reconciliation.status, 'FLAGGED_VARIANCE');
+
+    // 11.7 Trip cancellation net stock reversal
+    const tripToCancelRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck2.id,
+        driverId: driverUser2.id,
+        salesUserId: salesRep2User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_to_cancel',
+        initialLoads: [
+          { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 30 },
+        ],
+      }),
+    });
+    assert.equal(tripToCancelRes.status, 201);
+    const tripToCancel = (await tripToCancelRes.json()).data.trip;
+
+    const plantBeforeCancel = await query(
+      `SELECT quantity_filled FROM plant_inventory WHERE product_id = $1`,
+      [butaneProduct.id]
+    );
+
+    // Cancel trip
+    const cancelTripRes = await fetch(`${baseUrl}/api/trips/${tripToCancel.id}/cancel`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({ cancellationReason: 'Emergency trip abort at depot' }),
+    });
+    assert.equal(cancelTripRes.status, 200);
+    const cancelledTrip = (await cancelTripRes.json()).data.trip;
+    assert.equal(cancelledTrip.status, 'CANCELLED');
+
+    // Verify plant inventory was restored (+30)
+    const plantAfterCancel = await query(
+      `SELECT quantity_filled FROM plant_inventory WHERE product_id = $1`,
+      [butaneProduct.id]
+    );
+    assert.equal(plantAfterCancel.rows[0].quantity_filled, plantBeforeCancel.rows[0].quantity_filled + 30);
+
+    // Verify RETURN_UNLOAD load was recorded
+    const cancelLoads = await query(
+      `SELECT transfer_type, remarks FROM trip_loads WHERE trip_id = $1 AND transfer_type = 'RETURN_UNLOAD'`,
+      [tripToCancel.id]
+    );
+    assert.equal(cancelLoads.rows.length, 1);
+    assert.match(cancelLoads.rows[0].remarks, /Automated stock reversal upon trip cancellation/i);
+  });
+
+  // ------------------------------------------------------------
+  // Subtest 12: Route & Schedule Invariants - Sales Persons Endpoint, UUID Sanitization & Date Formatting
+  // ------------------------------------------------------------
+  await t.test('12. Route & Schedule Invariants - Sales Persons Endpoint, UUID Sanitization & Date Formatting', async () => {
+    // 12.1 GET /api/schedules/sales-persons requires authentication (401)
+    const unauthRes = await fetch(`${baseUrl}/api/schedules/sales-persons`);
+    assert.equal(unauthRes.status, 401);
+
+    // 12.2 GET /api/schedules/sales-persons accessible to route managers (200 OK)
+    const salesPersonsRes = await fetch(`${baseUrl}/api/schedules/sales-persons`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(salesPersonsRes.status, 200);
+    const salesPersonsBody = await salesPersonsRes.json();
+    assert.equal(salesPersonsBody.status, 'success');
+    assert.ok(Array.isArray(salesPersonsBody.data.salesPersons));
+    assert.ok(salesPersonsBody.data.salesPersons.length >= 2);
+
+    const testSales = salesPersonsBody.data.salesPersons.find((s) => s.id === salesRep1User.id);
+    assert.ok(testSales, 'Expected salesRep1User in salesPersons list');
+    assert.equal(testSales.username, 'test_sched_sales1');
+    assert.equal(testSales.roleName, 'Sales Person');
+    assert.equal(testSales.fullName, 'Juan SalesOne');
+
+    // 12.2a GET /api/schedules/sales-persons accessible to users.view (Admin: 200 OK)
+    const adminSalesPersonsRes = await fetch(`${baseUrl}/api/schedules/sales-persons`, {
+      headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(adminSalesPersonsRes.status, 200);
+
+    // 12.2b Sales Supervisor (sales.view) access to sales-persons & blocked from fleet drivers (403)
+    const salesSupRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`)).rows[0]?.id;
+    if (salesSupRoleId) {
+      const hash = await bcrypt.hash('SchedPass123!', 10);
+      await query(
+        `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
+         ON CONFLICT (username) DO NOTHING`,
+        ['test_sched_salessup', hash, 'Sarah', 'Supervisor', '+639174000099', salesSupRoleId]
+      );
+      const supLogin = await fetch(`${baseUrl}/api/users/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'test_sched_salessup', password: 'SchedPass123!' }),
+      });
+      const supCookie = parseCookieHeader(supLogin);
+      assert.ok(supCookie, 'Expected session cookie for test_sched_salessup');
+
+      // Accessible via sales.view (200 OK)
+      const supSalesPersonsRes = await fetch(`${baseUrl}/api/schedules/sales-persons`, {
+        headers: { Cookie: `mg_sid=${supCookie}` },
+      });
+      assert.equal(supSalesPersonsRes.status, 200);
+
+      // Sales supervisor without fleet/route permissions is blocked from drivers (403 Forbidden)
+      const supDriversRes = await fetch(`${baseUrl}/api/fleet/drivers`, {
+        headers: { Cookie: `mg_sid=${supCookie}` },
+      });
+      assert.equal(supDriversRes.status, 403);
+    }
+
+    // 12.2c Unprivileged user with only sales.view_own is blocked from sales-persons and drivers (403 Forbidden)
+    const repBlockedSalesPersons = await fetch(`${baseUrl}/api/schedules/sales-persons`, {
+      headers: { Cookie: `mg_sid=${salesRep1Cookie}` },
+    });
+    assert.equal(repBlockedSalesPersons.status, 403);
+
+    const repBlockedDrivers = await fetch(`${baseUrl}/api/fleet/drivers`, {
+      headers: { Cookie: `mg_sid=${salesRep1Cookie}` },
+    });
+    assert.equal(repBlockedDrivers.status, 403);
+
+    // 12.2d Route manager (logisticsCookie) can list drivers via route.view/route.manage (200 OK)
+    const routeDriversRes = await fetch(`${baseUrl}/api/fleet/drivers`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(routeDriversRes.status, 200);
+    const routeDriversJson = await routeDriversRes.json();
+    assert.equal(routeDriversJson.status, 'success');
+    assert.ok(Array.isArray(routeDriversJson.data.drivers));
+
+    const routeAvailDriversRes = await fetch(`${baseUrl}/api/fleet/drivers/available`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(routeAvailDriversRes.status, 200);
+    const routeAvailDriversJson = await routeAvailDriversRes.json();
+    assert.equal(routeAvailDriversJson.status, 'success');
+    assert.ok(Array.isArray(routeAvailDriversJson.data.drivers));
+
+    // 12.3 Mock UUID rejection on schedule template creation (400 Bad Request)
+    const mockUuid = 'q1w2e3r4-t5y6-u7i8-o9p0-a1s2d3f4g5h6';
+    const badTplRes = await fetch(`${baseUrl}/api/schedules/templates`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        zoneId: testZone.id,
+        dayOfWeek: 2, // Tuesday
+        defaultSalesUserId: mockUuid,
+      }),
+    });
+    assert.equal(badTplRes.status, 400);
+    const badTplBody = await badTplRes.json();
+    assert.equal(badTplBody.status, 'fail');
+    assert.match(badTplBody.message, /Sales User ID must be a valid UUID/i);
+
+    // 12.4 Empty string defaultSalesUserId coercion to null (201 Created)
+    const emptyStringTplRes = await fetch(`${baseUrl}/api/schedules/templates`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        zoneId: testZone.id,
+        dayOfWeek: 2, // Tuesday
+        defaultSalesUserId: '',
+      }),
+    });
+    assert.equal(emptyStringTplRes.status, 201);
+    const emptyStringTplBody = await emptyStringTplRes.json();
+    assert.equal(emptyStringTplBody.data.template.default_sales_user_id, null);
+
+    // 12.5 Mock UUID rejection on ad-hoc schedule creation (400 Bad Request)
+    const badSchedRes = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-14',
+        truckId: activeTruck.id,
+        salesUserId: mockUuid,
+        zoneId: testZone.id,
+      }),
+    });
+    assert.equal(badSchedRes.status, 400);
+    const badSchedBody = await badSchedRes.json();
+    assert.equal(badSchedBody.status, 'fail');
+    assert.match(badSchedBody.message, /Sales User ID must be a valid UUID/i);
+
+    // 12.6 Invalid vehicle UUID on schedule creation (400 Bad Request)
+    const badTruckSchedRes = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-14',
+        truckId: 'not-a-valid-uuid',
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+      }),
+    });
+    assert.equal(badTruckSchedRes.status, 400);
+    const badTruckSchedBody = await badTruckSchedRes.json();
+    assert.equal(badTruckSchedBody.status, 'fail');
+    assert.match(badTruckSchedBody.message, /Vehicle ID must be a valid UUID/i);
+
+    // 12.7 Date string format invariance (YYYY-MM-DD preserved without timezone drift)
+    const validSchedRes = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-14',
+        truckId: activeTruck.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+        notes: 'test_sched_date_invariance',
+      }),
+    });
+    assert.equal(validSchedRes.status, 201);
+    const createdSched = (await validSchedRes.json()).data.schedule;
+    assert.equal(createdSched.scheduled_date, '2026-10-14');
+
+    // Retrieve via GET /api/schedules/:id
+    const getSchedRes = await fetch(`${baseUrl}/api/schedules/${createdSched.id}`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(getSchedRes.status, 200);
+    const fetchedSched = (await getSchedRes.json()).data.schedule;
+    assert.equal(fetchedSched.scheduled_date, '2026-10-14');
+    assert.notEqual(fetchedSched.scheduled_date, '2026-10-13');
+
+    // 12.8 Batch schedule generator provides skipped alias with clear feedback
+    const batchRes = await fetch(`${baseUrl}/api/schedules/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        startDate: '2026-10-13', // Tuesday (dayOfWeek: 2)
+        endDate: '2026-10-13',
+        overwriteExisting: false,
+      }),
+    });
+    assert.equal(batchRes.status, 201);
+    const batchBody = await batchRes.json();
+    assert.ok(batchBody.data.skipped !== undefined, 'Expected skipped alias in generator response');
+    assert.deepEqual(batchBody.data.skipped, batchBody.data.skippedDetails);
+    // Since emptyStringTpl has default_sales_user_id: null, it is skipped with clear reason
+    const skippedTpl = batchBody.data.skipped.find((s) => s.plateNumber === activeTruck.plate_number);
+    assert.ok(skippedTpl, 'Expected truck with null sales rep to be skipped');
+    assert.match(skippedTpl.reason, /Template has no default Sales Person assigned/i);
   });
 });

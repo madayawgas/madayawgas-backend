@@ -156,8 +156,9 @@ class TripsRepository {
   /**
    * Retrieves single trip by UUID with complete details.
    * @param {string} id - Trip UUID
+   * @param {Object} [client] - Optional transactional client runner
    */
-  async getTripById(id) {
+  async getTripById(id, client = null) {
     const sql = `
       SELECT 
         t.id,
@@ -212,7 +213,8 @@ class TripsRepository {
       WHERE t.id = $1
     `;
 
-    const result = await query(sql, [id]);
+    const runner = client || { query };
+    const result = await runner.query(sql, [id]);
     return result.rows[0] || null;
   }
 
@@ -229,6 +231,38 @@ class TripsRepository {
     `;
 
     const result = await query(sql, [truckId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Checks if a driver has an ongoing active trip (IN_PROGRESS).
+   * @param {string} driverId
+   */
+  async findActiveTripByDriverId(driverId) {
+    const sql = `
+      SELECT *
+      FROM trips
+      WHERE driver_id = $1 AND status IN ('PENDING', 'IN_PROGRESS')
+      LIMIT 1
+    `;
+
+    const result = await query(sql, [driverId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Checks if a sales user has an ongoing active trip (IN_PROGRESS).
+   * @param {string} salesUserId
+   */
+  async findActiveTripBySalesUserId(salesUserId) {
+    const sql = `
+      SELECT *
+      FROM trips
+      WHERE sales_user_id = $1 AND status IN ('PENDING', 'IN_PROGRESS')
+      LIMIT 1
+    `;
+
+    const result = await query(sql, [salesUserId]);
     return result.rows[0] || null;
   }
 
@@ -331,7 +365,7 @@ class TripsRepository {
 
     const runner = client || { query };
     await runner.query(sql, params);
-    return this.getTripById(id);
+    return this.getTripById(id, client);
   }
 }
 

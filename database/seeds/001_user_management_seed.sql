@@ -110,6 +110,14 @@ VALUES
         'inventory.manage',
         'Create, update, and manage inventory.'
     ),
+    (
+        'inventory.plant.manage',
+        'Manage master plant physical stock, supplier restocks, and yard defect quarantines.'
+    ),
+    (
+        'inventory.vehicle.manage',
+        'Manage vehicle fleet stock, transfers between plant and trucks, and route reconciliations.'
+    ),
 
 
     -- --------------------------------------------------------
@@ -216,7 +224,7 @@ ON CONFLICT DO NOTHING;
 -- 5. PLANT SUPERVISOR
 -- ============================================================
 -- Plant Supervisor oversees plant operations, cylinder refilling,
--- and plant inventory.
+-- and master plant inventory.
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT
@@ -230,7 +238,7 @@ JOIN permissions p
 
         -- Inventory
         'inventory.view',
-        'inventory.manage'
+        'inventory.plant.manage'
     )
 WHERE r.name = 'Plant Supervisor'
 ON CONFLICT DO NOTHING;
@@ -259,6 +267,9 @@ JOIN permissions p
         -- Route Dispatch
         'route.view',
         'route.manage',
+
+        -- Inventory Transfers
+        'inventory.vehicle.manage',
 
         -- Deliveries
         'delivery.view',
@@ -289,7 +300,7 @@ JOIN permissions p
 
         -- Inventory
         'inventory.view',
-        'inventory.manage',
+        'inventory.vehicle.manage',
 
         -- Sales
         'sales.view',

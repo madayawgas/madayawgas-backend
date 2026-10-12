@@ -93,7 +93,19 @@ router.post(
 
 
 // ============================================================
-// 4. Action Endpoints on Specific Schedules (Before generic :id)
+// 4. Sales Persons Directory (Accessible to Route, Sales & User Managers)
+// ============================================================
+
+router.get(
+  '/sales-persons',
+  authenticate,
+  requirePermission(['route.view', 'route.manage', 'sales.view', 'users.view']),
+  asyncHandler(schedulesController.getActiveSalesPersons.bind(schedulesController))
+);
+
+
+// ============================================================
+// 5. Action Endpoints on Specific Schedules (Before generic :id)
 // ============================================================
 
 router.patch(
@@ -105,7 +117,7 @@ router.patch(
 
 
 // ============================================================
-// 5. Operational Truck Schedules Collection & Parameterized Endpoints
+// 6. Operational Truck Schedules Collection & Parameterized Endpoints
 // ============================================================
 
 router.get(

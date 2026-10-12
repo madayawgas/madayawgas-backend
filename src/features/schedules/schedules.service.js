@@ -142,11 +142,21 @@ class SchedulesService {
 
     const cleanDate = scheduledDate.trim();
 
-    // Check unique constraint for truck and date
-    const existing = await schedulesRepository.findByTruckAndDate(vehicle.id, cleanDate);
+    // Check unique constraint for truck and date (excluding cancelled)
+    const existing = await schedulesRepository.findByTruckAndDate(vehicle.id, cleanDate, true);
     if (existing) {
       const err = new Error(
         `Vehicle '${vehicle.plate_number}' already has a schedule for ${cleanDate}`
+      );
+      err.statusCode = 409;
+      throw err;
+    }
+
+    // Check unique constraint for sales person and date (excluding cancelled)
+    const existingSalesSched = await schedulesRepository.findBySalesUserAndDate(salesUser.id, cleanDate, true);
+    if (existingSalesSched) {
+      const err = new Error(
+        `Sales representative '${salesUser.username}' already has a schedule for ${cleanDate}`
       );
       err.statusCode = 409;
       throw err;
@@ -254,8 +264,8 @@ class SchedulesService {
           continue;
         }
 
-        // 2. Check double booking
-        const existing = await schedulesRepository.findByTruckAndDate(tpl.truck_id, dateStr);
+        // 2. Check truck double booking (excluding cancelled)
+        const existing = await schedulesRepository.findByTruckAndDate(tpl.truck_id, dateStr, true);
         if (existing) {
           skippedDetails.push({
             date: dateStr,
@@ -266,7 +276,7 @@ class SchedulesService {
           continue;
         }
 
-        // 3. Sales rep validation
+        // 3. Sales rep validation & double booking check
         let assignedSalesUserId = tpl.default_sales_user_id;
         if (!assignedSalesUserId) {
           skippedDetails.push({
@@ -278,14 +288,30 @@ class SchedulesService {
           continue;
         }
 
+        let salesUserObj;
         try {
-          await templatesService.verifySalesUser(assignedSalesUserId);
+          salesUserObj = await templatesService.verifySalesUser(assignedSalesUserId);
         } catch (repErr) {
           skippedDetails.push({
             date: dateStr,
             truckId: tpl.truck_id,
             plateNumber: tpl.truck_plate_number,
             reason: `Default sales user is invalid: ${repErr.message}`,
+          });
+          continue;
+        }
+
+        const existingSalesSched = await schedulesRepository.findBySalesUserAndDate(
+          salesUserObj.id,
+          dateStr,
+          true
+        );
+        if (existingSalesSched) {
+          skippedDetails.push({
+            date: dateStr,
+            truckId: tpl.truck_id,
+            plateNumber: tpl.truck_plate_number,
+            reason: `Sales Person '${salesUserObj.username}' is already scheduled on another vehicle for ${dateStr}`,
           });
           continue;
         }
@@ -327,6 +353,7 @@ class SchedulesService {
       generatedCount: generatedSchedules.length,
       skippedCount: skippedDetails.length,
       skippedDetails,
+      skipped: skippedDetails,
       generatedSchedules,
     };
   }
@@ -354,8 +381,18 @@ class SchedulesService {
 
     const updatePayload = {};
 
+    const targetDate = data.scheduledDate ? data.scheduledDate.trim() : current.scheduled_date;
+
     if (data.salesUserId !== undefined) {
       const user = await templatesService.verifySalesUser(data.salesUserId.trim());
+      const existingSales = await schedulesRepository.findBySalesUserAndDate(user.id, targetDate, true);
+      if (existingSales && existingSales.id !== id) {
+        const err = new Error(
+          `Sales representative '${user.username}' already has a schedule for ${targetDate}`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
       updatePayload.salesUserId = user.id;
     }
 
@@ -387,11 +424,26 @@ class SchedulesService {
       }
       const existing = await schedulesRepository.findByTruckAndDate(
         current.truck_id,
-        data.scheduledDate.trim()
+        data.scheduledDate.trim(),
+        true
       );
       if (existing && existing.id !== id) {
         const err = new Error(
           `Vehicle '${current.truck_plate_number}' already has a schedule for ${data.scheduledDate.trim()}`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
+
+      const activeSalesId = updatePayload.salesUserId || current.sales_user_id;
+      const existingSales = await schedulesRepository.findBySalesUserAndDate(
+        activeSalesId,
+        data.scheduledDate.trim(),
+        true
+      );
+      if (existingSales && existingSales.id !== id) {
+        const err = new Error(
+          `Assigned sales representative already has an active schedule for ${data.scheduledDate.trim()}`
         );
         err.statusCode = 409;
         throw err;
@@ -442,6 +494,23 @@ class SchedulesService {
     });
 
     return updated;
+  }
+
+  /**
+   * Retrieves active sales persons eligible for route scheduling.
+   * @param {Object} [filters]
+   */
+  async getActiveSalesPersons(filters = {}) {
+    const rows = await schedulesRepository.getActiveSalesPersons(filters);
+    return rows.map((r) => ({
+      id: r.id,
+      username: r.username,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      fullName: `${r.first_name} ${r.last_name}`.trim(),
+      phone: r.phone,
+      roleName: r.role_name,
+    }));
   }
 }
 

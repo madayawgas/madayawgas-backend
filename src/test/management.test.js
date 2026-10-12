@@ -713,7 +713,7 @@ test('User Administration & Management Tests', async (t) => {
     const plantProfile = await plantLogin.json();
     assert.ok(Array.isArray(plantProfile.data.user.permissions));
     assert.ok(plantProfile.data.user.permissions.includes('inventory.view'));
-    assert.ok(plantProfile.data.user.permissions.includes('inventory.manage'));
+    assert.ok(plantProfile.data.user.permissions.includes('inventory.plant.manage'));
 
 
     // 5. Admin updates a user to multi-role via PATCH /api/users/:id/role

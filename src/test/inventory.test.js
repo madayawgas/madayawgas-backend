@@ -173,7 +173,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(salesPost.status, 403);
 
-    // C. Sales Manager (has inventory.view & inventory.manage) -> GET 200, POST 201
+    // C. Sales Manager (has inventory.view & inventory.vehicle.manage, but lacks inventory.manage) -> GET 200, POST 403
     const smGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
@@ -192,7 +192,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         netWeightKg: 11.0,
       }),
     });
-    assert.equal(smPost.status, 201);
+    assert.equal(smPost.status, 403);
 
     // D. Admin (has inventory.manage) -> POST 201
     const adminPost = await fetch(`${baseUrl}/api/inventory/products`, {

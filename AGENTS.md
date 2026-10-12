@@ -1,6 +1,6 @@
 # AGENTS.md — MadayawGas Backend System Context & Engineering Handbook
 
-> **Last Updated**: August 27, 2026  
+> **Last Updated**: October 12, 2026  
 > **Purpose**: Single source of truth for developer context, system architecture, engineering standards, current work status, and future roadmap across AI agent sessions.
 
 ---
@@ -51,7 +51,8 @@ madayawgas-backend/
 │   │   ├── 009_vehicles_and_receipts_refactor.sql # Vehicles generalization, receipts & work orders refactor
 │   │   ├── 010_schedules_and_trips.sql     # Schedules, templates, zones, trips, loads, reconciliations schema
 │   │   ├── 011_plant_inventory_and_reconciliation.sql # Plant inventory, adjustments, reconciliation fields, views
-│   │   └── 012_normalize_work_order_receipts.sql # Normalized work order receipts media attachment ledger
+│   │   ├── 012_normalize_work_order_receipts.sql # Normalized work order receipts media attachment ledger
+│   │   └── 013_plant_and_vehicle_stock_permissions.sql # Plant vs vehicle stock permissions segregation schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -605,8 +606,96 @@ madayawgas-backend/
     * **Documentation & Contracts**:
       - Updated `docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md` (Endpoints Matrix + Section 3.9).
       - Updated `docs/api-contracts/README.md` master routing matrix.
-
-
+24. **Plant & Vehicle Stock RBAC Segregation (`inventory.plant.manage` vs `inventory.vehicle.manage`)**:
+    * **Database Migration & Role Permissions Alignment (`013_plant_and_vehicle_stock_permissions.sql`)**:
+      - Created migration `013_plant_and_vehicle_stock_permissions.sql` adding granular inventory permissions:
+        - `inventory.plant.manage`: Manage master plant physical stock, supplier restocks, and yard defect quarantines.
+        - `inventory.vehicle.manage`: Manage vehicle fleet stock, transfers between plant and trucks, and route reconciliations.
+      - Granted `inventory.plant.manage` to `Plant Supervisor`, `Admin`, and `Super Admin`.
+      - Granted `inventory.vehicle.manage` to `Sales Supervisor`, `Sales Manager`, `Logistics Supervisor`, `Fleet Manager`, `Admin`, and `Super Admin`.
+      - Revoked broad catalog `inventory.manage` from `Plant Supervisor`, `Sales Supervisor`, and `Sales Manager`, restricting SKU definitions strictly to Admins.
+      - Synchronized `database/seeds/001_user_management_seed.sql` for clean `npm run db:reset` execution.
+    * **Route & Authorization Layer Hardening**:
+      - Hardened Plant Bulk Stock endpoints in `src/features/inventory/inventory.routes.js`:
+        - `POST /api/inventory/plant/restock` guarded strictly by `inventory.plant.manage`.
+        - `POST /api/inventory/plant/quarantine-defects` guarded strictly by `inventory.plant.manage`.
+      - Updated Route Dispatch & Transfer endpoints in `src/features/inventory/inventory.routes.js` and `src/features/trips/trips.routes.js`:
+        - `POST /api/inventory/trips/:tripId/dispatch-load` guarded by `['inventory.vehicle.manage', 'route.manage']`.
+        - `POST /api/inventory/trips/:tripId/return-unload` guarded by `['inventory.vehicle.manage', 'inventory.plant.manage', 'route.manage']`.
+        - `POST /api/inventory/trips/:tripId/reconcile` guarded by `['inventory.vehicle.manage', 'route.manage']`.
+        - `GET /api/inventory/suggested-split`, `GET /api/inventory/transfers`, `GET /api/inventory/vehicles/:vehicleId/stock`, and `GET /api/inventory/trips/:tripId/reconciliation` accept `inventory.vehicle.manage`.
+        - `POST /api/trips/:id/loads` and `POST /api/trips/:id/reconcile` accept `['route.manage', 'inventory.vehicle.manage']`.
+    * **Service Scoping & Cabin Stock Visibility**:
+      - Updated `hasGlobalView` check in `inventoryService.getVehicleActiveStock` to recognize `inventory.vehicle.manage` as possessing global truck stock visibility.
+    * **Testing & Zero Regression Verification**:
+      - Added Subtest 10 in `src/test/inventory.reconciliation.test.js` validating:
+        - Sales Supervisor can execute dispatch loading, return unloads, and trip reconciliation.
+        - Sales Supervisor is blocked with `403 Forbidden` (`INSUFFICIENT_PERMISSIONS`) from `POST /plant/restock` and `POST /plant/quarantine-defects`.
+        - Plant Supervisor can execute restock and quarantine, but is blocked from dispatch loads and reconciliation.
+      - Verified `inventory.test.js`, `management.test.js`, and `media.test.js` with zero regressions.
+      - 100% test pass rate across all 15 test suites (131 out of 131 tests passing) with `npm test`.
+    * **Documentation & Contracts**:
+      - Synchronized `docs/permissions.md`, `docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md`, and `docs/api-contracts/README.md`.
+25. **Hardening Schedules, Trip Operations & Inventory Integrity (Option 1 Implementation)**:
+    * **Database Migration (`014_hardening_schedules_trips_and_inventory.sql`)**:
+      - Replaced unconditional `UQ_truck_schedules_truck_date` with partial unique index `WHERE status != 'CANCELLED'`, allowing trucks to be rescheduled on the same date after a prior cancellation.
+      - Enforced active sales representative schedule uniqueness via partial index `UQ_truck_schedules_active_sales_date` on `(sales_user_id, scheduled_date) WHERE status != 'CANCELLED'`.
+      - Enforced weekly master route template sales representative uniqueness via `UQ_schedule_templates_active_sales_day` on `(default_sales_user_id, day_of_week) WHERE is_active = TRUE AND default_sales_user_id IS NOT NULL`.
+      - Prevented concurrent trip assignment collisions via partial unique indexes:
+        - `UQ_trips_active_truck` on `(truck_id) WHERE status IN ('PENDING', 'IN_PROGRESS')`
+        - `UQ_trips_active_driver` on `(driver_id) WHERE status IN ('PENDING', 'IN_PROGRESS')`
+        - `UQ_trips_active_sales_user` on `(sales_user_id) WHERE status IN ('PENDING', 'IN_PROGRESS')`
+      - Added operational index `IX_trips_overdue_checkin` on `trips(departure_time) WHERE status IN ('PENDING', 'IN_PROGRESS')` for overdue unclosed trip tracking.
+      - Cleanly deduplicated legacy historical duplicate schedules prior to index creation.
+    * **Schedules Subsystem Hardening (`src/features/schedules/`)**:
+      - Implemented sales person double-booking checks in `createSchedule`, `updateSchedule`, and `generateWeeklySchedules`.
+      - Implemented active sales person template conflict validation in `templates.service.js` (`createTemplate`, `updateTemplate`).
+      - Added `expirePastSchedules` query in repository to safely expire un-dispatched past-due schedules to `CANCELLED` status.
+    * **Trips Subsystem Hardening (`src/features/trips/`)**:
+      - Enforced unclosed prior-day trip blocking on `dispatchTrip`: if a truck has an active trip dispatched prior to today, dispatches are blocked with a descriptive `409 Conflict` instructing supervisors to complete yesterday's check-in first.
+      - Added active driver check (`findActiveTripByDriverId`) and active sales rep check (`findActiveTripBySalesUserId`) returning `409 Conflict`.
+      - Integrated atomic plant stock validation and deduction into `dispatchTrip` (`initialLoads`) and `recordTripLoad` (`DISPATCH_LOAD`).
+      - Added retroactive `returnTime` support to `completeTrip` for unclosed overnight runs, alongside atomic plant replenishment for `returnLoads`.
+      - Updated stock reconciliation discrepancy calculation to account for defective cylinders: $fullDiscrepancy = loaded - sold - returnedFull - returnedDefective$.
+      - Hardened `cancelTrip` with automatic net on-board stock reversal restoring inventory to `plant_inventory` and generating a `CANCELLATION_RETURN` transfer slip.
+      - Invariant: deactivated products are rejected with `400 Bad Request` across loading and dispatch line items.
+    * **Inventory Subsystem Hardening (`src/features/inventory/`)**:
+      - Prevented premature reconciliation on trips still out on the road (`IN_PROGRESS` without physical return unloads logged).
+      - Added non-negative sold quantity validation (`soldFull >= 0`) in `reconcileTrip`.
+      - Blocked deactivated products in `validateTransferItems` and `restockFromSupplier`.
+    * **Comprehensive Integration Testing (`npm test`)**:
+      - Added Subtests 9, 10, and 11 to `src/test/schedules.trips.test.js` validating all edge cases, sales collisions, retroactive check-ins, atomic plant stock deductions/replenishments, and cancellation reversals.
+      - Refined `inventory.reconciliation.test.js` to ensure 100% interoperability.
+      - 100% test pass rate across all 15 test suites (134 out of 134 tests passing) with zero regressions.
+26. **Route & Schedule Invariants Enforcement & Bug Prevention**:
+    * **Dedicated Sales Representatives Directory (`GET /api/schedules/sales-persons`)**:
+      - Created dedicated route accessible to roles with `route.view` or `route.manage` (e.g. Logistics Supervisor) without needing administrative `users.view`.
+      - Returns active, unblocked users holding the 'Sales Person' role (supporting both primary role and `user_roles` multi-role associations).
+      - Resolved frontend permission fallback bug where logistics managers saw cached mock IDs in route dropdowns.
+    * **Request Input Validation & UUID Sanitization (Zod)**:
+      - Integrated Zod schema validation across `templates.controller.js` and `schedules.controller.js` (`CreateTemplateSchema`, `UpdateTemplateSchema`, `CreateScheduleSchema`, `UpdateScheduleSchema`, `GenerateSchedulesSchema`, `CancelScheduleSchema`, `UUIDParamSchema`).
+      - Coerced empty strings `""` and whitespace to `null` on `defaultSalesUserId` via `z.preprocess`, cleanly resolving template creation payload errors.
+      - Intercepted invalid / mock UUIDs (e.g. `"q1w2e3r4-t5y6-u7i8-o9p0-a1s2d3f4g5h6"`) at controller and service layer (`verifySalesUser`), returning descriptive `400 Bad Request` without hitting PostgreSQL or leaking raw database exceptions.
+    * **PostgreSQL DATE Timezone Invariance**:
+      - Configured node-postgres custom type parser for OID 1082 (`DATE`) to return raw `"YYYY-MM-DD"` date strings in `database/connection.js`.
+      - Applied `TO_CHAR(ts.scheduled_date, 'YYYY-MM-DD') AS scheduled_date` across `schedules.repository.js` queries (`baseSelect`, `getScheduleById`), eliminating UTC date rollback shifts.
+    * **Enhanced Batch Schedule Generator Feedback**:
+      - Added `skipped: skippedDetails` alias in `generateWeeklySchedules` response containing vehicle plate numbers, dates, and clear skip explanations (e.g. `Template has no default Sales Person assigned`).
+    * **Comprehensive Integration Testing**:
+      - Added Subtest 12 to `src/test/schedules.trips.test.js` validating authentication guards, mock UUID rejection (400), empty string coercion to null (201), date string invariance, and generator skipped feedback.
+      - 100% test pass rate across all 15 test suites (135 out of 135 tests passing) with `npm test`.
+27. **Cross-Functional Driver & Sales Representative Permissions Expansion**:
+    * **Driver Listing Endpoints (`/api/fleet/drivers`, `/api/fleet/drivers/available`, `/api/fleet/available-drivers`)**:
+      - Expanded `requirePermission` guard from `fleet.view` to `['fleet.view', 'fleet.manage', 'route.view', 'route.manage']`.
+      - Allows Route Managers and Dispatchers to query eligible and available drivers for trip planning and dispatches without requiring broad fleet asset management privileges (`fleet.manage`).
+    * **Sales Persons Directory Endpoint (`/api/schedules/sales-persons`)**:
+      - Expanded `requirePermission` guard to `['route.view', 'route.manage', 'sales.view', 'users.view']`.
+      - Allows Sales Supervisors (`sales.view`) and User Administrators (`users.view`) cross-domain visibility into active sales personnel for order oversight and team scheduling.
+    * **Contract & API Documentation Synchronization**:
+      - Updated `docs/api-contracts/fleet/drivers.api.md`, `docs/api-contracts/schedules/schedules.api.md`, and `docs/api-contracts/README.md`.
+    * **Comprehensive Integration Testing**:
+      - Added cross-role authorization and negative barrier checks to Subtest 12 in `src/test/schedules.trips.test.js`.
+      - 100% test pass rate across all 15 test suites (135 out of 135 tests passing) with `npm test`.
 
 ---
 
@@ -618,12 +707,12 @@ The database seed provides permanent accounts for system testing (`must_change_p
 | :--- | :--- | :--- | :--- | :--- |
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access (`*`). Cannot be deactivated, blocked, or demoted. |
 | **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales, history. |
-| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet & logistics oversight (`dashboard.view`, `fleet.view`, `fleet.manage`, `route.view`, `route.manage`, `delivery.view`, `delivery.update`). |
+| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet & logistics oversight (`dashboard.view`, `fleet.view`, `fleet.manage`, `route.view`, `route.manage`, `inventory.vehicle.manage`, `delivery.view`, `delivery.update`, `history.view`). |
 | **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Vehicle driver record for fleet truck assignments. **No login permissions**. |
-| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & inventory (`inventory.view`, `inventory.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). |
+| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & vehicle stock (`dashboard.view`, `inventory.view`, `inventory.vehicle.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). Cannot manipulate plant master stock or define product SKUs. |
 | **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
-| **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Oversees Bunawan refilling yard bulk stock (`dashboard.view`, `inventory.view`, `inventory.manage`). Routes, fleet, sales, and user admin are strictly blocked. |
-| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.*`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
+| **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Master Bunawan yard stock & defect quarantines (`dashboard.view`, `inventory.view`, `inventory.plant.manage`). Route dispatches, vehicle stock manipulation, fleet, sales, and user admin are strictly blocked. |
+| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
 
 ---
 

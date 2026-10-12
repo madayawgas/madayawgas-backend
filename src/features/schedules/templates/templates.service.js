@@ -15,6 +15,13 @@ class TemplatesService {
   async verifySalesUser(userId) {
     if (!userId) return null;
 
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (typeof userId !== 'string' || !UUID_REGEX.test(userId.trim())) {
+      const err = new Error('Sales User ID must be a valid UUID');
+      err.statusCode = 400;
+      throw err;
+    }
+
     const sql = `
       SELECT 
         u.id, 
@@ -135,7 +142,21 @@ class TemplatesService {
     }
 
     if (defaultSalesUserId) {
-      await this.verifySalesUser(defaultSalesUserId.trim());
+      const verifiedSales = await this.verifySalesUser(defaultSalesUserId.trim());
+      const existingSalesTemplates = await templatesRepository.getAllTemplates({
+        dayOfWeek: parsedDay,
+        isActive: true,
+      });
+      const conflict = existingSalesTemplates.find(
+        (t) => t.default_sales_user_id === verifiedSales.id
+      );
+      if (conflict) {
+        const err = new Error(
+          `Sales Person '${verifiedSales.username}' is already the default sales rep for vehicle '${conflict.truck_plate_number}' on day ${parsedDay}`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
     }
 
     // Check unique constraint for truck and day of week
@@ -225,6 +246,28 @@ class TemplatesService {
       if (existing && existing.id !== id) {
         const err = new Error(
           `A schedule template for this vehicle on day ${targetDay} already exists`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
+    }
+
+    const targetSalesId = updatePayload.defaultSalesUserId !== undefined
+      ? updatePayload.defaultSalesUserId
+      : current.default_sales_user_id;
+    const targetIsActive = updatePayload.isActive !== undefined ? updatePayload.isActive : current.is_active;
+
+    if (targetSalesId && targetIsActive) {
+      const existingSalesTemplates = await templatesRepository.getAllTemplates({
+        dayOfWeek: targetDay,
+        isActive: true,
+      });
+      const conflict = existingSalesTemplates.find(
+        (t) => t.default_sales_user_id === targetSalesId && t.id !== id
+      );
+      if (conflict) {
+        const err = new Error(
+          `Sales Person is already the default sales rep for vehicle '${conflict.truck_plate_number}' on day ${targetDay}`
         );
         err.statusCode = 409;
         throw err;

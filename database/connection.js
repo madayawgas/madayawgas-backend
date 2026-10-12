@@ -1,5 +1,9 @@
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
 require("dotenv").config();
+
+// PostgreSQL OID 1082 is DATE. Return raw YYYY-MM-DD string to prevent local midnight Date conversion
+types.setTypeParser(1082, (val) => val);
+
 const {
   isProduction,
   isTest,

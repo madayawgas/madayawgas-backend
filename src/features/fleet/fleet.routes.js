@@ -56,7 +56,7 @@ router.get(
 router.get(
   '/drivers',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.manage', 'route.view', 'route.manage']),
   asyncHandler(vehiclesController.getAllDrivers.bind(vehiclesController))
 );
 
@@ -67,14 +67,14 @@ router.get(
 router.get(
   '/drivers/available',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.manage', 'route.view', 'route.manage']),
   asyncHandler(vehiclesController.getAvailableDrivers.bind(vehiclesController))
 );
 
 router.get(
   '/available-drivers',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.manage', 'route.view', 'route.manage']),
   asyncHandler(vehiclesController.getAvailableDrivers.bind(vehiclesController))
 );
 
