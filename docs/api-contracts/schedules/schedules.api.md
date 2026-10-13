@@ -20,6 +20,7 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 | `route.view` | View all delivery routes, weekly master templates, and daily operational schedules | Super Admin, Admin, Logistics Supervisor |
 | `route.view_own` | View operational route schedules specifically assigned to the authenticated user | Sales Person |
 | `route.manage` | Create/update service zones, configure templates, generate schedules, and cancel runs | Super Admin, Admin, Logistics Supervisor |
+| `sales.view` / `users.view` | Cross-domain access to active sales representatives directory (`GET /sales-persons`) | Sales Supervisor, Admin, Super Admin |
 
 ---
 
@@ -193,5 +194,34 @@ Cancel a scheduled run.
 ```json
 {
   "reason": "Vehicle breakdown or typhoon warning"
+}
+```
+
+---
+
+### 4. Sales Representatives Directory
+
+#### `GET /api/schedules/sales-persons`
+Retrieve active, unblocked users holding the Sales Person role eligible for route assignments.
+- **Permission**: `route.view`, `route.manage`, `sales.view`, or `users.view`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Response**: `200 OK`
+```json
+{
+  "status": "success",
+  "data": {
+    "count": 2,
+    "salesPersons": [
+      {
+        "id": "3c987654-3210-4cba-fed0-987654321cba",
+        "username": "sales_user",
+        "firstName": "Juan",
+        "lastName": "Sales",
+        "fullName": "Juan Sales",
+        "phone": "+639170000004",
+        "roleName": "Sales Person"
+      }
+    ]
+  }
 }
 ```

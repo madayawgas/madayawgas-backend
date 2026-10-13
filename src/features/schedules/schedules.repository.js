@@ -63,7 +63,7 @@ class SchedulesRepository {
     const baseSelect = `
       SELECT 
         ts.id,
-        ts.scheduled_date,
+        TO_CHAR(ts.scheduled_date, 'YYYY-MM-DD') AS scheduled_date,
         ts.truck_id,
         ts.sales_user_id,
         ts.zone_id,
@@ -152,7 +152,7 @@ class SchedulesRepository {
     const sql = `
       SELECT 
         ts.id,
-        ts.scheduled_date,
+        TO_CHAR(ts.scheduled_date, 'YYYY-MM-DD') AS scheduled_date,
         ts.truck_id,
         ts.sales_user_id,
         ts.zone_id,
@@ -197,16 +197,55 @@ class SchedulesRepository {
    * Finds an existing schedule for a truck on a given date.
    * @param {string} truckId
    * @param {string} scheduledDate - YYYY-MM-DD
+   * @param {boolean} [excludeCancelled=true]
    */
-  async findByTruckAndDate(truckId, scheduledDate) {
+  async findByTruckAndDate(truckId, scheduledDate, excludeCancelled = true) {
+    const filterClause = excludeCancelled ? "AND status != 'CANCELLED'" : '';
     const sql = `
       SELECT *
       FROM truck_schedules
-      WHERE truck_id = $1 AND scheduled_date = $2
+      WHERE truck_id = $1 AND scheduled_date = $2 ${filterClause}
+      LIMIT 1
     `;
 
     const result = await query(sql, [truckId, scheduledDate]);
     return result.rows[0] || null;
+  }
+
+  /**
+   * Finds an existing active schedule for a sales user on a given date.
+   * @param {string} salesUserId
+   * @param {string} scheduledDate - YYYY-MM-DD
+   * @param {boolean} [excludeCancelled=true]
+   */
+  async findBySalesUserAndDate(salesUserId, scheduledDate, excludeCancelled = true) {
+    const filterClause = excludeCancelled ? "AND status != 'CANCELLED'" : '';
+    const sql = `
+      SELECT *
+      FROM truck_schedules
+      WHERE sales_user_id = $1 AND scheduled_date = $2 ${filterClause}
+      LIMIT 1
+    `;
+
+    const result = await query(sql, [salesUserId, scheduledDate]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Automatically sweeps un-dispatched past schedules to CANCELLED with expiration notes.
+   * @param {string} [cutoffDate] - YYYY-MM-DD
+   */
+  async expirePastSchedules(cutoffDate = new Date().toISOString().slice(0, 10)) {
+    const sql = `
+      UPDATE truck_schedules
+      SET status = 'CANCELLED',
+          notes = COALESCE(notes || ' | ', '') || 'Expired: Un-dispatched past-due schedule'
+      WHERE scheduled_date < $1 AND status = 'SCHEDULED'
+      RETURNING *
+    `;
+
+    const result = await query(sql, [cutoffDate]);
+    return result.rows;
   }
 
   /**
@@ -322,6 +361,49 @@ class SchedulesRepository {
     const runner = client || { query };
     const result = await runner.query(sql, [status, id]);
     return result.rows[0] || null;
+  }
+
+  /**
+   * Retrieves active, unblocked users holding the 'Sales Person' role.
+   * Accessible by route operations supervisors without requiring broad users.view permission.
+   * @param {Object} [filters] - { search }
+   */
+  async getActiveSalesPersons(filters = {}) {
+    const { search } = filters;
+    const conditions = [
+      'u.is_active = TRUE',
+      'u.is_blocked = FALSE',
+      "(LOWER(r.name) = 'sales person' OR EXISTS (SELECT 1 FROM user_roles ur JOIN roles r2 ON ur.role_id = r2.id WHERE ur.user_id = u.id AND LOWER(r2.name) = 'sales person'))",
+    ];
+    const params = [];
+    let paramIndex = 1;
+
+    if (search && typeof search === 'string' && search.trim() !== '') {
+      conditions.push(
+        `(u.first_name ILIKE $${paramIndex} OR u.last_name ILIKE $${paramIndex} OR u.username ILIKE $${paramIndex})`
+      );
+      params.push(`%${search.trim()}%`);
+      paramIndex++;
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const sql = `
+      SELECT 
+        u.id,
+        u.username,
+        u.first_name,
+        u.last_name,
+        u.phone,
+        r.name AS role_name
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      ${whereClause}
+      ORDER BY u.first_name ASC, u.last_name ASC, u.id DESC
+    `;
+
+    const result = await query(sql, params);
+    return result.rows;
   }
 }
 

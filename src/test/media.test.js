@@ -20,9 +20,11 @@ let baseUrl;
 let adminCookie;
 const createdStorageKeys = new Set();
 const originalProduction = process.env.PRODUCTION;
+const originalNodeEnv = process.env.NODE_ENV;
 
 before(async () => {
   process.env.PRODUCTION = 'false';
+  process.env.NODE_ENV = 'test';
 
   await new Promise((resolve) => {
     server = app.listen(0, () => {
@@ -58,6 +60,7 @@ after(async () => {
   }
 
   process.env.PRODUCTION = originalProduction;
+  process.env.NODE_ENV = originalNodeEnv;
 
   // Clean test users & sessions
   try {

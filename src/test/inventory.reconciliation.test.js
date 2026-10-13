@@ -35,12 +35,14 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
   let adminCookie;
   let plantCookie;
   let logisticsCookie;
+  let salesSupCookie;
   let salesRep1Cookie;
   let salesRep2Cookie;
 
   let adminUser;
   let plantUser;
   let logisticsUser;
+  let salesSupUser;
   let salesRep1User;
   let salesRep2User;
   let driverUser;
@@ -134,6 +136,7 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     const adminRoleId = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
     const plantRoleId = (await query(`SELECT id FROM roles WHERE name = 'Plant Supervisor'`)).rows[0].id;
     const logisticsRoleId = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
+    const salesSupRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`)).rows[0].id;
     const salesRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
     const driverRoleId = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 
@@ -163,6 +166,14 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
       ['test_recon_logistics', passwordHash, 'InvLogistics', 'Supervisor', '+639178000006', logisticsRoleId]
     );
     logisticsUser = logRes.rows[0];
+
+    const salesSupRes = await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)
+       RETURNING *`,
+      ['test_recon_sales_sup', passwordHash, 'InvSales', 'Sup', '+639178000007', salesSupRoleId]
+    );
+    salesSupUser = salesSupRes.rows[0];
 
     const sales1Res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -200,6 +211,10 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     await query(`INSERT INTO user_roles (user_id, role_id, is_primary) VALUES ($1, $2, TRUE)`, [
       logisticsUser.id,
       logisticsRoleId,
+    ]);
+    await query(`INSERT INTO user_roles (user_id, role_id, is_primary) VALUES ($1, $2, TRUE)`, [
+      salesSupUser.id,
+      salesSupRoleId,
     ]);
     await query(`INSERT INTO user_roles (user_id, role_id, is_primary) VALUES ($1, $2, TRUE)`, [
       salesRep1User.id,
@@ -270,6 +285,7 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     adminCookie = await loginUser('test_recon_admin', 'TestPass123!');
     plantCookie = await loginUser('test_recon_plant', 'TestPass123!');
     logisticsCookie = await loginUser('test_recon_logistics', 'TestPass123!');
+    salesSupCookie = await loginUser('test_recon_sales_sup', 'TestPass123!');
     salesRep1Cookie = await loginUser('test_recon_sales1', 'TestPass123!');
     salesRep2Cookie = await loginUser('test_recon_sales2', 'TestPass123!');
   });
@@ -392,6 +408,110 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
       }),
     });
     assert.equal(logUnloadRes.status, 201);
+
+    // ============================================================
+    // Segregation of Duties: Sales Supervisor vs Plant Supervisor
+    // ============================================================
+    // A. Sales Supervisor attempting supplier restock -> 403 Forbidden (requires inventory.plant.manage)
+    const salesSupRestockRes = await fetch(`${baseUrl}/api/inventory/plant/restock`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesSupCookie}`,
+      },
+      body: JSON.stringify({
+        productId: testButaneProduct.id,
+        condition: 'FILLED',
+        quantityUnits: 50,
+      }),
+    });
+    assert.equal(salesSupRestockRes.status, 403);
+
+    // B. Sales Supervisor attempting yard defect quarantine -> 403 Forbidden (requires inventory.plant.manage)
+    const salesSupQuarantineRes = await fetch(`${baseUrl}/api/inventory/plant/quarantine-defects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesSupCookie}`,
+      },
+      body: JSON.stringify({
+        productId: testButaneProduct.id,
+        sourceCondition: 'FILLED',
+        quantityUnits: 5,
+        reason: 'Attempted defect quarantine by Sales Supervisor',
+      }),
+    });
+    assert.equal(salesSupQuarantineRes.status, 403);
+
+    // C. Sales Supervisor moving stock from Plant to Vehicle (dispatch-load) -> 201 Created (has inventory.vehicle.manage)
+    const salesSupDispatchRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/dispatch-load`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesSupCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Sales Supervisor dispatch load',
+        items: [{ productId: testButaneProduct.id, quantityUnits: 10 }],
+      }),
+    });
+    assert.equal(salesSupDispatchRes.status, 201);
+
+    // D. Sales Supervisor moving stock from Vehicle to Plant (return-unload) -> 201 Created (has inventory.vehicle.manage)
+    const salesSupUnloadRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/return-unload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesSupCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Sales Supervisor return unload',
+        items: [{ productId: testButaneProduct.id, condition: 'FILLED', quantityUnits: 10 }],
+      }),
+    });
+    assert.equal(salesSupUnloadRes.status, 201);
+
+    // E. Plant Supervisor accepting return unload at plant yard gate -> 201 Created (has inventory.plant.manage)
+    const plantUnloadRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/return-unload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${plantCookie}`,
+      },
+      body: JSON.stringify({
+        remarks: 'TEST-RECON- Plant Supervisor accepting return at yard gate',
+        items: [{ productId: testButaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 5 }],
+      }),
+    });
+    assert.equal(plantUnloadRes.status, 201);
+
+    // F. Plant Supervisor attempting vehicle trip reconciliation -> 403 Forbidden (no direct control on vehicle stock)
+    const plantReconcileRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${plantCookie}`,
+      },
+      body: JSON.stringify({
+        syncCompleted: true,
+        salesData: [],
+      }),
+    });
+    assert.equal(plantReconcileRes.status, 403);
+
+    // G. Sales Supervisor executing vehicle trip reconciliation -> 200 OK (has inventory.vehicle.manage)
+    const salesSupReconcileRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesSupCookie}`,
+      },
+      body: JSON.stringify({
+        syncCompleted: false,
+        supervisorNotes: 'TEST-RECON- Reconciliation by Sales Supervisor',
+      }),
+    });
+    assert.equal(salesSupReconcileRes.status, 200);
   });
 
   // ============================================================

@@ -21,18 +21,18 @@
 
 | Method | Endpoint | Guard / Permissions | Description |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/inventory/plant` | `inventory.view`, `inventory.manage` | Master Bunawan yard stock overview across all active products |
-| `POST` | `/api/inventory/plant/restock` | `inventory.manage` | Supplier bulk shipment stock-in (increments plant stock) |
-| `POST` | `/api/inventory/plant/quarantine-defects` | `inventory.manage` | Quarantines yard leakers/defective stock into defective bucket |
-| `GET` | `/api/inventory/plant/adjustments` | `inventory.view`, `inventory.manage` | Historical plant stock adjustments audit log |
-| `GET` | `/api/inventory/plant/suggested-split` | `inventory.view`, `inventory.manage` | Equal truck loading split suggestion helper |
+| `GET` | `/api/inventory/plant` | `inventory.view` | Master Bunawan yard stock overview across all active products |
+| `POST` | `/api/inventory/plant/restock` | `inventory.plant.manage` | Supplier bulk shipment stock-in (increments plant stock) |
+| `POST` | `/api/inventory/plant/quarantine-defects` | `inventory.plant.manage` | Quarantines yard leakers/defective stock into defective bucket |
+| `GET` | `/api/inventory/plant/adjustments` | `inventory.view` | Historical plant stock adjustments audit log |
+| `GET` | `/api/inventory/plant/suggested-split` | `inventory.view`, `route.view`, `route.manage`, `inventory.vehicle.manage` | Equal truck loading split suggestion helper |
 | `GET` | `/api/inventory/transfers` | `inventory.view` | Global cross-fleet paginated ledger of all transfer slips & plant restocks |
-| `POST` | `/api/inventory/trips/:tripId/dispatch-load` | `inventory.manage`, `route.manage` | Staging/dispatch load or midday reload (deducts plant stock) |
-| `POST` | `/api/inventory/trips/:tripId/return-unload` | `inventory.manage`, `route.manage` | Post-dispatch physical return unload manifest |
-| `GET` | `/api/inventory/trips/:tripId/transfers` | `inventory.view`, `route.view` | Retrieves all multi-load and return transfer slips for a trip |
-| `GET` | `/api/inventory/trips/:tripId/stock` | `inventory.view`, `inventory.view_own`, `route.view_own` | Cabin visibility: Current on-board unit balance per product |
-| `POST` | `/api/inventory/trips/:tripId/reconcile` | `inventory.manage`, `route.manage` | Evaluates post-trip reconciliation math per SKU & settles trip |
-| `GET` | `/api/inventory/trips/:tripId/reconciliation` | `inventory.view`, `route.view` | Retrieves trip reconciliation report and per-SKU variance breakdown |
+| `POST` | `/api/inventory/trips/:tripId/dispatch-load` | `inventory.vehicle.manage`, `route.manage` | Staging/dispatch load or midday reload (deducts plant stock) |
+| `POST` | `/api/inventory/trips/:tripId/return-unload` | `inventory.vehicle.manage`, `inventory.plant.manage`, `route.manage` | Post-dispatch physical return unload manifest |
+| `GET` | `/api/inventory/trips/:tripId/transfers` | `inventory.view`, `route.view`, `route.manage`, `inventory.vehicle.manage` | Retrieves all multi-load and return transfer slips for a trip |
+| `GET` | `/api/inventory/trips/:tripId/stock` | `inventory.view`, `inventory.view_own`, `route.view`, `route.view_own`, `inventory.vehicle.manage` | Cabin visibility: Current on-board unit balance per product |
+| `POST` | `/api/inventory/trips/:tripId/reconcile` | `inventory.vehicle.manage`, `route.manage` | Evaluates post-trip reconciliation math per SKU & settles trip |
+| `GET` | `/api/inventory/trips/:tripId/reconciliation` | `inventory.view`, `route.view`, `route.manage`, `inventory.vehicle.manage` | Retrieves trip reconciliation report and per-SKU variance breakdown |
 
 ---
 

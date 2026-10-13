@@ -53,6 +53,14 @@ class InventoryService {
         throw err;
       }
 
+      if (!product.is_active) {
+        const err = new Error(
+          `Item at index ${i}: Product '${product.name}' is inactive and cannot be transferred`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+
       let condition = 'FILLED';
       if (requireCondition || item.condition) {
         condition = (item.condition || 'FILLED').toUpperCase().trim();
@@ -120,6 +128,12 @@ class InventoryService {
     if (!product) {
       const err = new Error(`Product with ID '${productId}' not found`);
       err.statusCode = 404;
+      throw err;
+    }
+
+    if (!product.is_active) {
+      const err = new Error(`Product '${product.name}' is inactive and cannot be restocked`);
+      err.statusCode = 400;
       throw err;
     }
 
@@ -657,7 +671,10 @@ class InventoryService {
     }
 
     const permissions = actorUser?.permissions || [];
-    const hasGlobalView = permissions.includes('inventory.view') || permissions.includes('inventory.manage');
+    const hasGlobalView =
+      permissions.includes('inventory.view') ||
+      permissions.includes('inventory.vehicle.manage') ||
+      permissions.includes('route.manage');
     const hasOwnView = permissions.includes('inventory.view_own') || permissions.includes('route.view_own');
 
     if (!hasGlobalView && hasOwnView && trip.sales_user_id !== actorUser.id) {
@@ -731,16 +748,40 @@ class InventoryService {
       throw err;
     }
 
+    if (trip.status === 'CANCELLED') {
+      const err = new Error('Cannot reconcile a cancelled trip');
+      err.statusCode = 400;
+      throw err;
+    }
+
     // 1. Fetch physical transfer summary per product
     const stockItems = await inventoryRepository.getVehicleActiveStockPerProduct(trip.id);
+
+    const hasReturnTransfers = stockItems.some(
+      (it) => it.returned_full > 0 || it.returned_empty_good > 0 || it.returned_defective > 0
+    );
+
+    if (trip.status !== 'COMPLETED' && !hasReturnTransfers) {
+      const err = new Error(
+        `Cannot reconcile a trip that has not completed plant return check-in (current status: '${trip.status}')`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
 
     // 2. Map sales and debt data by productId
     const salesMap = {};
     if (Array.isArray(salesData)) {
       for (const entry of salesData) {
         if (entry.productId) {
+          const parsedSold = parseInt(entry.soldFull || 0, 10);
+          if (parsedSold < 0) {
+            const err = new Error(`soldFull for product '${entry.productId}' cannot be negative`);
+            err.statusCode = 400;
+            throw err;
+          }
           salesMap[entry.productId] = {
-            soldFull: parseInt(entry.soldFull || 0, 10) || 0,
+            soldFull: isNaN(parsedSold) ? 0 : parsedSold,
             netCustomerDebtCreated: parseInt(entry.netCustomerDebtCreated || 0, 10) || 0,
           };
         }

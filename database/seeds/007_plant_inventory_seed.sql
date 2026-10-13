@@ -293,7 +293,7 @@ FROM roles r
 JOIN permissions p ON p.name IN (
     'dashboard.view',
     'inventory.view',
-    'inventory.manage'
+    'inventory.plant.manage'
 )
 WHERE r.name = 'Plant Supervisor'
 ON CONFLICT DO NOTHING;
@@ -324,7 +324,13 @@ JOIN vehicles v ON v.plate_number = d.plate
 JOIN service_zones z ON z.code = d.zone_code
 CROSS JOIN (SELECT id FROM users WHERE username = 'sales_user' LIMIT 1) s
 CROSS JOIN (SELECT id FROM users WHERE username = 'logistics_supervisor' LIMIT 1) a
-ON CONFLICT (truck_id, scheduled_date) DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1 FROM truck_schedules ts
+    WHERE (ts.truck_id = v.id OR ts.sales_user_id = s.id)
+      AND ts.scheduled_date = d.sched_date::date
+      AND ts.status != 'CANCELLED'
+)
+ON CONFLICT (truck_id, scheduled_date) WHERE status != 'CANCELLED' DO NOTHING;
 
 
 -- 5.2. Operational Trips (Trips 1, 2, 3 Completed, Trip 4 In Progress)
@@ -399,7 +405,7 @@ FROM (
 JOIN vehicles v ON v.plate_number = td.plate
 JOIN service_zones z ON z.code = td.zone_code
 LEFT JOIN truck_schedules ts ON ts.truck_id = v.id AND ts.scheduled_date = td.sched_date
-CROSS JOIN (SELECT id FROM users WHERE username = 'driver_user' LIMIT 1) dr
+JOIN users dr ON v.driver_id = dr.id
 CROSS JOIN (SELECT id FROM users WHERE username = 'sales_user' LIMIT 1) su
 CROSS JOIN (SELECT id FROM users WHERE username = 'logistics_supervisor' LIMIT 1) dp
 WHERE NOT EXISTS (
@@ -631,3 +637,193 @@ CROSS JOIN (SELECT id FROM users WHERE username = 'plant_supervisor' LIMIT 1) u
 WHERE NOT EXISTS (
     SELECT 1 FROM trip_stock_reconciliations tsr WHERE tsr.trip_id = t.id
 );
+
+
+-- ============================================================
+-- 6. OPERATIONAL SYSTEM EVENT HISTORY LOGS
+-- Complete audit trail for Plant Bulk Restocks, Defect Quarantines,
+-- Operational Schedules, Trip Dispatches, Multi-Loads, and Reconciliations
+-- ============================================================
+
+-- 6.1. Plant Stock Adjustments (Supplier Purchases / Restocks)
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    u.id,
+    u.first_name || ' ' || u.last_name,
+    'Plant Supervisor',
+    'Created',
+    'Inventory Management',
+    'INVENTORY_SUPPLIER_RESTOCKED',
+    'Recorded supplier restock of ' || psa.delta_quantity || ' unit(s) of ''' || p.name || ''' (' || psa.target_condition || ') under invoice #' || psa.supplier_invoice_number,
+    psa.id::text,
+    'plant_inventory',
+    psa.recorded_at
+FROM plant_stock_adjustments psa
+JOIN products p ON psa.product_id = p.id
+JOIN users u ON psa.recorded_by = u.id
+WHERE psa.adjustment_type = 'SUPPLIER_PURCHASE'
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'INVENTORY_SUPPLIER_RESTOCKED' AND hl.target_id = psa.id::text
+  );
+
+-- 6.2. Plant Defect Quarantines
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    u.id,
+    u.first_name || ' ' || u.last_name,
+    'Plant Supervisor',
+    'Updated',
+    'Inventory Management',
+    'INVENTORY_DEFECT_QUARANTINED',
+    'Quarantined ' || psa.delta_quantity || ' defective unit(s) of ''' || p.name || ''' (' || COALESCE(psa.source_condition::text, 'FILLED') || ' -> DEFECTIVE): ' || psa.reason,
+    psa.id::text,
+    'plant_inventory',
+    psa.recorded_at
+FROM plant_stock_adjustments psa
+JOIN products p ON psa.product_id = p.id
+JOIN users u ON psa.recorded_by = u.id
+WHERE psa.adjustment_type = 'DEFECT_ADJUSTMENT'
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'INVENTORY_DEFECT_QUARANTINED' AND hl.target_id = psa.id::text
+  );
+
+-- 6.3. Operational Schedules Generated
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    admin.id,
+    admin.first_name || ' ' || admin.last_name,
+    'Logistics Supervisor',
+    'Created',
+    'SCHEDULE',
+    'SCHEDULE_CREATED',
+    'Scheduled route for vehicle ''' || v.plate_number || ''' on ' || ts.scheduled_date::text,
+    ts.id::text,
+    'schedule',
+    ts.created_at
+FROM truck_schedules ts
+JOIN vehicles v ON ts.truck_id = v.id
+JOIN users admin ON ts.created_by = admin.id
+WHERE ts.notes IN (
+    'Toril commercial & residential deployment',
+    'Bankerohan market hub route',
+    'Buhangin commercial corridor route',
+    'Matina commercial crossing deployment'
+)
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'SCHEDULE_CREATED' AND hl.target_id = ts.id::text
+  );
+
+-- 6.4. Operational Trip Dispatches
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    dp.id,
+    dp.first_name || ' ' || dp.last_name,
+    'Logistics Supervisor',
+    'Created',
+    'TRIP',
+    'TRIP_DISPATCHED',
+    'Dispatched trip #' || t.trip_number || ' for vehicle ''' || v.plate_number || '''',
+    t.id::text,
+    'trip',
+    t.departure_time
+FROM trips t
+JOIN vehicles v ON t.truck_id = v.id
+JOIN users dp ON t.dispatched_by = dp.id
+WHERE t.trip_number IN ('TRIP-20261007-001', 'TRIP-20261009-002', 'TRIP-20261010-003', 'TRIP-20261011-004')
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'TRIP_DISPATCHED' AND hl.target_id = t.id::text
+  );
+
+-- 6.5. Dispatch Load Transfer Slips
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    u.id,
+    u.first_name || ' ' || u.last_name,
+    'Plant Supervisor',
+    'Created',
+    'Inventory Management',
+    'INVENTORY_TRIP_LOADED',
+    'Dispatched load transfer slip #' || tl.slip_number || ' with ' || (SELECT COALESCE(SUM(quantity_units), 0) FROM trip_load_items WHERE load_id = tl.id) || ' unit(s) for trip #' || t.trip_number,
+    tl.id::text,
+    'trip_load',
+    tl.recorded_at
+FROM trip_loads tl
+JOIN trips t ON tl.trip_id = t.id
+JOIN users u ON tl.recorded_by = u.id
+WHERE tl.transfer_type = 'DISPATCH_LOAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'INVENTORY_TRIP_LOADED' AND hl.target_id = tl.id::text
+  );
+
+-- 6.6. Return Unload Transfer Slips
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    u.id,
+    u.first_name || ' ' || u.last_name,
+    'Plant Supervisor',
+    'Created',
+    'Inventory Management',
+    'INVENTORY_TRIP_UNLOADED',
+    'Recorded return unload transfer slip #' || tl.slip_number || ' with ' || (SELECT COALESCE(SUM(quantity_units), 0) FROM trip_load_items WHERE load_id = tl.id) || ' unit(s) for trip #' || t.trip_number,
+    tl.id::text,
+    'trip_load',
+    tl.recorded_at
+FROM trip_loads tl
+JOIN trips t ON tl.trip_id = t.id
+JOIN users u ON tl.recorded_by = u.id
+WHERE tl.transfer_type = 'RETURN_UNLOAD'
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'INVENTORY_TRIP_UNLOADED' AND hl.target_id = tl.id::text
+  );
+
+-- 6.7. Completed Trips
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    dp.id,
+    dp.first_name || ' ' || dp.last_name,
+    'Logistics Supervisor',
+    'Updated',
+    'TRIP',
+    'TRIP_COMPLETED',
+    'Completed trip #' || t.trip_number || ' with return odometer reading of ' || v.current_odometer || ' km',
+    t.id::text,
+    'trip',
+    t.return_time
+FROM trips t
+JOIN vehicles v ON t.truck_id = v.id
+JOIN users dp ON t.dispatched_by = dp.id
+WHERE t.status = 'COMPLETED'
+  AND t.return_time IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'TRIP_COMPLETED' AND hl.target_id = t.id::text
+  );
+
+-- 6.8. Settled Post-Trip Stock Reconciliations
+INSERT INTO history_logs (user_id, user_name, user_role, action_type, module, action, details, target_id, target_type, created_at)
+SELECT
+    u.id,
+    u.first_name || ' ' || u.last_name,
+    'Plant Supervisor',
+    'Updated',
+    'Inventory Management',
+    'INVENTORY_RECONCILIATION_SETTLED',
+    'Settled stock reconciliation for trip #' || t.trip_number || ' with zero variance',
+    tsr.id::text,
+    'trip_reconciliation',
+    tsr.reconciled_at
+FROM trip_stock_reconciliations tsr
+JOIN trips t ON tsr.trip_id = t.id
+JOIN users u ON tsr.verified_by = u.id
+WHERE tsr.status = 'SETTLED'
+  AND NOT EXISTS (
+      SELECT 1 FROM history_logs hl
+      WHERE hl.action = 'INVENTORY_RECONCILIATION_SETTLED' AND hl.target_id = tsr.id::text
+  );
+

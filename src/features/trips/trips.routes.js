@@ -38,14 +38,14 @@ router.patch(
 router.post(
   '/:id/loads',
   authenticate,
-  requirePermission('route.manage'),
+  requirePermission(['route.manage', 'inventory.vehicle.manage']),
   asyncHandler(tripsController.recordTripLoad.bind(tripsController))
 );
 
 router.get(
   '/:id/loads',
   authenticate,
-  requirePermission(['route.view', 'route.view_own']),
+  requirePermission(['route.view', 'route.view_own', 'inventory.vehicle.manage']),
   asyncHandler(tripsController.getTripLoads.bind(tripsController))
 );
 
@@ -59,14 +59,14 @@ router.post(
 router.post(
   '/:id/reconcile',
   authenticate,
-  requirePermission('route.manage'),
+  requirePermission(['route.manage', 'inventory.vehicle.manage']),
   asyncHandler(tripsController.reconcileTrip.bind(tripsController))
 );
 
 router.get(
   '/:id/reconciliation',
   authenticate,
-  requirePermission(['route.view', 'route.view_own']),
+  requirePermission(['route.view', 'route.view_own', 'inventory.vehicle.manage']),
   asyncHandler(tripsController.getTripReconciliation.bind(tripsController))
 );
 

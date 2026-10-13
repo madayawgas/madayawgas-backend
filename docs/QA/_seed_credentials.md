@@ -14,7 +14,9 @@ This document lists the pre-configured seed user accounts for testing authentica
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | **Full access**: Can manage all users, fleet, routes, sales, inventory, and deliveries. Cannot be blocked or deactivated. |
 | **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | **Administrator access**: Can manage users, fleet, inventory, roles, and view system history reports. |
 | **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | **Fleet & logistics oversight**: `fleet.*`, `route.*`, `dashboard.view`, `delivery.view`, `delivery.update`. Cannot manage user accounts (`403 Forbidden`). |
-| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | **Vehicle driver**: Registered driver for fleet truck assignments. Has no login portal permissions. |
+| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | **Vehicle driver**: Assigned to truck `ABC-1001`. Has no login portal permissions. |
+| **`driver_user2`** | `DriverPass123!` | **Driver** | `+639170000009` | **Vehicle driver**: Assigned to truck `ABC-1002`. Has no login portal permissions. |
+| **`driver_user3`** | `DriverPass123!` | **Driver** | `+639170000010` | **Vehicle driver**: Assigned to pickup `ABC-1004`. Has no login portal permissions. |
 | **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | **Sales & inventory oversight**: `inventory.*`, `sales.view`, `sales.update`, `sales.delete`, `delivery.*`, `history.view`. |
 | **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | **Sales representative**: `sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`. |
 | **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | **Plant Operations**: Oversees Bunawan refilling yard bulk stock (`dashboard.view`, `inventory.view`, `inventory.manage`). Routes, fleet, sales, and user admin are strictly blocked. |
@@ -64,11 +66,12 @@ This document lists the pre-configured seed user accounts for testing authentica
 
 ---
 
-### 6. Driver (`driver_user`)
-* **Password**: `DriverPass123!`
-* **Phone**: `+639170000005`
-* **Role**: `Driver`
-* **Permissions**: None (`[]`).
+### 6. Driver Accounts
+MadayawGas operations utilize dedicated registered drivers assigned to fleet vehicles:
+* **`driver_user`** (Danilo Driver): Assigned to Delivery Truck `ABC-1001` (Password: `DriverPass123!`, Phone: `+639170000005`, Role: `Driver`)
+* **`driver_user2`** (Roberto Driver): Assigned to Delivery Truck `ABC-1002` (Password: `DriverPass123!`, Phone: `+639170000009`, Role: `Driver`)
+* **`driver_user3`** (Eduardo Driver): Assigned to Service Pickup `ABC-1004` (Password: `DriverPass123!`, Phone: `+63917000010`, Role: `Driver`)
+* **Permissions**: None (`[]`). Drivers do not log in via the web portal but represent operational crew on routes and fleet assignments.
 
 ---
 

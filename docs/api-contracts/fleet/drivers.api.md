@@ -17,7 +17,7 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 
 | Permission | Description | Allowed Roles (Default) |
 | :--- | :--- | :--- |
-| `fleet.view` | View driver directory and available driver lists | Super Admin, Admin, Fleet Manager |
+| `fleet.view` / `fleet.manage` / `route.view` / `route.manage` | View driver directory and available driver lists | Super Admin, Admin, Fleet Manager, Logistics Supervisor |
 | `fleet.manage` | Assign and unassign drivers to/from vehicles | Super Admin, Admin, Fleet Manager |
 
 ---
@@ -190,7 +190,7 @@ Lists all eligible driver accounts with their live assignment status (`AVAILABLE
 - **HTTP Method**: `GET`
 - **URL**: `/api/fleet/drivers`
 - **Authentication**: Required (`mg_sid` cookie)
-- **Permission Required**: `fleet.view`
+- **Permission Required**: `fleet.view`, `fleet.manage`, `route.view`, or `route.manage`
 
 #### Query Parameters
 
@@ -297,7 +297,7 @@ Dedicated endpoint returning only active, eligible, unassigned drivers ready for
 - **HTTP Method**: `GET`
 - **URL**: `/api/fleet/drivers/available` (alias: `/api/fleet/available-drivers`)
 - **Authentication**: Required (`mg_sid` cookie)
-- **Permission Required**: `fleet.view`
+- **Permission Required**: `fleet.view`, `fleet.manage`, `route.view`, or `route.manage`
 
 #### Response: `200 OK` (Success)
 

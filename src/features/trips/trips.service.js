@@ -8,6 +8,7 @@ const templatesService = require('../schedules/templates/templates.service');
 const zonesRepository = require('../schedules/zones/zones.repository');
 const vehiclesRepository = require('../fleet/vehicles/vehicles.repository');
 const productsRepository = require('../inventory/products/products.repository');
+const inventoryRepository = require('../inventory/inventory.repository');
 const { maintenanceService } = require('../fleet/maintenance');
 const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
@@ -44,6 +45,14 @@ class TripsService {
       if (!product) {
         const err = new Error(`Item at index ${i}: Product with ID '${item.productId}' not found`);
         err.statusCode = 404;
+        throw err;
+      }
+
+      if (!product.is_active) {
+        const err = new Error(
+          `Item at index ${i}: Product '${product.name}' is inactive and cannot be transferred`
+        );
+        err.statusCode = 400;
         throw err;
       }
 
@@ -214,8 +223,13 @@ class TripsService {
 
     const activeTrip = await tripsRepository.findActiveTripByTruckId(vehicle.id);
     if (activeTrip) {
+      const depDate = new Date(activeTrip.departure_time).toISOString().slice(0, 10);
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const isPreviousDay = depDate < todayDate;
       const err = new Error(
-        `Vehicle '${vehicle.plate_number}' already has an ongoing trip (#${activeTrip.trip_number}) currently in progress`
+        isPreviousDay
+          ? `Vehicle '${vehicle.plate_number}' has an unclosed trip (#${activeTrip.trip_number}) from ${depDate} that has not completed plant return check-in. Complete yesterday's check-in before dispatching today's route.`
+          : `Vehicle '${vehicle.plate_number}' already has an ongoing trip (#${activeTrip.trip_number}) currently in progress`
       );
       err.statusCode = 409;
       throw err;
@@ -250,8 +264,26 @@ class TripsService {
       throw err;
     }
 
+    const activeDriverTrip = await tripsRepository.findActiveTripByDriverId(driverUser.id);
+    if (activeDriverTrip) {
+      const err = new Error(
+        `Driver '${driverUser.username}' already has an ongoing trip (#${activeDriverTrip.trip_number}) currently in progress`
+      );
+      err.statusCode = 409;
+      throw err;
+    }
+
     // 5. Sales Person Verification
     const salesUser = await templatesService.verifySalesUser(salesUserId.trim());
+
+    const activeSalesTrip = await tripsRepository.findActiveTripBySalesUserId(salesUser.id);
+    if (activeSalesTrip) {
+      const err = new Error(
+        `Sales representative '${salesUser.username}' already has an ongoing trip (#${activeSalesTrip.trip_number}) currently in progress`
+      );
+      err.statusCode = 409;
+      throw err;
+    }
 
     // 6. Zone Verification
     const zone = await zonesRepository.getZoneById(zoneId.trim());
@@ -311,6 +343,27 @@ class TripsService {
 
       // Record initial dispatch load manifest if items provided
       if (validatedLoads && validatedLoads.length > 0) {
+        for (const it of validatedLoads) {
+          const plantStock = await inventoryRepository.getPlantStockByProductId(it.productId, client, true);
+          const available = plantStock ? plantStock.quantity_filled : 0;
+          if (available < it.quantityUnits) {
+            const err = new Error(
+              `Insufficient Bunawan plant filled stock for product. Available: ${available}, Requested: ${it.quantityUnits}`
+            );
+            err.statusCode = 400;
+            throw err;
+          }
+          await inventoryRepository.adjustPlantStock(
+            {
+              productId: it.productId,
+              deltaFilled: -it.quantityUnits,
+              deltaEmptyGood: 0,
+              deltaDefective: 0,
+            },
+            client
+          );
+        }
+
         const slipNumber = `LOAD-${dateComponent}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
         initialLoadSlip = await loadsRepository.createLoadWithItems(
           {
@@ -409,14 +462,69 @@ class TripsService {
         ? slipNumber.trim().toUpperCase()
         : `${prefix}-${dateStr}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
-    const createdLoad = await loadsRepository.createLoadWithItems({
-      tripId: trip.id,
-      transferType: typeUpper,
-      slipNumber: resolvedSlip,
-      recordedBy: actorUser?.id || null,
-      remarks: remarks ? remarks.trim() : null,
-      items: validatedItems,
-    });
+    const client = await pool.connect();
+    let createdLoad;
+
+    try {
+      await client.query('BEGIN');
+
+      if (typeUpper === 'DISPATCH_LOAD') {
+        for (const it of validatedItems) {
+          const plantStock = await inventoryRepository.getPlantStockByProductId(it.productId, client, true);
+          const available = plantStock ? plantStock.quantity_filled : 0;
+          if (available < it.quantityUnits) {
+            const err = new Error(
+              `Insufficient Bunawan plant filled stock for product. Available: ${available}, Requested: ${it.quantityUnits}`
+            );
+            err.statusCode = 400;
+            throw err;
+          }
+          await inventoryRepository.adjustPlantStock(
+            {
+              productId: it.productId,
+              deltaFilled: -it.quantityUnits,
+              deltaEmptyGood: 0,
+              deltaDefective: 0,
+            },
+            client
+          );
+        }
+      } else if (typeUpper === 'RETURN_UNLOAD') {
+        for (const it of validatedItems) {
+          const deltaFilled = it.condition === 'FILLED' ? it.quantityUnits : 0;
+          const deltaEmptyGood = it.condition === 'EMPTY_GOOD' ? it.quantityUnits : 0;
+          const deltaDefective = it.condition === 'DEFECTIVE' ? it.quantityUnits : 0;
+          await inventoryRepository.adjustPlantStock(
+            {
+              productId: it.productId,
+              deltaFilled,
+              deltaEmptyGood,
+              deltaDefective,
+            },
+            client
+          );
+        }
+      }
+
+      createdLoad = await loadsRepository.createLoadWithItems(
+        {
+          tripId: trip.id,
+          transferType: typeUpper,
+          slipNumber: resolvedSlip,
+          recordedBy: actorUser?.id || null,
+          remarks: remarks ? remarks.trim() : null,
+          items: validatedItems,
+        },
+        client
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     await historyService.log(EVENTS.TRIP_STOCK_LOADED, {
       actorUser,
@@ -457,7 +565,7 @@ class TripsService {
    * @param {Object} payload - { returnOdometerKm, returnLoads, supervisorNotes }
    */
   async completeTrip(tripId, actorUser, payload = {}) {
-    const { returnOdometerKm, returnLoads, supervisorNotes } = payload;
+    const { returnOdometerKm, returnLoads, supervisorNotes, returnTime } = payload;
 
     const trip = await tripsRepository.getTripById(tripId);
     if (!trip) {
@@ -485,6 +593,22 @@ class TripsService {
       throw err;
     }
 
+    let resolvedReturnTime = new Date();
+    if (returnTime) {
+      const parsedReturn = new Date(returnTime);
+      if (isNaN(parsedReturn.getTime())) {
+        const err = new Error('Invalid returnTime format');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (parsedReturn < new Date(trip.departure_time)) {
+        const err = new Error('returnTime cannot be earlier than departureTime');
+        err.statusCode = 400;
+        throw err;
+      }
+      resolvedReturnTime = parsedReturn;
+    }
+
     // 1. Process single-point return odometer reading through Fleet Maintenance engine
     const odoResult = await maintenanceService.logOdometerReading(actorUser, {
       truckId: trip.truck_id,
@@ -496,18 +620,50 @@ class TripsService {
     // 2. If physical return unload items are specified, record a RETURN_UNLOAD transfer slip
     if (returnLoads && Array.isArray(returnLoads) && returnLoads.length > 0) {
       const validatedReturnItems = await this.validateLineItems(returnLoads);
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      const returnSlip = `UNLOAD-${dateStr}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+      const client = await pool.connect();
 
-      await loadsRepository.createLoadWithItems({
-        tripId: trip.id,
-        transferType: 'RETURN_UNLOAD',
-        slipNumber: returnSlip,
-        recordedBy: actorUser?.id || null,
-        remarks: supervisorNotes ? supervisorNotes.trim() : 'Post-trip physical return unload',
-        items: validatedReturnItems,
-      });
+      try {
+        await client.query('BEGIN');
+
+        for (const it of validatedReturnItems) {
+          const deltaFilled = it.condition === 'FILLED' ? it.quantityUnits : 0;
+          const deltaEmptyGood = it.condition === 'EMPTY_GOOD' ? it.quantityUnits : 0;
+          const deltaDefective = it.condition === 'DEFECTIVE' ? it.quantityUnits : 0;
+
+          await inventoryRepository.adjustPlantStock(
+            {
+              productId: it.productId,
+              deltaFilled,
+              deltaEmptyGood,
+              deltaDefective,
+            },
+            client
+          );
+        }
+
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+        const returnSlip = `UNLOAD-${dateStr}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+        await loadsRepository.createLoadWithItems(
+          {
+            tripId: trip.id,
+            transferType: 'RETURN_UNLOAD',
+            slipNumber: returnSlip,
+            recordedBy: actorUser?.id || null,
+            remarks: supervisorNotes ? supervisorNotes.trim() : 'Post-trip physical return unload',
+            items: validatedReturnItems,
+          },
+          client
+        );
+
+        await client.query('COMMIT');
+      } catch (unloadErr) {
+        await client.query('ROLLBACK');
+        throw unloadErr;
+      } finally {
+        client.release();
+      }
     }
 
     // 3. Compute baseline stock counts from loads
@@ -531,7 +687,7 @@ class TripsService {
     // 5. Update Trip to COMPLETED
     const updatedTrip = await tripsRepository.updateTrip(trip.id, {
       status: 'COMPLETED',
-      returnTime: new Date(),
+      returnTime: resolvedReturnTime,
       returnOdometerLogId: odoResult.logId,
       notes: supervisorNotes ? `${trip.notes ? `${trip.notes} | ` : ''}${supervisorNotes.trim()}` : trip.notes,
     });
@@ -617,7 +773,7 @@ class TripsService {
       }
 
       // Mathematical discrepancy calculations
-      fullDiscrepancy = totalLoadedFull - soldFull - totalReturnedFull;
+      fullDiscrepancy = totalLoadedFull - soldFull - totalReturnedFull - totalReturnedDefective;
       emptyDiscrepancy = soldFull - (totalReturnedEmptyGood + netDebt);
 
       if (fullDiscrepancy === 0 && emptyDiscrepancy === 0) {
@@ -693,7 +849,7 @@ class TripsService {
     }
 
     const fullDiscrepancy =
-      rec.total_loaded_full - rec.total_sold_full - rec.total_returned_full;
+      rec.total_loaded_full - rec.total_sold_full - rec.total_returned_full - (rec.total_returned_defective || 0);
     const emptyDiscrepancy =
       rec.total_sold_full - (rec.total_returned_empty_good + rec.net_customer_debt_created);
 
@@ -708,6 +864,7 @@ class TripsService {
 
   /**
    * Cancels a trip in PENDING or IN_PROGRESS state.
+   * Restores any loaded stock back to Bunawan yard plant inventory.
    * @param {string} id
    * @param {Object} actorUser
    * @param {Object} data - { cancellationReason }
@@ -730,16 +887,73 @@ class TripsService {
       return trip;
     }
 
-    const updated = await tripsRepository.updateTrip(trip.id, {
-      status: 'CANCELLED',
-      notes: data.cancellationReason
-        ? `${trip.notes ? `${trip.notes} | ` : ''}Cancelled: ${data.cancellationReason.trim()}`
-        : trip.notes,
-    });
+    // Check if trip had loaded stock that needs reversal to plant inventory
+    const activeStock = await inventoryRepository.getVehicleActiveStockPerProduct(trip.id);
+    const itemsToReverse = activeStock
+      .filter((it) => it.loaded_full - it.returned_full > 0)
+      .map((it) => ({
+        productId: it.product_id,
+        condition: 'FILLED',
+        quantityUnits: it.loaded_full - it.returned_full,
+      }));
 
-    // If linked to a schedule, revert schedule status to SCHEDULED
-    if (trip.schedule_id) {
-      await schedulesRepository.updateStatus(trip.schedule_id, 'SCHEDULED');
+    const client = await pool.connect();
+    let updated;
+
+    try {
+      await client.query('BEGIN');
+
+      if (itemsToReverse.length > 0) {
+        for (const item of itemsToReverse) {
+          await inventoryRepository.adjustPlantStock(
+            {
+              productId: item.productId,
+              deltaFilled: item.quantityUnits,
+              deltaEmptyGood: 0,
+              deltaDefective: 0,
+            },
+            client
+          );
+        }
+
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+        const returnSlip = `UNLOAD-${dateStr}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+        await loadsRepository.createLoadWithItems(
+          {
+            tripId: trip.id,
+            transferType: 'RETURN_UNLOAD',
+            slipNumber: returnSlip,
+            recordedBy: actorUser?.id || null,
+            remarks: 'Automated stock reversal upon trip cancellation',
+            items: itemsToReverse,
+          },
+          client
+        );
+      }
+
+      updated = await tripsRepository.updateTrip(
+        trip.id,
+        {
+          status: 'CANCELLED',
+          notes: data.cancellationReason
+            ? `${trip.notes ? `${trip.notes} | ` : ''}Cancelled: ${data.cancellationReason.trim()}`
+            : trip.notes,
+        },
+        client
+      );
+
+      if (trip.schedule_id) {
+        await schedulesRepository.updateStatus(trip.schedule_id, 'SCHEDULED', client);
+      }
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
     return updated;

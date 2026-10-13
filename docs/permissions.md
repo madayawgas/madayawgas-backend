@@ -11,7 +11,9 @@
 | **`route.view_own`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | View routes specifically assigned to the current user |
 | **`route.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Create, update, assign, and dispatch delivery routes |
 | **`inventory.view`** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | View inventory product catalog and stock levels |
-| **`inventory.manage`** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | Register, update, and deactivate inventory items/products |
+| **`inventory.manage`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Register, update, and deactivate product catalog items |
+| **`inventory.plant.manage`** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Master plant stock management, supplier restocks, and yard defect quarantines |
+| **`inventory.vehicle.manage`** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | Manage vehicle fleet stock, transfers between plant and trucks, and route reconciliations |
 | **`sales.view`** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | View all sales and customer profiles across the organization |
 | **`sales.view_own`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | View customer profiles and sales created by the current user |
 | **`sales.create`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | Register new sales customers and create frontline sales orders |
@@ -26,8 +28,8 @@
 | **`history.view`** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | View system event historical audit logs |
 
 > [!NOTE]
-> * **Plant Supervisor**: Oversees Bunawan refilling yard bulk physical inventory, supplier purchases, defect quarantining, vehicle dispatch staging, return unloads, and route reconciliation.
-
+> * **Plant Supervisor**: Oversees Bunawan refilling yard bulk physical inventory, supplier purchases, defect quarantining, and yard return receiving. Has total control of master plant stock, but no direct control on vehicle fleet stock.
+> * **Sales Supervisor**: Oversees frontline sales, customers, transactions, delivery fulfillment, vehicle stock, and post-trip reconciliation. Has full control of vehicle fleet stock, but limited control to plant stock (strictly moving between plant and vehicles via dispatch loads and return unloads).
 > * **Multi-Role Employees**: Users assigned multiple roles (such as an employee holding both `Sales Supervisor` and `Logistics Supervisor`) automatically receive the union of all permissions across their assigned roles.
 > * **Driver Role**: The Driver role has no login access or system permissions. Driver records exist in the database for assignment to fleet vehicles.
 > * **Legacy Role Aliases**: `Fleet Manager` maps to `Logistics Supervisor`; `Sales Manager` maps to `Sales Supervisor`.
@@ -46,6 +48,8 @@
 | `route.manage` | Schedule & Trip | Create, update, assign, and manage route dispatches. |
 | `inventory.view` | Inventory Management | View inventory products catalog and stock levels. |
 | `inventory.manage` | Inventory Management | Register, modify, and deactivate inventory items. |
+| `inventory.plant.manage` | Inventory Management | Manage master plant physical stock, supplier restocks, and yard defect quarantines. |
+| `inventory.vehicle.manage` | Inventory Management | Manage vehicle fleet stock, transfers between plant and trucks, and route reconciliations. |
 | `sales.view` | Sales & Delivery | View all customer accounts and sales records. |
 | `sales.view_own` | Sales & Delivery | View sales and customers created by the current user. |
 | `sales.create` | Sales & Delivery | Register new customer accounts and create sales orders. |

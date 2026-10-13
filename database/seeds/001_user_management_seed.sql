@@ -110,6 +110,14 @@ VALUES
         'inventory.manage',
         'Create, update, and manage inventory.'
     ),
+    (
+        'inventory.plant.manage',
+        'Manage master plant physical stock, supplier restocks, and yard defect quarantines.'
+    ),
+    (
+        'inventory.vehicle.manage',
+        'Manage vehicle fleet stock, transfers between plant and trucks, and route reconciliations.'
+    ),
 
 
     -- --------------------------------------------------------
@@ -216,7 +224,7 @@ ON CONFLICT DO NOTHING;
 -- 5. PLANT SUPERVISOR
 -- ============================================================
 -- Plant Supervisor oversees plant operations, cylinder refilling,
--- and plant inventory.
+-- and master plant inventory.
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT
@@ -230,7 +238,7 @@ JOIN permissions p
 
         -- Inventory
         'inventory.view',
-        'inventory.manage'
+        'inventory.plant.manage'
     )
 WHERE r.name = 'Plant Supervisor'
 ON CONFLICT DO NOTHING;
@@ -259,6 +267,9 @@ JOIN permissions p
         -- Route Dispatch
         'route.view',
         'route.manage',
+
+        -- Inventory Transfers
+        'inventory.vehicle.manage',
 
         -- Deliveries
         'delivery.view',
@@ -289,7 +300,7 @@ JOIN permissions p
 
         -- Inventory
         'inventory.view',
-        'inventory.manage',
+        'inventory.vehicle.manage',
 
         -- Sales
         'sales.view',
@@ -484,6 +495,53 @@ ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     phone = EXCLUDED.phone,
     must_change_password = FALSE;
+
+
+-- ============================================================
+-- 14.1. SAMPLE DRIVER ACCOUNT 2 (Roberto Driver)
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'driver_user2',
+    '$2b$10$3clbX9EqLvdbCduxDMC8G.DSkCKgvV6W2lB8yD3P.skKKRIOrGOL2',
+    'Roberto',
+    'Driver',
+    '+639170000009',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Driver'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
+
+-- ============================================================
+-- 14.2. SAMPLE DRIVER ACCOUNT 3 (Eduardo Driver)
+-- ============================================================
+
+INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+SELECT
+    'driver_user3',
+    '$2b$10$3clbX9EqLvdbCduxDMC8G.DSkCKgvV6W2lB8yD3P.skKKRIOrGOL2',
+    'Eduardo',
+    'Driver',
+    '+639170000010',
+    r.id,
+    TRUE,
+    FALSE,
+    FALSE
+FROM roles r
+WHERE r.name = 'Driver'
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    phone = EXCLUDED.phone,
+    must_change_password = FALSE;
+
 
 
 -- ============================================================
