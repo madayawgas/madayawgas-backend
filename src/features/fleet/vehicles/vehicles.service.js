@@ -94,14 +94,24 @@ class VehiclesService {
    * @param {Object} [pagination=null] - Optional pagination { page, limit, sortColumn, sortOrder }
    * @returns {Promise<Array|Object>}
    */
-  async getAllVehicles(filters = {}, pagination = null) {
+  async getAllVehicles(filters = {}, pagination = null, actorUser = null) {
+    const effectiveFilters = { ...filters };
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn) {
+        effectiveFilters.driverId = actorUser.id;
+      }
+    }
+
     if (!pagination) {
-      const rows = await vehiclesRepository.getAllVehicles(filters);
+      const rows = await vehiclesRepository.getAllVehicles(effectiveFilters);
       return rows.map(formatVehicle);
     }
 
     const offset = calculateOffset(pagination.page, pagination.limit);
-    const { rows, total } = await vehiclesRepository.getAllVehicles(filters, {
+    const { rows, total } = await vehiclesRepository.getAllVehicles(effectiveFilters, {
       ...pagination,
       offset,
     });
@@ -118,15 +128,52 @@ class VehiclesService {
   /**
    * Retrieves a single vehicle by ID.
    * @param {string} id - Vehicle UUID
+   * @param {Object} [actorUser=null] - Authenticated user context
    */
-  async getVehicleById(id) {
+  async getVehicleById(id, actorUser = null) {
     if (!id || typeof id !== 'string') {
-      throw new Error('Vehicle ID is required');
+      const err = new Error('Vehicle ID is required');
+      err.statusCode = 400;
+      throw err;
     }
 
     const row = await vehiclesRepository.getVehicleById(id.trim());
     if (!row) {
-      throw new Error('Vehicle not found');
+      const err = new Error('Vehicle not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && row.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view details for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
+    return formatVehicle(row);
+  }
+
+  /**
+   * Retrieves assigned vehicle for the authenticated driver.
+   * @param {Object} actorUser
+   */
+  async getMyAssignedVehicle(actorUser) {
+    if (!actorUser || !actorUser.id) {
+      const err = new Error('Unauthorized');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const row = await vehiclesRepository.findVehicleByDriverId(actorUser.id);
+    if (!row) {
+      const err = new Error('No assigned vehicle found for this driver');
+      err.statusCode = 404;
+      throw err;
     }
 
     return formatVehicle(row);

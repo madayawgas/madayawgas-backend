@@ -25,7 +25,7 @@ class SchedulesService {
     const effectiveFilters = { ...filters };
 
     if (!hasGlobalView && hasOwnView) {
-      effectiveFilters.salesUserId = actorUser.id;
+      effectiveFilters.crewUserId = actorUser.id;
     }
 
     if (!pagination || !pagination.isPaginated) {
@@ -62,7 +62,7 @@ class SchedulesService {
     const hasGlobalView = permissions.includes('route.view') || permissions.includes('route.manage');
     const hasOwnView = permissions.includes('route.view_own');
 
-    if (!hasGlobalView && hasOwnView && schedule.sales_user_id !== actorUser.id) {
+    if (!hasGlobalView && hasOwnView && schedule.sales_user_id !== actorUser.id && schedule.truck_driver_id !== actorUser.id) {
       const err = new Error('Access denied: You can only view schedules assigned to you');
       err.statusCode = 403;
       throw err;

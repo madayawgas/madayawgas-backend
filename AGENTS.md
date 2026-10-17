@@ -1,6 +1,6 @@
 # AGENTS.md — MadayawGas Backend System Context & Engineering Handbook
 
-> **Last Updated**: October 12, 2026  
+> **Last Updated**: October 16, 2026  
 > **Purpose**: Single source of truth for developer context, system architecture, engineering standards, current work status, and future roadmap across AI agent sessions.
 
 ---
@@ -52,7 +52,9 @@ madayawgas-backend/
 │   │   ├── 010_schedules_and_trips.sql     # Schedules, templates, zones, trips, loads, reconciliations schema
 │   │   ├── 011_plant_inventory_and_reconciliation.sql # Plant inventory, adjustments, reconciliation fields, views
 │   │   ├── 012_normalize_work_order_receipts.sql # Normalized work order receipts media attachment ledger
-│   │   └── 013_plant_and_vehicle_stock_permissions.sql # Plant vs vehicle stock permissions segregation schema
+│   │   ├── 013_plant_and_vehicle_stock_permissions.sql # Plant vs vehicle stock permissions segregation schema
+│   │   ├── 014_hardening_schedules_trips_and_inventory.sql # Status-filtered partial unique indexes & active trip guards
+│   │   └── 015_sales_and_delivery_phase1.sql # Customer schema extension, sales transactions, items, invoices, canister ledger
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -66,7 +68,8 @@ madayawgas-backend/
 │       ├── 004_sales_customers_seed.sql     # Seed customer profiles
 │       ├── 005_history_logs_seed.sql        # Seed system event historical logs
 │       ├── 006_schedules_and_trips_seed.sql # Seed service zones and weekly schedule templates
-│       └── 007_plant_inventory_seed.sql     # Seed product catalog standardization, plant bulk stock & adjustments
+│       ├── 007_plant_inventory_seed.sql     # Seed product catalog standardization, plant bulk stock & adjustments
+│       └── 008_sales_and_delivery_seed.sql  # Seed baseline customer profiles across Davao service zones
 ├── docs/
 │   ├── api-contracts/
 │   │   ├── README.md                        # Master directory & route matrix
@@ -146,10 +149,21 @@ madayawgas-backend/
 │   │   │   ├── media.controller.js          # HTTP parameter parsing & JSON response formatting
 │   │   │   ├── media.routes.js              # Express media routes (/upload, /resolve)
 │   │   │   └── index.js                     # Media barrel export
-│   │   └── sales/
-│   │       ├── customer/                    # Customer CRUD (Repository, Service, Controller)
+│   │   ├── operations/                      # Frontline Operational Logging Subsystems
+│   │   │   ├── attendance/                  # Duty Attendance (Clock-In/Out, Duration)
+│   │   │   ├── apprehensions/               # Road Traffic Apprehensions & Citations
+│   │   │   ├── fuel/                        # Vehicle Fuel Tracking & Odometer Advancement
+│   │   │   ├── alerts/                      # Driver Emergency SOS Dispatches & Triage
+│   │   │   ├── operations.routes.js         # Master operations router (/api/operations)
+│   │   │   └── index.js                     # Operations barrel export
+│   │   └── sales/                           # Sales & Delivery Subsystem
+│   │       ├── customer/                    # Legacy Customer CRUD (Repository, Service, Controller)
+│   │       ├── customers/                   # Customer subdomain barrel export
+│   │       ├── transactions/                # Sales transactions and line items (Scaffolded)
+│   │       ├── invoices/                    # Sales invoices and payment verification (Scaffolded)
+│   │       ├── sync/                        # Offline mobile store-and-forward batch sync (Scaffolded)
 │   │       ├── sales.routes.js              # Express sales route definitions
-│   │       └── index.js                     # Sales barrel export
+│   │       └── index.js                     # Sales unified barrel export
 │   ├── middleware/
 │   │   ├── auth.middleware.js               # authenticate, requirePermission, mustChangePassword guard
 │   │   ├── cookie.middleware.js             # Zero-dependency HTTP cookie parser
@@ -163,10 +177,13 @@ madayawgas-backend/
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
 │   │   ├── media.test.js                    # Media subsystem tests (prefix: test_media_)
+│   │   ├── operations.logging.test.js       # Operational Logging tests (prefix: test_ops_)
 │   │   ├── pagination.test.js               # Pagination tests (prefix: test_pagi_)
 │   │   ├── permission.test.js               # RBAC & permission tests (prefix: test_perm_)
 │   │   ├── phone.test.js                    # Phone normalizer unit tests
 │   │   ├── profile.test.js                  # Profile tests (prefix: test_prof_)
+│   │   ├── sales.customer.test.js           # Sales customer master data & receivables tests (prefix: test_sales_cust_)
+│   │   ├── sales.transactions.test.js       # Store-and-forward batch sync, invoices & shift tests (prefix: test_sales_tx_)
 │   │   └── schedules.trips.test.js          # Schedule & Trip Subsystem tests (prefix: test_sched_)
 │   └── utils/
 │       ├── asyncHandler.js                  # Wrapper for async route error catching
@@ -230,6 +247,9 @@ madayawgas-backend/
   - `management.test.js` uses prefix `test_mgmt_`
   - `permission.test.js` uses prefix `test_perm_`
   - `profile.test.js` uses prefix `test_prof_`
+  - `sales.customer.test.js` uses prefix `test_sales_cust_` and `TEST-SALES-`
+  - `sales.transactions.test.js` uses prefix `test_sales_tx_` and `TEST-TXSYNC-`
+  - `schedules.trips.test.js` uses prefix `test_sched_` and `TEST-SCHED-`
 * Each test file cleans its own prefixed records in `beforeEach()`.
 
 ### F. Centralized Event History Logging & Template Resolver
@@ -696,6 +716,88 @@ madayawgas-backend/
     * **Comprehensive Integration Testing**:
       - Added cross-role authorization and negative barrier checks to Subtest 12 in `src/test/schedules.trips.test.js`.
       - 100% test pass rate across all 15 test suites (135 out of 135 tests passing) with `npm test`.
+28. **Sales & Delivery Subsystem (Phase 1: Database Migration, Seed Baseline & Scaffolding)**:
+    * **Multi-Client Architecture Foundation**:
+      - Established schema foundation to support the companion offline-first mobile app (React Native + Expo SQLite) syncing intermittently over fringe cellular networks with authoritative PostgreSQL backend.
+    * **Database Migration (`015_sales_and_delivery_phase1.sql`)**:
+      - Extended `customers` table with `business_name`, `contact_person`, `alternate_contact_number`, `tin`, `delivery_address`, `zone_id` (`REFERENCES service_zones(id)`), `created_by`, and converted `customer_type` to `VARCHAR(30)` supporting `COMMERCIAL`, `RETAIL`, `RETAILER`, `WHOLESALE`, and `HOUSEHOLD`.
+      - Attached bidirectional trigger `trigger_sync_customer_profile` maintaining compatibility between legacy (`name`, `address`) and new fields.
+      - Created `sales_transactions` table with UUIDv4 primary key, unique `transaction_no`, trip attribution (`trip_id`), customer attribution (`customer_id`), status machine (`COMPLETED`, `CANCELLED`), cancellation audit columns, dual timestamps (`transacted_at` for mobile wall-clock, `synced_at` for ingestion), and indexes.
+      - Created `sales_transaction_items` table with frozen price snapshots (`unit_price_at_sale`, `subtotal_amount`), unit counts (`quantity_sold`, `empties_returned`, `empties_defective`), cascading FK to transaction, and check constraints.
+      - Created `sales_invoices` table with 1:1 transaction link, unique `invoice_number`, `declaration_number`, payment method (`CASH`, `GCASH`), payment status (`PAID_UNVERIFIED`, `VERIFIED`), GCash reference and proof key, supervisor verification fields, and `updated_at` trigger.
+      - Created `canister_ledger` table providing append-only receivables ledger with signed delta calculation (`net_balance_change = quantity_loaned - quantity_returned`), trip attribution for downstream inventory reconciliation, and product SKU links.
+    * **Seed Baseline (`008_sales_and_delivery_seed.sql`)**:
+      - Seeded baseline customer profiles across Davao service zones (`TORIL`, `BANKEROHAN`, `MATINA`, `BUHANGIN`, `CALINAN`, `PANACAN`) spanning `COMMERCIAL`, `RETAILER`, and `HOUSEHOLD` classifications with referential integrity to `service_zones` and seed `users`.
+    * **Feature Scaffolding under `src/features/sales/`**:
+      - Established subdirectories and 3-layer architecture files: `customers/index.js`, `transactions/` (`repository`, `service`, `controller`, `index.js`), `invoices/` (`repository`, `service`, `controller`, `index.js`), `sync/` (`service`, `controller`, `index.js`), and updated unified barrel export in `src/features/sales/index.js`.
+    * **Documentation & Master ERDs**:
+      - Updated `docs/ERD_mermaid/sales_and_delivery_erd.md` and `docs/ERD_mermaid/master_database_erd.md` (33 domain tables).
+23. **Sales & Delivery Subsystem (Phase 2 & Phase 3 Combined: Domain Events, Customer Master Data, & Receivables)**:
+    * **Domain Events & Audit Logging (`src/features/history/history.events.js`)**:
+      - Registered `MODULES.SALES = 'Sales & Delivery'` and events `SALES_CUSTOMER_REGISTERED`, `SALES_CUSTOMER_UPDATED`, `SALES_CUSTOMER_DEACTIVATED`, `SALES_CUSTOMER_ACTIVATED` with dynamic message resolvers.
+    * **Customer 3-Layer Implementation (`src/features/sales/customers/`)**:
+      - Built authoritative repository, service, controller, and routes slice.
+      - Enforced immediate field activation (`is_active = TRUE`), password-protected deactivation (`requirePasswordConfirmation`), and re-activation endpoint (`PATCH /:id/activate`).
+      - Implemented dynamic SKU-grouped canister debt calculation from append-only `canister_ledger` (guaranteeing no mutable balance columns on `customers`).
+      - Supported dual response envelopes (paginated metadata vs unpaginated legacy fallback) and multi-column ILIKE search with Philippine phone query normalization.
+    * **Integration Test Suite (`src/test/sales.customer.test.js`)**:
+      - 6 comprehensive subtests covering creation, dual envelopes, dynamic debt math, security controls, and audit trails. Maintained 100% pass rate across all 16 test suites (142 tests passing).
+24. **Sales & Delivery Subsystem (Phase 4 & Phase 5 Combined: Store-and-Forward Ingestion, Invoicing & Receivables)**:
+    * **Store-and-Forward Ingestion Engine (`POST /api/sales/sync-batch`)**:
+      - Built atomic and idempotent transaction sync endpoint (`src/features/sales/sync/`) supporting companion offline mobile app (`madayaw-mobile`) operating in vehicle cabins.
+      - Uses client-provided UUIDv4 primary keys for `sales_transactions`, `sales_transaction_items`, `sales_invoices`, and `canister_ledger`.
+      - Strict idempotency via `ON CONFLICT (id) DO NOTHING` — retried batch uploads are acknowledged safely (`processedCount`, `ignoredCount`, `transactionIds`) without duplicate orders, revenue double-charging, or ledger duplication.
+      - Dual timestamps recorded: `transacted_at` (offline device wall-clock) and `synced_at` (server ingestion timestamp).
+      - Permissive selling policy: In-field sales are never blocked by negative or unhydrated vehicle stock.
+    * **Deterministic Append-Only Canister Debt Accounting (`canister_ledger`)**:
+      - Ingestion engine automatically populates signed delta rows per product SKU tagged by `trip_id`: `quantity_loaned = GREATEST(0, sold - returned)`, `quantity_returned = GREATEST(0, returned - sold)`, `net_balance_change = quantity_loaned - quantity_returned`.
+      - Supports zero-sale canister pickup/return stops (`quantity_sold = 0`, `empties_returned > 0`, generating ₱0.00 collection declaration `CD-...`).
+    * **Invoicing, Document Series & Supervisor Verification (`src/features/sales/invoices/`)**:
+      - Full 3-layer architecture for invoice browsing (`GET /api/sales/invoices`, `GET /api/sales/invoices/:id`) supporting document numbers (`INV-...`, `CD-...`), payment methods (`CASH`, `GCASH`), and payment statuses (`PAID_UNVERIFIED`, `VERIFIED`).
+      - Supervisor payment verification endpoint `PATCH /api/sales/invoices/:id/verify` guarded with `sales.view` permission, validating GCash reference numbers and optional payment proof media URLs, recording verifier user ID and timestamp.
+    * **Transaction Oversight & Controlled Voiding (`src/features/sales/transactions/`)**:
+      - Full 3-layer architecture for transactions (`GET /api/sales/transactions`, `GET /api/sales/transactions/:id`).
+      - Ownership scoping: Frontline sales representatives with `sales.view_own` are strictly filtered to transactions created by their user account; supervisors with `sales.view` have global visibility.
+      - Transaction cancellation endpoint `PATCH /api/sales/transactions/:id/cancel` guarded with `sales.delete` (blocking frontline sales reps). Updates transaction status to `CANCELLED`, records `cancellation_reason`, `cancelled_by`, and automatically deletes associated `canister_ledger` records to reverse customer debt impact.
+    * **Shift Closeout Remittance (`GET /api/sales/trips/:tripId/shift-summary`)**:
+      - Provides end-of-shift reconciliation summary aggregated by `trip_id`: gross revenue, total cash collection, total GCash collection with individual reference slips, and discrete returned empty counts (good vs defective) grouped by product SKU.
+    * **Cross-Subsystem Plant Inventory Reconciliation Hook**:
+      - Exported `getTripNetCustomerDebtCreated(tripId)`, `getTripTotalNetCustomerDebtCreated(tripId)`, and `getTripTotalSoldFull(tripId)`.
+      - Integrated directly into `src/features/trips/trips.service.js` `reconcileTrip` engine, automatically fulfilling downstream formula: `emptyDiscrepancy = totalSoldFull - (totalReturnedEmptyGood + netCustomerDebtCreated)`.
+    * **Domain Events & Audit Logging (`src/features/history/history.events.js`)**:
+      - Registered `SALES_BATCH_SYNCED`, `SALES_TRANSACTION_CANCELLED`, and `SALES_INVOICE_VERIFIED` with dynamic template resolvers.
+    * **Integration Testing Suite (`src/test/sales.transactions.test.js`)**:
+      - 8 comprehensive subtests validating dual-clock sync, idempotency retries, canister debt accounting, supervisor verification, shift closeout aggregations, transaction cancellation, reconciliation hooks, and audit trails.
+      - 100% test pass rate across all 17 test suites (151 out of 151 tests passing) with `npm test`.
+18. **Operational Logging Subsystems & Frontline Driver Empowerment (`016_operational_logging_subsystems.sql`)**:
+    * **Frontline Driver Authentication & Scoped Authorization**:
+      - Granted `Driver` role login capabilities and assigned frontline operational permissions: `attendance.record`, `attendance.view_own`, `apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `route.view_own`, `fleet.view_own`.
+      - Scoped access controls across Subsystems: Drivers can only access their assigned truck (`GET /api/fleet/my-vehicle`, `GET /api/fleet/vehicles/:id` when `driver_id === actorUser.id`), view maintenance odometer/inspections for their vehicle only, and view trips assigned to their driver account (`route.view_own`). Access to unassigned vehicles or other drivers' trips returns `403 Forbidden`.
+    * **Duty Attendance Subsystem (`src/features/operations/attendance/`)**:
+      - Duty cycle integrity: Partial unique index `UQ_duty_attendance_active_user` on `user_id WHERE clock_out_time IS NULL AND status = 'ACTIVE'` preventing double clock-ins (`OPEN_DUTY_CYCLE_EXISTS`).
+      - Clock-out automatically calculates and returns elapsed duration in minutes, hours, and formatted string (`e.g. 8h 15m`).
+      - Supervisors can clock in/out on behalf of personnel via `attendance.manage`.
+      - Direct alias router mounted on `/api/attendance` alongside `/api/operations/attendance`.
+    * **Driver Road Apprehension Logging (`src/features/operations/apprehensions/`)**:
+      - Roadside traffic citation recording with mandatory ticket proof (`ticket_media_key`), strictly rejecting submissions lacking proof (`MEDIA_KEY_REQUIRED`).
+      - Automatically auto-associates active trip in progress (`trip_id`) and assigned vehicle.
+      - Status transitions (`RECORDED`, `SETTLED`, `DISPUTED`, `CANCELLED`) with supervisor resolution.
+    * **Vehicle Fuel Tracking & Telemetry (`src/features/operations/fuel/`)**:
+      - Volume intake (`liters_pumped > 0`), direct cost (`total_cost >= 0`), and optional pump receipt attachment (`receipt_media_key`).
+      - Monotonic odometer validation: rejects backward readings against `vehicles.current_odometer` (`INVALID_ODOMETER_SEQUENCE`). If advancing odometer reading is provided, executes inside atomic transaction advancing `vehicles.current_odometer` and inserting into `vehicle_odometer_logs` (`source = 'FUEL_ENTRY'`).
+      - Consumption analytics: `GET /api/operations/fuel/summary` computes aggregate liters pumped, total cost, and average price per liter.
+    * **Driver Emergency Alerts (`src/features/operations/alerts/`)**:
+      - Single-action mobile SOS dispatch (`POST /api/operations/alerts`) auto-resolving operational context (assigned vehicle and active trip) with graceful null GPS handling.
+      - 60-second anti-spam idempotency: immediate repeated presses return existing active alert with `isDuplicate: true`.
+      - Real-time dispatcher notification adapter (`alerts.notifier.js` EventEmitter with `registerWebSocketBroadcaster` hook ready for future WebSockets) and dashboard delta polling (`GET /api/operations/alerts/poll?since=...`).
+      - Triage lifecycle: supervisor acknowledgment (`PATCH /:id/acknowledge`) and resolution (`PATCH /:id/resolve`).
+    * **Media Storage Whitelisting (`src/features/media/media.service.js`)**:
+      - Whitelisted `operations/apprehensions`, `operations/fuel`, `fleet/apprehensions`, `fleet/fuel`.
+    * **Event History Definitions (`src/features/history/history.events.js`)**:
+      - Added `MODULES.OPERATIONS` and registered event templates for `ATTENDANCE_CLOCKED_IN`, `ATTENDANCE_CLOCKED_OUT`, `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`, `EMERGENCY_ALERT_TRIGGERED`, `EMERGENCY_ALERT_ACKNOWLEDGED`, `EMERGENCY_ALERT_RESOLVED`.
+    * **Comprehensive Integration Test Suite (`src/test/operations.logging.test.js`)**:
+      - 5 modular subtests verifying driver scoping, duty attendance cycles, road apprehensions, fuel tracking with odometer updates, and emergency SOS alerts.
+      - 100% test pass rate across all 18 test suites (157 out of 157 tests passing) with `npm test`.
 
 ---
 
@@ -706,13 +808,13 @@ The database seed provides permanent accounts for system testing (`must_change_p
 | Username | Password | Role(s) | Phone | Permissions Summary |
 | :--- | :--- | :--- | :--- | :--- |
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access (`*`). Cannot be deactivated, blocked, or demoted. |
-| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales, history. |
-| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet & logistics oversight (`dashboard.view`, `fleet.view`, `fleet.manage`, `route.view`, `route.manage`, `inventory.vehicle.manage`, `delivery.view`, `delivery.update`, `history.view`). |
-| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Vehicle driver record for fleet truck assignments. **No login permissions**. |
-| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & vehicle stock (`dashboard.view`, `inventory.view`, `inventory.vehicle.manage`, `sales.view`, `sales.update`, `sales.delete`, `delivery.view`, `delivery.update`, `history.view`). Cannot manipulate plant master stock or define product SKUs. |
-| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`). |
+| **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales, history, operations. |
+| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet, logistics & operations oversight (`dashboard.view`, `fleet.*`, `route.*`, `attendance.*`, `apprehensions.*`, `fuel.*`, `alerts.*`, `inventory.vehicle.manage`, `history.view`). |
+| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Field Driver with mobile login capabilities (`attendance.record`, `attendance.view_own`, `apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `fleet.view_own`, `route.view_own`). Scoped to assigned vehicle and own trips only. |
+| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & operations (`dashboard.view`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `attendance.*`, `alerts.view/manage`, `delivery.*`, `history.view`). |
+| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`, `attendance.record`, `attendance.view_own`, `apprehensions.create`, `alerts.trigger`). |
 | **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Master Bunawan yard stock & defect quarantines (`dashboard.view`, `inventory.view`, `inventory.plant.manage`). Route dispatches, vehicle stock manipulation, fleet, sales, and user admin are strictly blocked. |
-| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `delivery.*`, `history.view`). |
+| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `delivery.*`, `attendance.*`, `alerts.*`, `history.view`). |
 
 ---
 

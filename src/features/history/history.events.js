@@ -11,10 +11,14 @@ const MODULES = Object.freeze({
   INVENTORY_MANAGEMENT: 'Inventory Management',
   INVENTORY: 'Inventory Management',
   SALES_DELIVERY: 'Sales & Delivery',
+  SALES: 'Sales & Delivery',
   ROUTE_DISPATCH: 'Route Dispatch',
   SCHEDULE: 'SCHEDULE',
   TRIP: 'TRIP',
+  OPERATIONS: 'Operations',
 });
+
+const DOMAINS = MODULES;
 
 const ACTION_TYPES = Object.freeze({
   CREATED: 'Created',
@@ -377,6 +381,55 @@ const EVENT_DEFINITIONS = {
     template: (p) =>
       `Deactivated customer profile for '${p.name}'`,
   },
+  SALES_CUSTOMER_REGISTERED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'customer',
+    template: (p) =>
+      `Registered new customer: ${p.customerName || p.name || 'Customer'}${p.customerType ? ` (${p.customerType})` : ''}`,
+  },
+  SALES_CUSTOMER_UPDATED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'customer',
+    template: (p) =>
+      `Updated details for customer: ${p.customerName || p.name || 'Customer'}`,
+  },
+  SALES_CUSTOMER_DEACTIVATED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'customer',
+    template: (p) =>
+      `Deactivated customer account: ${p.customerName || p.name || 'Customer'}`,
+  },
+  SALES_CUSTOMER_ACTIVATED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'customer',
+    template: (p) =>
+      `Re-activated customer account: ${p.customerName || p.name || 'Customer'}`,
+  },
+  SALES_BATCH_SYNCED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'sales_batch',
+    template: (p) =>
+      `Synchronized batch of ${p.count || p.processedCount || 0} mobile sales transaction(s) for trip #${p.tripNumber || p.tripId}`,
+  },
+  SALES_TRANSACTION_CANCELLED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'sales_transaction',
+    template: (p) =>
+      `Cancelled sales transaction #${p.transactionNo || p.transaction_no}${p.reason ? `: ${p.reason}` : ''}`,
+  },
+  SALES_INVOICE_VERIFIED: {
+    module: MODULES.SALES,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'sales_invoice',
+    template: (p) =>
+      `Verified payment for invoice #${p.invoiceNumber || p.invoice_number}${p.paymentMethod ? ` (${p.paymentMethod})` : ''}`,
+  },
 
   // ============================================================
   // 5. SCHEDULE & TRIP SUBSYSTEM EVENTS
@@ -422,6 +475,66 @@ const EVENT_DEFINITIONS = {
     targetType: 'trip_reconciliation',
     template: (p) =>
       `Settled stock reconciliation for trip #${p.tripNumber} with status '${p.status}'`,
+  },
+
+  // ============================================================
+  // 9. OPERATIONAL SUBSYSTEM EVENTS
+  // ============================================================
+  ATTENDANCE_CLOCKED_IN: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'duty_attendance',
+    template: (p) =>
+      `Employee '${p.name || p.username}' clocked in for shift`,
+  },
+  ATTENDANCE_CLOCKED_OUT: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'duty_attendance',
+    template: (p) =>
+      `Employee '${p.name || p.username}' clocked out of shift (Duration: ${p.duration || `${p.durationMinutes || 0}m`})`,
+  },
+  APPREHENSION_LOGGED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'driver_apprehension',
+    template: (p) =>
+      `Logged road apprehension for vehicle '${p.plateNumber || p.vehicleId}' driven by '${p.driverName || p.driverId}': ${p.violationType} by ${p.apprehendingAgency}`,
+  },
+  APPREHENSION_STATUS_UPDATED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'driver_apprehension',
+    template: (p) =>
+      `Updated apprehension '${p.citationTicketNo || p.id}' status to '${p.status}'`,
+  },
+  FUEL_LOGGED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'vehicle_fuel_log',
+    template: (p) =>
+      `Logged fuel intake of ${p.litersPumped}L (₱${p.totalCost}) for vehicle '${p.plateNumber || p.vehicleId}'`,
+  },
+  EMERGENCY_ALERT_TRIGGERED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.CREATED,
+    targetType: 'emergency_alert',
+    template: (p) =>
+      `EMERGENCY ALERT: ${p.emergencyType || 'GENERAL'} triggered by driver '${p.driverName || p.driverId}' for vehicle '${p.plateNumber || p.vehicleId || 'N/A'}'`,
+  },
+  EMERGENCY_ALERT_ACKNOWLEDGED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'emergency_alert',
+    template: (p) =>
+      `Emergency alert #${p.alertId || p.id} acknowledged by supervisor '${p.supervisorName || p.supervisorId}'`,
+  },
+  EMERGENCY_ALERT_RESOLVED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'emergency_alert',
+    template: (p) =>
+      `Emergency alert #${p.alertId || p.id} resolved by supervisor '${p.supervisorName || p.supervisorId}'`,
   },
 };
 
@@ -477,6 +590,7 @@ function resolveEvent(eventKey, payload = {}, overrides = {}) {
 
 module.exports = {
   MODULES,
+  DOMAINS,
   ACTION_TYPES,
   EVENTS,
   EVENT_DEFINITIONS,

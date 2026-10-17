@@ -1,8 +1,8 @@
 # Master Database Architecture — Unified Entity Relationship Diagram (ERD)
 
 > **Database Engine**: PostgreSQL 18.x  
-> **Schema Migrations**: 001 through 011 (`database/migrations/`)  
-> **Total Tables**: 29 application domain tables (+1 internal `schema_migrations`, +2 compatibility views)  
+> **Schema Migrations**: 001 through 015 (`database/migrations/`)  
+> **Total Tables**: 33 application domain tables (+1 internal `schema_migrations`, +2 compatibility views)  
 > **Purpose**: Global enterprise data model showing all 6 core subsystems and all cross-domain foreign key relationships.
 
 ---
@@ -259,19 +259,87 @@ erDiagram
 
 
     %% ========================================================
-    %% 5. SALES & CUSTOMERS SUBSYSTEM (1 Table)
+    %% 5. SALES & DELIVERY SUBSYSTEM (5 Tables)
     %% ========================================================
 
     CUSTOMERS {
         uuid id PK
-        string name
-        string address
+        string name "Auto-synced"
+        string business_name "Nullable"
+        string contact_person
         string contact_number
-        enum customer_type "customer_type_enum"
+        string alternate_contact_number "Nullable"
+        string tin "Nullable"
+        string address "Auto-synced"
+        string delivery_address
+        string customer_type "COMMERCIAL, RETAIL, RETAILER, WHOLESALE, HOUSEHOLD"
+        uuid zone_id FK "service_zones(id) Nullable"
         boolean is_active
+        uuid created_by FK "users(id) Nullable"
         timestamptz created_at
         timestamptz updated_at
     }
+
+    SALES_TRANSACTIONS {
+        uuid id PK
+        string transaction_no UK
+        uuid trip_id FK "trips(id)"
+        uuid customer_id FK "customers(id)"
+        uuid recorded_by FK "users(id)"
+        string status "COMPLETED, CANCELLED"
+        string cancellation_reason "Nullable"
+        uuid cancelled_by FK "users(id) Nullable"
+        timestamptz cancelled_at "Nullable"
+        timestamptz transacted_at
+        timestamptz synced_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SALES_TRANSACTION_ITEMS {
+        uuid id PK
+        uuid transaction_id FK "sales_transactions(id)"
+        uuid product_id FK "products(id)"
+        int quantity_sold
+        int empties_returned
+        int empties_defective
+        numeric unit_price_at_sale
+        numeric subtotal_amount
+        timestamptz created_at
+    }
+
+    SALES_INVOICES {
+        uuid id PK
+        uuid transaction_id FK,UK "sales_transactions(id)"
+        string invoice_number UK
+        string declaration_number
+        numeric total_amount
+        string payment_method "CASH, GCASH"
+        string payment_status "PAID_UNVERIFIED, VERIFIED"
+        string payment_reference_number "Nullable"
+        string payment_proof_key "Nullable"
+        uuid verified_by FK "users(id) Nullable"
+        timestamptz verified_at "Nullable"
+        timestamptz transacted_at
+        timestamptz synced_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CANISTER_LEDGER {
+        uuid id PK
+        uuid customer_id FK "customers(id)"
+        uuid product_id FK "products(id)"
+        uuid trip_id FK "trips(id)"
+        uuid transaction_id FK "sales_transactions(id)"
+        int quantity_loaned
+        int quantity_returned
+        int net_balance_change
+        timestamptz transacted_at
+        timestamptz synced_at
+        timestamptz created_at
+    }
+
 
 
     %% ========================================================
@@ -446,6 +514,22 @@ erDiagram
 
     %% Trips -> Stock Reconciliation
     TRIPS ||--o| TRIP_STOCK_RECONCILIATIONS : "reconciled_via"
+
+    %% Sales & Delivery Subsystem
+    SERVICE_ZONES ||--o{ CUSTOMERS : "locates"
+    USERS ||--o{ CUSTOMERS : "registered_by"
+    TRIPS ||--o{ SALES_TRANSACTIONS : "delivers"
+    CUSTOMERS ||--o{ SALES_TRANSACTIONS : "purchases"
+    USERS ||--o{ SALES_TRANSACTIONS : "recorded_by"
+    USERS ||--o{ SALES_TRANSACTIONS : "cancelled_by"
+    SALES_TRANSACTIONS ||--|{ SALES_TRANSACTION_ITEMS : "contains"
+    PRODUCTS ||--o{ SALES_TRANSACTION_ITEMS : "catalog_item"
+    SALES_TRANSACTIONS ||--|| SALES_INVOICES : "bills"
+    USERS ||--o{ SALES_INVOICES : "verified_by"
+    CUSTOMERS ||--o{ CANISTER_LEDGER : "owes_receivables"
+    PRODUCTS ||--o{ CANISTER_LEDGER : "sku"
+    TRIPS ||--o{ CANISTER_LEDGER : "trip_attribution"
+    SALES_TRANSACTIONS ||--o{ CANISTER_LEDGER : "generates"
 ```
 
 ---
@@ -458,7 +542,7 @@ erDiagram
 | **System Event History Logs** | 1 | `history_logs` | [`system_history_logs_erd.md`](./system_history_logs_erd.md) |
 | **Fleet & Maintenance** | 10 | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts` | [`fleet_and_maintenance_erd.md`](./fleet_and_maintenance_erd.md) |
 | **Inventory** | 3 | `products`, `plant_inventory`, `plant_stock_adjustments` | [`inventory_erd.md`](./inventory_erd.md) |
-| **Sales & Customers** | 1 | `customers` | [`sales_and_delivery_erd.md`](./sales_and_delivery_erd.md) |
+| **Sales & Delivery** | 5 | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` | [`sales_and_delivery_erd.md`](./sales_and_delivery_erd.md) |
 | **Schedule & Trips** | 7 | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [`schedule_and_trip_erd.md`](./schedule_and_trip_erd.md) |
 
 ---

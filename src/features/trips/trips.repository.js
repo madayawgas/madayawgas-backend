@@ -11,7 +11,7 @@ class TripsRepository {
    * @param {Object|null} pagination
    */
   async getAllTrips(filters = {}, pagination = null) {
-    const { status, truckId, salesUserId, driverId, zoneId, startDate, endDate, search } = filters;
+    const { status, truckId, salesUserId, driverId, crewUserId, zoneId, startDate, endDate, search } = filters;
     const conditions = [];
     const params = [];
     let paramIndex = 1;
@@ -24,6 +24,12 @@ class TripsRepository {
     if (truckId) {
       conditions.push(`t.truck_id = $${paramIndex++}`);
       params.push(truckId);
+    }
+
+    if (crewUserId) {
+      conditions.push(`(t.sales_user_id = $${paramIndex} OR t.driver_id = $${paramIndex})`);
+      params.push(crewUserId);
+      paramIndex++;
     }
 
     if (salesUserId) {

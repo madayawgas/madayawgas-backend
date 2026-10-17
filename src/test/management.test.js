@@ -493,7 +493,10 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(salesManager.permissions.includes('sales.view'));
 
     const driverRole = roles.find((r) => r.name === 'Driver');
-    assert.equal(driverRole.permissions.length, 0); // Driver has no login permissions
+    assert.ok(driverRole.permissions.includes('alerts.trigger'));
+    assert.ok(driverRole.permissions.includes('attendance.record'));
+    assert.ok(driverRole.permissions.includes('fuel.create'));
+    assert.ok(driverRole.permissions.includes('fleet.view_own'));
 
     // 3. Create a new custom role (POST /api/users/roles)
     const createRoleRes = await fetch(`${baseUrl}/api/users/roles`, {

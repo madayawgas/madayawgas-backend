@@ -97,7 +97,7 @@ class TripsService {
     const effectiveFilters = { ...filters };
 
     if (!hasGlobalView && hasOwnView) {
-      effectiveFilters.salesUserId = actorUser.id;
+      effectiveFilters.crewUserId = actorUser.id;
     }
 
     if (!pagination || !pagination.isPaginated) {
@@ -133,7 +133,7 @@ class TripsService {
     const hasGlobalView = permissions.includes('route.view') || permissions.includes('route.manage');
     const hasOwnView = permissions.includes('route.view_own');
 
-    if (!hasGlobalView && hasOwnView && trip.sales_user_id !== actorUser.id) {
+    if (!hasGlobalView && hasOwnView && trip.sales_user_id !== actorUser.id && trip.driver_id !== actorUser.id) {
       const err = new Error('Access denied: You can only view trips assigned to you');
       err.statusCode = 403;
       throw err;
@@ -755,6 +755,14 @@ class TripsService {
     let fullDiscrepancy = null;
     let emptyDiscrepancy = null;
 
+    const salesSubsystem = require('../sales');
+
+    if (totalSoldFull === undefined || totalSoldFull === null) {
+      if (payload.useSyncedSales || payload.syncSales) {
+        totalSoldFull = await salesSubsystem.getTripTotalSoldFull(trip.id);
+      }
+    }
+
     if (totalSoldFull !== undefined && totalSoldFull !== null) {
       soldFull = parseInt(totalSoldFull, 10);
       if (isNaN(soldFull) || soldFull < 0) {
@@ -770,6 +778,8 @@ class TripsService {
           err.statusCode = 400;
           throw err;
         }
+      } else {
+        netDebt = await salesSubsystem.getTripTotalNetCustomerDebtCreated(trip.id);
       }
 
       // Mathematical discrepancy calculations

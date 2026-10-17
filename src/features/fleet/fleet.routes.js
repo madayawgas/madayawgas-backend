@@ -39,6 +39,17 @@ router.get(
 );
 
 /**
+ * GET /api/fleet/my-vehicle
+ * Assigned vehicle profile for the authenticated driver.
+ */
+router.get(
+  '/my-vehicle',
+  authenticate,
+  requirePermission(['fleet.view', 'fleet.view_own']),
+  asyncHandler(vehiclesController.getMyAssignedVehicle.bind(vehiclesController))
+);
+
+/**
  * GET /api/fleet/register-options
  * Form configuration metadata & available unassigned drivers for vehicle registration.
  */
@@ -89,14 +100,14 @@ router.get(
 router.get(
   '/vehicles',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
 router.get(
   '/',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
@@ -129,7 +140,7 @@ router.post(
 router.get(
   '/vehicles/:id/status',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(availabilityController.getTruckStatus.bind(availabilityController))
 );
 
@@ -249,7 +260,7 @@ router.patch(
 router.get(
   '/vehicles/:id',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(vehiclesController.getVehicleById.bind(vehiclesController))
 );
 

@@ -41,13 +41,13 @@ router.get(
 router.get(
   '/odometer/truck/:truckId',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getTruckOdometerHistory.bind(maintenanceController))
 );
 router.get(
   '/odometer/vehicle/:vehicleId',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getTruckOdometerHistory.bind(maintenanceController))
 );
 
@@ -74,13 +74,13 @@ router.post(
 router.get(
   '/inspections/truck/:truckId',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getTruckInspections.bind(maintenanceController))
 );
 router.get(
   '/inspections/vehicle/:vehicleId',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getTruckInspections.bind(maintenanceController))
 );
 
@@ -141,13 +141,13 @@ router.get(
 router.get(
   '/incidents/truck/:truckId',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getTruckIncidents.bind(maintenanceController))
 );
 router.get(
   '/incidents/vehicle/:vehicleId',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getTruckIncidents.bind(maintenanceController))
 );
 

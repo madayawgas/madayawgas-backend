@@ -40,6 +40,27 @@ CREATE TYPE public.customer_type_enum AS ENUM (
 );
 
 --
+-- Name: inventory_transfer_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.inventory_transfer_type AS ENUM (
+    'DISPATCH_LOAD',
+    'RETURN_UNLOAD',
+    'SUPPLIER_PURCHASE',
+    'DEFECT_ADJUSTMENT'
+);
+
+--
+-- Name: plant_adjustment_type; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.plant_adjustment_type AS ENUM (
+    'SUPPLIER_PURCHASE',
+    'DEFECT_ADJUSTMENT',
+    'PHYSICAL_COUNT'
+);
+
+--
 -- Name: reconciliation_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -99,6 +120,33 @@ CREATE TYPE public.truck_status AS ENUM (
     'UNDER_MAINTENANCE',
     'RETIRED'
 );
+
+--
+-- Name: sync_customer_profile_columns(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_customer_profile_columns() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- Sync address and delivery_address
+    IF NEW.delivery_address IS NULL AND NEW.address IS NOT NULL THEN
+        NEW.delivery_address = NEW.address;
+    ELSIF NEW.address IS NULL AND NEW.delivery_address IS NOT NULL THEN
+        NEW.address = NEW.delivery_address;
+    END IF;
+
+    -- Sync name, business_name, contact_person
+    IF NEW.name IS NULL THEN
+        NEW.name = COALESCE(NEW.business_name, NEW.contact_person, 'Customer');
+    END IF;
+    IF NEW.contact_person IS NULL THEN
+        NEW.contact_person = NEW.name;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
 
 --
 -- Name: update_customers_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
@@ -213,6 +261,27 @@ CREATE TABLE public.audit_logs (
 );
 
 --
+-- Name: canister_ledger; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.canister_ledger (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    customer_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    trip_id uuid NOT NULL,
+    transaction_id uuid NOT NULL,
+    quantity_loaned integer DEFAULT 0 NOT NULL,
+    quantity_returned integer DEFAULT 0 NOT NULL,
+    net_balance_change integer NOT NULL,
+    transacted_at timestamp with time zone NOT NULL,
+    synced_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT "CHK_canister_ledger_net_balance" CHECK ((net_balance_change = (quantity_loaned - quantity_returned))),
+    CONSTRAINT canister_ledger_quantity_loaned_check CHECK ((quantity_loaned >= 0)),
+    CONSTRAINT canister_ledger_quantity_returned_check CHECK ((quantity_returned >= 0))
+);
+
+--
 -- Name: customers; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -221,10 +290,18 @@ CREATE TABLE public.customers (
     name character varying(255) NOT NULL,
     address text NOT NULL,
     contact_number character varying(50) NOT NULL,
-    customer_type public.customer_type_enum NOT NULL,
+    customer_type character varying(30) NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    business_name character varying(150),
+    contact_person character varying(100),
+    alternate_contact_number character varying(30),
+    tin character varying(30),
+    delivery_address text,
+    zone_id uuid,
+    created_by uuid,
+    CONSTRAINT "CHK_customers_customer_type" CHECK (((customer_type)::text = ANY ((ARRAY['COMMERCIAL'::character varying, 'RETAIL'::character varying, 'RETAILER'::character varying, 'WHOLESALE'::character varying, 'HOUSEHOLD'::character varying])::text[])))
 );
 
 --
@@ -353,6 +430,42 @@ CREATE TABLE public.permissions (
 );
 
 --
+-- Name: plant_inventory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plant_inventory (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    quantity_filled integer DEFAULT 0 NOT NULL,
+    quantity_empty_good integer DEFAULT 0 NOT NULL,
+    quantity_defective integer DEFAULT 0 NOT NULL,
+    last_counted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT plant_inventory_quantity_defective_check CHECK ((quantity_defective >= 0)),
+    CONSTRAINT plant_inventory_quantity_empty_good_check CHECK ((quantity_empty_good >= 0)),
+    CONSTRAINT plant_inventory_quantity_filled_check CHECK ((quantity_filled >= 0))
+);
+
+--
+-- Name: plant_stock_adjustments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plant_stock_adjustments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    recorded_by uuid,
+    adjustment_type public.plant_adjustment_type NOT NULL,
+    target_condition public.stock_condition NOT NULL,
+    delta_quantity integer NOT NULL,
+    source_condition public.stock_condition,
+    supplier_invoice_number character varying(100),
+    reason text NOT NULL,
+    recorded_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+--
 -- Name: products; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -386,6 +499,73 @@ CREATE TABLE public.roles (
     name character varying(50) NOT NULL,
     description text,
     created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: sales_invoices; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sales_invoices (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    transaction_id uuid NOT NULL,
+    invoice_number character varying(50) NOT NULL,
+    declaration_number character varying(50) NOT NULL,
+    total_amount numeric(12,2) NOT NULL,
+    payment_method character varying(20) NOT NULL,
+    payment_status character varying(20) DEFAULT 'PAID_UNVERIFIED'::character varying NOT NULL,
+    payment_reference_number character varying(100),
+    payment_proof_key character varying(255),
+    verified_by uuid,
+    verified_at timestamp with time zone,
+    transacted_at timestamp with time zone NOT NULL,
+    synced_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT sales_invoices_payment_method_check CHECK (((payment_method)::text = ANY ((ARRAY['CASH'::character varying, 'GCASH'::character varying])::text[]))),
+    CONSTRAINT sales_invoices_payment_status_check CHECK (((payment_status)::text = ANY ((ARRAY['PAID_UNVERIFIED'::character varying, 'VERIFIED'::character varying])::text[]))),
+    CONSTRAINT sales_invoices_total_amount_check CHECK ((total_amount >= (0)::numeric))
+);
+
+--
+-- Name: sales_transaction_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sales_transaction_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    transaction_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    quantity_sold integer NOT NULL,
+    empties_returned integer DEFAULT 0 NOT NULL,
+    empties_defective integer DEFAULT 0 NOT NULL,
+    unit_price_at_sale numeric(10,2) NOT NULL,
+    subtotal_amount numeric(12,2) NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT sales_transaction_items_empties_defective_check CHECK ((empties_defective >= 0)),
+    CONSTRAINT sales_transaction_items_empties_returned_check CHECK ((empties_returned >= 0)),
+    CONSTRAINT sales_transaction_items_quantity_sold_check CHECK ((quantity_sold >= 0)),
+    CONSTRAINT sales_transaction_items_subtotal_amount_check CHECK ((subtotal_amount >= (0)::numeric)),
+    CONSTRAINT sales_transaction_items_unit_price_at_sale_check CHECK ((unit_price_at_sale >= (0)::numeric))
+);
+
+--
+-- Name: sales_transactions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sales_transactions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    transaction_no character varying(50) NOT NULL,
+    trip_id uuid NOT NULL,
+    customer_id uuid NOT NULL,
+    recorded_by uuid NOT NULL,
+    status character varying(20) DEFAULT 'COMPLETED'::character varying NOT NULL,
+    cancellation_reason text,
+    cancelled_by uuid,
+    cancelled_at timestamp with time zone,
+    transacted_at timestamp with time zone NOT NULL,
+    synced_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT sales_transactions_status_check CHECK (((status)::text = ANY ((ARRAY['COMPLETED'::character varying, 'CANCELLED'::character varying])::text[])))
 );
 
 --
@@ -505,12 +685,42 @@ CREATE TABLE public.trip_stock_reconciliations (
     reconciled_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    full_discrepancy integer DEFAULT 0 NOT NULL,
+    empty_discrepancy integer DEFAULT 0 NOT NULL,
+    reconciliation_data jsonb DEFAULT '[]'::jsonb NOT NULL,
     CONSTRAINT trip_stock_reconciliations_total_loaded_full_check CHECK ((total_loaded_full >= 0)),
     CONSTRAINT trip_stock_reconciliations_total_returned_defective_check CHECK ((total_returned_defective >= 0)),
     CONSTRAINT trip_stock_reconciliations_total_returned_empty_good_check CHECK ((total_returned_empty_good >= 0)),
     CONSTRAINT trip_stock_reconciliations_total_returned_full_check CHECK ((total_returned_full >= 0)),
     CONSTRAINT trip_stock_reconciliations_total_sold_full_check CHECK ((total_sold_full >= 0))
 );
+
+--
+-- Name: trip_stock_transfer_items; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.trip_stock_transfer_items AS
+ SELECT id,
+    load_id,
+    load_id AS transfer_id,
+    product_id,
+    condition,
+    quantity_units
+   FROM public.trip_load_items;
+
+--
+-- Name: trip_stock_transfers; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.trip_stock_transfers AS
+ SELECT id,
+    trip_id,
+    transfer_type,
+    slip_number,
+    recorded_by,
+    recorded_at,
+    remarks
+   FROM public.trip_loads;
 
 --
 -- Name: trips; Type: TABLE; Schema: public; Owner: -
@@ -643,14 +853,7 @@ CREATE TABLE public.work_order_receipts (
     work_order_id uuid NOT NULL,
     uploaded_by uuid,
     file_url text NOT NULL,
-    receipt_number character varying(100),
-    vendor_name character varying(150),
-    amount numeric(12,2) DEFAULT 0.00 NOT NULL,
-    receipt_type character varying(30) DEFAULT 'PARTS'::character varying NOT NULL,
-    receipt_date timestamp with time zone,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT "CHK_work_order_receipts_amount" CHECK ((amount >= (0)::numeric)),
-    CONSTRAINT "CHK_work_order_receipts_receipt_type" CHECK (((receipt_type)::text = ANY ((ARRAY['PARTS'::character varying, 'LABOR'::character varying, 'MISC'::character varying])::text[])))
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 --
@@ -730,13 +933,6 @@ ALTER TABLE ONLY public.schedule_templates
     ADD CONSTRAINT "UQ_schedule_templates_truck_day" UNIQUE (truck_id, day_of_week);
 
 --
--- Name: truck_schedules UQ_truck_schedules_truck_date; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.truck_schedules
-    ADD CONSTRAINT "UQ_truck_schedules_truck_date" UNIQUE (truck_id, scheduled_date);
-
---
 -- Name: vehicles UQ_trucks_driver_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -770,6 +966,13 @@ ALTER TABLE ONLY public.approval_requests
 
 ALTER TABLE ONLY public.audit_logs
     ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+
+--
+-- Name: canister_ledger canister_ledger_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.canister_ledger
+    ADD CONSTRAINT canister_ledger_pkey PRIMARY KEY (id);
 
 --
 -- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -835,6 +1038,27 @@ ALTER TABLE ONLY public.permissions
     ADD CONSTRAINT permissions_pkey PRIMARY KEY (id);
 
 --
+-- Name: plant_inventory plant_inventory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plant_inventory
+    ADD CONSTRAINT plant_inventory_pkey PRIMARY KEY (id);
+
+--
+-- Name: plant_inventory plant_inventory_product_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plant_inventory
+    ADD CONSTRAINT plant_inventory_product_id_key UNIQUE (product_id);
+
+--
+-- Name: plant_stock_adjustments plant_stock_adjustments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plant_stock_adjustments
+    ADD CONSTRAINT plant_stock_adjustments_pkey PRIMARY KEY (id);
+
+--
 -- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -854,6 +1078,48 @@ ALTER TABLE ONLY public.role_permissions
 
 ALTER TABLE ONLY public.roles
     ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
+
+--
+-- Name: sales_invoices sales_invoices_invoice_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_invoices
+    ADD CONSTRAINT sales_invoices_invoice_number_key UNIQUE (invoice_number);
+
+--
+-- Name: sales_invoices sales_invoices_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_invoices
+    ADD CONSTRAINT sales_invoices_pkey PRIMARY KEY (id);
+
+--
+-- Name: sales_invoices sales_invoices_transaction_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_invoices
+    ADD CONSTRAINT sales_invoices_transaction_id_key UNIQUE (transaction_id);
+
+--
+-- Name: sales_transaction_items sales_transaction_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transaction_items
+    ADD CONSTRAINT sales_transaction_items_pkey PRIMARY KEY (id);
+
+--
+-- Name: sales_transactions sales_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transactions
+    ADD CONSTRAINT sales_transactions_pkey PRIMARY KEY (id);
+
+--
+-- Name: sales_transactions sales_transactions_transaction_no_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transactions
+    ADD CONSTRAINT sales_transactions_transaction_no_key UNIQUE (transaction_no);
 
 --
 -- Name: schedule_templates schedule_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1053,6 +1319,36 @@ CREATE INDEX "IX_incident_reports_vehicle_id" ON public.incident_reports USING b
 CREATE INDEX "IX_maintenance_logs_work_order_id" ON public.maintenance_logs USING btree (work_order_id);
 
 --
+-- Name: IX_plant_inventory_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_plant_inventory_product_id" ON public.plant_inventory USING btree (product_id);
+
+--
+-- Name: IX_plant_stock_adjustments_adjustment_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_plant_stock_adjustments_adjustment_type" ON public.plant_stock_adjustments USING btree (adjustment_type);
+
+--
+-- Name: IX_plant_stock_adjustments_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_plant_stock_adjustments_product_id" ON public.plant_stock_adjustments USING btree (product_id);
+
+--
+-- Name: IX_plant_stock_adjustments_recorded_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_plant_stock_adjustments_recorded_at" ON public.plant_stock_adjustments USING btree (recorded_at);
+
+--
+-- Name: IX_plant_stock_adjustments_recorded_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_plant_stock_adjustments_recorded_by" ON public.plant_stock_adjustments USING btree (recorded_by);
+
+--
 -- Name: IX_schedule_templates_day_of_week; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1149,6 +1445,12 @@ CREATE INDEX "IX_trips_departure_time" ON public.trips USING btree (departure_ti
 CREATE INDEX "IX_trips_driver_id" ON public.trips USING btree (driver_id);
 
 --
+-- Name: IX_trips_overdue_checkin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_trips_overdue_checkin" ON public.trips USING btree (departure_time) WHERE (status = ANY (ARRAY['PENDING'::public.trip_status, 'IN_PROGRESS'::public.trip_status]));
+
+--
 -- Name: IX_trips_sales_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1239,18 +1541,6 @@ CREATE INDEX "IX_vehicle_odometer_logs_vehicle_id" ON public.vehicle_odometer_lo
 CREATE INDEX "IX_vehicles_driver_id" ON public.vehicles USING btree (driver_id);
 
 --
--- Name: IX_work_order_receipts_receipt_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX "IX_work_order_receipts_receipt_type" ON public.work_order_receipts USING btree (receipt_type);
-
---
--- Name: IX_work_order_receipts_work_order_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX "IX_work_order_receipts_work_order_id" ON public.work_order_receipts USING btree (work_order_id);
-
---
 -- Name: IX_work_orders_maintenance_type_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1275,10 +1565,82 @@ CREATE INDEX "IX_work_orders_vehicle_id" ON public.work_orders USING btree (vehi
 CREATE UNIQUE INDEX "UQ_approval_requests_pending" ON public.approval_requests USING btree (work_order_id) WHERE (is_approved IS NULL);
 
 --
+-- Name: UQ_schedule_templates_active_sales_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "UQ_schedule_templates_active_sales_day" ON public.schedule_templates USING btree (default_sales_user_id, day_of_week) WHERE ((is_active = true) AND (default_sales_user_id IS NOT NULL));
+
+--
+-- Name: UQ_trips_active_driver; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "UQ_trips_active_driver" ON public.trips USING btree (driver_id) WHERE (status = ANY (ARRAY['PENDING'::public.trip_status, 'IN_PROGRESS'::public.trip_status]));
+
+--
+-- Name: UQ_trips_active_sales_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "UQ_trips_active_sales_user" ON public.trips USING btree (sales_user_id) WHERE (status = ANY (ARRAY['PENDING'::public.trip_status, 'IN_PROGRESS'::public.trip_status]));
+
+--
+-- Name: UQ_trips_active_truck; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "UQ_trips_active_truck" ON public.trips USING btree (truck_id) WHERE (status = ANY (ARRAY['PENDING'::public.trip_status, 'IN_PROGRESS'::public.trip_status]));
+
+--
 -- Name: UQ_trips_schedule_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX "UQ_trips_schedule_id" ON public.trips USING btree (schedule_id) WHERE (schedule_id IS NOT NULL);
+
+--
+-- Name: UQ_truck_schedules_active_sales_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "UQ_truck_schedules_active_sales_date" ON public.truck_schedules USING btree (sales_user_id, scheduled_date) WHERE (status <> 'CANCELLED'::public.schedule_status);
+
+--
+-- Name: UQ_truck_schedules_active_truck_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "UQ_truck_schedules_active_truck_date" ON public.truck_schedules USING btree (truck_id, scheduled_date) WHERE (status <> 'CANCELLED'::public.schedule_status);
+
+--
+-- Name: idx_canister_ledger_customer_product; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_canister_ledger_customer_product ON public.canister_ledger USING btree (customer_id, product_id);
+
+--
+-- Name: idx_canister_ledger_transacted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_canister_ledger_transacted_at ON public.canister_ledger USING btree (transacted_at);
+
+--
+-- Name: idx_canister_ledger_transaction_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_canister_ledger_transaction_id ON public.canister_ledger USING btree (transaction_id);
+
+--
+-- Name: idx_canister_ledger_trip_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_canister_ledger_trip_id ON public.canister_ledger USING btree (trip_id);
+
+--
+-- Name: idx_customers_business_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_customers_business_name ON public.customers USING btree (business_name);
+
+--
+-- Name: idx_customers_contact_person; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_customers_contact_person ON public.customers USING btree (contact_person);
 
 --
 -- Name: idx_customers_customer_type; Type: INDEX; Schema: public; Owner: -
@@ -1297,6 +1659,12 @@ CREATE INDEX idx_customers_is_active ON public.customers USING btree (is_active)
 --
 
 CREATE INDEX idx_customers_name ON public.customers USING btree (name);
+
+--
+-- Name: idx_customers_zone_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_customers_zone_id ON public.customers USING btree (zone_id);
 
 --
 -- Name: idx_history_logs_action_type; Type: INDEX; Schema: public; Owner: -
@@ -1323,6 +1691,84 @@ CREATE INDEX idx_history_logs_module ON public.history_logs USING btree (module)
 CREATE INDEX idx_history_logs_user_id ON public.history_logs USING btree (user_id);
 
 --
+-- Name: idx_sales_invoices_declaration_number; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_invoices_declaration_number ON public.sales_invoices USING btree (declaration_number);
+
+--
+-- Name: idx_sales_invoices_invoice_number; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_invoices_invoice_number ON public.sales_invoices USING btree (invoice_number);
+
+--
+-- Name: idx_sales_invoices_payment_method; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_invoices_payment_method ON public.sales_invoices USING btree (payment_method);
+
+--
+-- Name: idx_sales_invoices_payment_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_invoices_payment_status ON public.sales_invoices USING btree (payment_status);
+
+--
+-- Name: idx_sales_invoices_transaction_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_invoices_transaction_id ON public.sales_invoices USING btree (transaction_id);
+
+--
+-- Name: idx_sales_transaction_items_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transaction_items_product_id ON public.sales_transaction_items USING btree (product_id);
+
+--
+-- Name: idx_sales_transaction_items_transaction_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transaction_items_transaction_id ON public.sales_transaction_items USING btree (transaction_id);
+
+--
+-- Name: idx_sales_transactions_customer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transactions_customer_id ON public.sales_transactions USING btree (customer_id);
+
+--
+-- Name: idx_sales_transactions_recorded_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transactions_recorded_by ON public.sales_transactions USING btree (recorded_by);
+
+--
+-- Name: idx_sales_transactions_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transactions_status ON public.sales_transactions USING btree (status);
+
+--
+-- Name: idx_sales_transactions_synced_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transactions_synced_at ON public.sales_transactions USING btree (synced_at);
+
+--
+-- Name: idx_sales_transactions_transacted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transactions_transacted_at ON public.sales_transactions USING btree (transacted_at);
+
+--
+-- Name: idx_sales_transactions_trip_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sales_transactions_trip_id ON public.sales_transactions USING btree (trip_id);
+
+--
 -- Name: idx_user_roles_role_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1335,16 +1781,46 @@ CREATE INDEX idx_user_roles_role_id ON public.user_roles USING btree (role_id);
 CREATE INDEX idx_user_roles_user_id ON public.user_roles USING btree (user_id);
 
 --
+-- Name: idx_work_order_receipts_wo_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_work_order_receipts_wo_id ON public.work_order_receipts USING btree (work_order_id);
+
+--
+-- Name: customers trigger_sync_customer_profile; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trigger_sync_customer_profile BEFORE INSERT OR UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION public.sync_customer_profile_columns();
+
+--
 -- Name: customers trigger_update_customers_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER trigger_update_customers_updated_at BEFORE UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION public.update_customers_updated_at_column();
 
 --
+-- Name: plant_inventory trigger_update_plant_inventory_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trigger_update_plant_inventory_updated_at BEFORE UPDATE ON public.plant_inventory FOR EACH ROW EXECUTE FUNCTION public.update_timestamp_column();
+
+--
 -- Name: products trigger_update_products_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER trigger_update_products_updated_at BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION public.update_products_updated_at_column();
+
+--
+-- Name: sales_invoices trigger_update_sales_invoices_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trigger_update_sales_invoices_updated_at BEFORE UPDATE ON public.sales_invoices FOR EACH ROW EXECUTE FUNCTION public.update_timestamp_column();
+
+--
+-- Name: sales_transactions trigger_update_sales_transactions_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trigger_update_sales_transactions_updated_at BEFORE UPDATE ON public.sales_transactions FOR EACH ROW EXECUTE FUNCTION public.update_timestamp_column();
 
 --
 -- Name: schedule_templates trigger_update_schedule_templates_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -1473,6 +1949,48 @@ ALTER TABLE ONLY public.approval_requests
     ADD CONSTRAINT approval_requests_work_order_id_fkey FOREIGN KEY (work_order_id) REFERENCES public.work_orders(id) ON DELETE CASCADE;
 
 --
+-- Name: canister_ledger canister_ledger_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.canister_ledger
+    ADD CONSTRAINT canister_ledger_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE RESTRICT;
+
+--
+-- Name: canister_ledger canister_ledger_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.canister_ledger
+    ADD CONSTRAINT canister_ledger_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE RESTRICT;
+
+--
+-- Name: canister_ledger canister_ledger_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.canister_ledger
+    ADD CONSTRAINT canister_ledger_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.sales_transactions(id) ON DELETE CASCADE;
+
+--
+-- Name: canister_ledger canister_ledger_trip_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.canister_ledger
+    ADD CONSTRAINT canister_ledger_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE RESTRICT;
+
+--
+-- Name: customers customers_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+--
+-- Name: customers customers_zone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.service_zones(id) ON DELETE RESTRICT;
+
+--
 -- Name: incident_reports incident_reports_incident_type_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1506,6 +2024,83 @@ ALTER TABLE ONLY public.maintenance_logs
 
 ALTER TABLE ONLY public.maintenance_logs
     ADD CONSTRAINT maintenance_logs_work_order_id_fkey FOREIGN KEY (work_order_id) REFERENCES public.work_orders(id) ON DELETE CASCADE;
+
+--
+-- Name: plant_inventory plant_inventory_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plant_inventory
+    ADD CONSTRAINT plant_inventory_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+--
+-- Name: plant_stock_adjustments plant_stock_adjustments_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plant_stock_adjustments
+    ADD CONSTRAINT plant_stock_adjustments_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+--
+-- Name: plant_stock_adjustments plant_stock_adjustments_recorded_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plant_stock_adjustments
+    ADD CONSTRAINT plant_stock_adjustments_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+--
+-- Name: sales_invoices sales_invoices_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_invoices
+    ADD CONSTRAINT sales_invoices_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.sales_transactions(id) ON DELETE CASCADE;
+
+--
+-- Name: sales_invoices sales_invoices_verified_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_invoices
+    ADD CONSTRAINT sales_invoices_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+--
+-- Name: sales_transaction_items sales_transaction_items_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transaction_items
+    ADD CONSTRAINT sales_transaction_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE RESTRICT;
+
+--
+-- Name: sales_transaction_items sales_transaction_items_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transaction_items
+    ADD CONSTRAINT sales_transaction_items_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.sales_transactions(id) ON DELETE CASCADE;
+
+--
+-- Name: sales_transactions sales_transactions_cancelled_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transactions
+    ADD CONSTRAINT sales_transactions_cancelled_by_fkey FOREIGN KEY (cancelled_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+--
+-- Name: sales_transactions sales_transactions_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transactions
+    ADD CONSTRAINT sales_transactions_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE RESTRICT;
+
+--
+-- Name: sales_transactions sales_transactions_recorded_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transactions
+    ADD CONSTRAINT sales_transactions_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+--
+-- Name: sales_transactions sales_transactions_trip_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sales_transactions
+    ADD CONSTRAINT sales_transactions_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES public.trips(id) ON DELETE RESTRICT;
 
 --
 -- Name: schedule_templates schedule_templates_default_sales_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

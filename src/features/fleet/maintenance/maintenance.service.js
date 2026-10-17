@@ -183,7 +183,7 @@ class MaintenanceService {
    * @param {Object} [queryParams] - { page, limit }
    * @returns {Promise<Object>} Paginated logs with vehicle metadata
    */
-  async getTruckOdometerHistory(truckId, queryParams = {}) {
+  async getTruckOdometerHistory(truckId, queryParams = {}, actorUser = null) {
     const targetVehicleId = truckId;
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
       const err = new Error('Vehicle ID is required');
@@ -196,6 +196,17 @@ class MaintenanceService {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && truck.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view maintenance records for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const page = Math.max(1, parseInt(queryParams.page, 10) || 1);
@@ -453,7 +464,7 @@ class MaintenanceService {
    * @param {Object} [queryParams] - Query parameters { page, limit, result }
    * @returns {Promise<Object>} Paginated inspections list
    */
-  async getTruckInspections(truckId, queryParams = {}) {
+  async getTruckInspections(truckId, queryParams = {}, actorUser = null) {
     const targetVehicleId = truckId;
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
       const err = new Error('Vehicle ID is required');
@@ -466,6 +477,17 @@ class MaintenanceService {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && truck.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view maintenance records for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const page = Math.max(1, parseInt(queryParams.page) || 1);
@@ -803,7 +825,7 @@ class MaintenanceService {
    * @param {Object} queryParams - Query parameters { page, limit }
    * @returns {Promise<Object>} Paginated incidents for truck
    */
-  async getTruckIncidents(truckId, queryParams = {}) {
+  async getTruckIncidents(truckId, queryParams = {}, actorUser = null) {
     const targetVehicleId = truckId;
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
       const err = new Error('Vehicle ID is required');
@@ -816,6 +838,17 @@ class MaintenanceService {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && truck.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view maintenance records for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const page = Math.max(1, parseInt(queryParams.page) || 1);
