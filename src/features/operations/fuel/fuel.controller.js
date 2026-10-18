@@ -22,10 +22,10 @@ class FuelController {
    * GET /api/operations/fuel/summary
    */
   async getFuelSummary(req, res) {
-    const { vehicleId, driverId, tripId, fuelType, startDate, endDate, search } = req.query || {};
+    const { vehicleId, truckId, driverId, tripId, fuelType, startDate, endDate, search } = req.query || {};
     const summary = await fuelService.getFuelSummary(
       req.user,
-      { vehicleId, driverId, tripId, fuelType, startDate, endDate, search }
+      { vehicleId: vehicleId || truckId, driverId, tripId, fuelType, startDate, endDate, search }
     );
     return res.status(200).json({
       status: 'success',
@@ -51,7 +51,7 @@ class FuelController {
    * GET /api/operations/fuel
    */
   async getFuelLogs(req, res) {
-    const { vehicleId, driverId, tripId, fuelType, startDate, endDate, search } = req.query || {};
+    const { vehicleId, truckId, driverId, tripId, fuelType, startDate, endDate, search } = req.query || {};
 
     const pagination = parsePaginationQuery(req.query, {
       defaultLimit: 20,

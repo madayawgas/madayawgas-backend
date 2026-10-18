@@ -85,7 +85,7 @@ class ApprehensionsService {
 
     const canonicalMediaKey = extractStorageKey(rawMediaKey) || rawMediaKey.trim();
 
-    const rawViolation = payload.violationType || payload.violation || payload.violationClassification;
+    const rawViolation = payload.violationType || payload.violation || payload.violationClassification || payload.violationNotes || payload.notes;
     if (!rawViolation || typeof rawViolation !== 'string' || rawViolation.trim().length === 0) {
       const err = new Error('Violation classification is required');
       err.statusCode = 400;
@@ -140,11 +140,17 @@ class ApprehensionsService {
       throw err;
     }
 
-    const vehicle = await vehiclesRepository.getVehicleById(resolvedVehicleId);
+    let vehicle = await vehiclesRepository.getVehicleById(resolvedVehicleId);
     if (!vehicle) {
-      const err = new Error('Vehicle not found');
-      err.statusCode = 404;
-      throw err;
+      const assignedVehicle = await vehiclesRepository.findVehicleByDriverId(resolvedDriverId);
+      if (assignedVehicle) {
+        vehicle = assignedVehicle;
+        resolvedVehicleId = assignedVehicle.id;
+      } else {
+        const err = new Error('Vehicle not found');
+        err.statusCode = 404;
+        throw err;
+      }
     }
 
     const permissions = actorUser?.permissions || [];

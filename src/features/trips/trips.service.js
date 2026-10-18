@@ -150,6 +150,47 @@ class TripsService {
   }
 
   /**
+   * Retrieves active trip assigned to authenticated driver or sales user.
+   * @param {Object} actorUser
+   */
+  async getActiveAssignment(actorUser) {
+    if (!actorUser || !actorUser.id) {
+      const err = new Error('Unauthorized');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    let activeTrip = await tripsRepository.findActiveTripByDriverId(actorUser.id);
+    if (!activeTrip) {
+      activeTrip = await tripsRepository.findActiveTripBySalesUserId(actorUser.id);
+    }
+
+    if (!activeTrip) {
+      return null;
+    }
+
+    const fullTrip = await this.getTripById(activeTrip.id, actorUser);
+    return {
+      ...fullTrip,
+      id: fullTrip.id,
+      tripNumber: fullTrip.trip_number,
+      truckId: fullTrip.truck_id,
+      truckPlateNumber: fullTrip.truck_plate_number,
+      truckModel: fullTrip.truck_model,
+      driverId: fullTrip.driver_id,
+      driverName: [fullTrip.driver_first_name, fullTrip.driver_last_name].filter(Boolean).join(' ') || fullTrip.driver_username,
+      salesUserId: fullTrip.sales_user_id,
+      salesUserName: [fullTrip.sales_user_first_name, fullTrip.sales_user_last_name].filter(Boolean).join(' ') || fullTrip.sales_user_username,
+      zoneId: fullTrip.zone_id,
+      zoneName: fullTrip.zone_name,
+      status: fullTrip.status,
+      departureTime: fullTrip.departure_time,
+      returnTime: fullTrip.return_time,
+      notes: fullTrip.notes,
+    };
+  }
+
+  /**
    * Dispatches a trip from a date schedule or as an ad-hoc emergency run.
    * Validates truck availability, snapshots crew attribution, and transitions schedule status.
    *

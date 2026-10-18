@@ -75,28 +75,37 @@ class FuelService {
   async recordFuelEntry(actorUser, payload = {}) {
     const {
       vehicleId,
+      truckId,
       driverId,
       tripId,
       litersPumped,
+      liters,
       totalCost,
       pricePerLiter,
       fuelStation,
       fuelType,
       odometerReading,
+      odometer,
       receiptMediaKey,
       receiptImageUrl,
+      receiptPhotoUri,
       fueledAt,
+      timestamp,
       notes,
     } = payload;
 
+    const rawLiters = litersPumped !== undefined && litersPumped !== null && litersPumped !== ''
+      ? litersPumped
+      : liters;
+
     // 1. Telemetry input validation
-    if (litersPumped === undefined || litersPumped === null || litersPumped === '') {
+    if (rawLiters === undefined || rawLiters === null || rawLiters === '') {
       const err = new Error('Fuel volume (liters) is required');
       err.statusCode = 400;
       throw err;
     }
 
-    const numLiters = Number(litersPumped);
+    const numLiters = Number(rawLiters);
     if (isNaN(numLiters) || numLiters <= 0) {
       const err = new Error('Liters pumped must be a positive number greater than 0');
       err.statusCode = 400;
@@ -130,8 +139,9 @@ class FuelService {
       : actorUser.id;
 
     // 3. Resolve Vehicle ID
-    let resolvedVehicleId = vehicleId && typeof vehicleId === 'string' && vehicleId.trim().length > 0
-      ? vehicleId.trim()
+    const targetVehicle = vehicleId || truckId;
+    let resolvedVehicleId = targetVehicle && typeof targetVehicle === 'string' && targetVehicle.trim().length > 0
+      ? targetVehicle.trim()
       : null;
 
     if (!resolvedVehicleId) {
@@ -147,11 +157,17 @@ class FuelService {
       throw err;
     }
 
-    const vehicle = await vehiclesRepository.getVehicleById(resolvedVehicleId);
+    let vehicle = await vehiclesRepository.getVehicleById(resolvedVehicleId);
     if (!vehicle) {
-      const err = new Error('Vehicle not found');
-      err.statusCode = 404;
-      throw err;
+      const assigned = await vehiclesRepository.findVehicleByDriverId(resolvedDriverId);
+      if (assigned) {
+        vehicle = assigned;
+        resolvedVehicleId = assigned.id;
+      } else {
+        const err = new Error('Vehicle not found');
+        err.statusCode = 404;
+        throw err;
+      }
     }
 
     const permissions = actorUser?.permissions || [];

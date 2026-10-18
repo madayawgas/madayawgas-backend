@@ -118,7 +118,7 @@ router.get(
 router.post(
   '/incidents',
   authenticate,
-  requirePermission('fleet.manage'),
+  requirePermission(['fleet.manage', 'fleet.view_own']),
   asyncHandler(maintenanceController.reportIncident.bind(maintenanceController))
 );
 
@@ -173,7 +173,7 @@ router.get(
 router.get(
   '/logs',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(maintenanceController.getMaintenanceLogs.bind(maintenanceController))
 );
 

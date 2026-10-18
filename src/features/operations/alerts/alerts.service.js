@@ -91,15 +91,23 @@ class AlertsService {
     let validLat = null;
     let validLng = null;
 
-    if (payload.latitude !== undefined && payload.latitude !== null && payload.latitude !== '') {
-      const lat = Number(payload.latitude);
+    const rawLat = payload.latitude !== undefined && payload.latitude !== null && payload.latitude !== ''
+      ? payload.latitude
+      : payload.location?.latitude;
+
+    if (rawLat !== undefined && rawLat !== null && rawLat !== '') {
+      const lat = Number(rawLat);
       if (!isNaN(lat) && lat >= -90.0 && lat <= 90.0) {
         validLat = lat;
       }
     }
 
-    if (payload.longitude !== undefined && payload.longitude !== null && payload.longitude !== '') {
-      const lng = Number(payload.longitude);
+    const rawLng = payload.longitude !== undefined && payload.longitude !== null && payload.longitude !== ''
+      ? payload.longitude
+      : payload.location?.longitude;
+
+    if (rawLng !== undefined && rawLng !== null && rawLng !== '') {
+      const lng = Number(rawLng);
       if (!isNaN(lng) && lng >= -180.0 && lng <= 180.0) {
         validLng = lng;
       }
@@ -107,11 +115,14 @@ class AlertsService {
 
     // 3. Operational Context Auto-Resolution:
     // Query active trip or assigned vehicle automatically to minimize required driver input
-    let resolvedTripId = payload.tripId && typeof payload.tripId === 'string' && payload.tripId.trim().length > 0
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isValidUuid = (val) => typeof val === 'string' && UUID_REGEX.test(val.trim());
+
+    let resolvedTripId = isValidUuid(payload.tripId)
       ? payload.tripId.trim()
       : null;
 
-    let resolvedVehicleId = payload.vehicleId && typeof payload.vehicleId === 'string' && payload.vehicleId.trim().length > 0
+    let resolvedVehicleId = isValidUuid(payload.vehicleId)
       ? payload.vehicleId.trim()
       : null;
 

@@ -87,6 +87,7 @@ The contracts are organized by subsystem, strictly mirroring the backend codebas
 ```text
 docs/api-contracts/
 ├── README.md                                # This master directory & route index
+├── websockets.md                            # Real-Time WebSocket events, handshake auth & rooms catalog
 │
 ├── fleet/                                   # Subsystem: Fleet & Maintenance
 │   ├── availability.api.md                  # Overview, availability metrics, vehicle state changes
@@ -292,4 +293,21 @@ docs/api-contracts/
 | `POST` | `/api/media/upload` | Upload binary media asset & generate canonical storage key | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#41-upload-media-post-apimediaupload) |
 | `POST` | `/api/media/resolve` | Resolve canonical relative storage key into public URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#42-resolve-media-key-post-apimediaresolve) |
 | `DELETE` | `/api/media` | Delete media asset from active storage by key or URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#43-delete-media-delete-apimedia) |
+
+---
+
+## 4. Real-Time WebSocket Events & Subscriptions
+
+Comprehensive WebSocket event schemas, handshake authentication requirements, and room scoping rules are documented in [**websockets.md**](file:///docs/api-contracts/websockets.md).
+
+| Event Name | Domain Channel | Target Room | Trigger Origin | Invalidation / Action |
+| :--- | :--- | :--- | :--- | :--- |
+| **`EMERGENCY_ALERT_TRIGGERED`** | Driver SOS | `room:alerts` | `POST /api/operations/alerts` | Alarm audio + Modal takeover |
+| **`EMERGENCY_ALERT_STATUS_UPDATED`** | Driver SOS | `room:alerts` | `PATCH /api/operations/alerts/:id/acknowledge` or `.../resolve` | Update triage badge |
+| **`FLEET_VEHICLE_GROUNDED`** | Fleet Readiness | `room:fleet` | Failed inspection, critical incident, or status update | Invalidate `['fleet-availability']` |
+| **`FLEET_VEHICLE_RELEASED`** | Fleet Readiness | `room:fleet` | Work order finalized or status returned to `ACTIVE` | Invalidate `['fleet-availability']` |
+| **`PLANT_STOCK_UPDATED`** | Inventory | `room:inventory` | Dispatch load, return unload, restock, or quarantine | Invalidate `['inventory-plant']` |
+| **`TRIP_RECONCILIATION_UPDATED`** | Inventory | `room:inventory` | `POST /api/inventory/trips/:tripId/reconcile` | Invalidate `['trip-reconciliation']` |
+| **`SALES_BATCH_SYNCED`** | Sales & Shift | `room:sales` | `POST /api/sales/sync-batch` (`processedCount > 0`) | Invalidate `['sales-shift-summary']` |
+
 

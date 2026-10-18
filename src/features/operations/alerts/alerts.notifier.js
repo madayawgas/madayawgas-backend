@@ -1,9 +1,10 @@
 const { EventEmitter } = require('events');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Emergency Alerts Notifier Adapter
- * Decoupled event dispatcher providing a standing integration hook for future WebSockets,
- * server-sent events (SSE), or external push notification gateways.
+ * Decoupled event dispatcher providing real-time WebSockets integration,
+ * local event emission, and standing hooks for external push gateways.
  */
 class AlertsNotifier extends EventEmitter {
   constructor() {
@@ -13,7 +14,6 @@ class AlertsNotifier extends EventEmitter {
 
   /**
    * Registers a WebSocket or external push broadcaster callback.
-   * When WebSockets are implemented in a future sprint, this hook receives real-time alerts.
    *
    * @param {Function} broadcasterFn - (alertPayload) => void
    */
@@ -32,7 +32,10 @@ class AlertsNotifier extends EventEmitter {
     // 1. Emit local process event
     this.emit('emergency:dispatched', alertPayload);
 
-    // 2. Invoke WebSocket broadcaster hook if wired
+    // 2. Real-time WebSocket broadcast to room:alerts
+    safeEmitSocketEvent('EMERGENCY_ALERT_TRIGGERED', alertPayload, 'room:alerts');
+
+    // 3. Invoke custom broadcaster hook if registered
     if (this.wsBroadcaster && typeof this.wsBroadcaster === 'function') {
       try {
         this.wsBroadcaster(alertPayload);
@@ -48,8 +51,13 @@ class AlertsNotifier extends EventEmitter {
    * @param {Object} alertPayload - Standardized alert DTO
    */
   dispatchStatusUpdate(alertPayload) {
+    // 1. Emit local process event
     this.emit('emergency:status_updated', alertPayload);
 
+    // 2. Real-time WebSocket broadcast to room:alerts
+    safeEmitSocketEvent('EMERGENCY_ALERT_STATUS_UPDATED', alertPayload, 'room:alerts');
+
+    // 3. Invoke custom broadcaster hook if registered
     if (this.wsBroadcaster && typeof this.wsBroadcaster === 'function') {
       try {
         this.wsBroadcaster({ event: 'emergency:status_updated', data: alertPayload });
@@ -61,3 +69,4 @@ class AlertsNotifier extends EventEmitter {
 }
 
 module.exports = new AlertsNotifier();
+

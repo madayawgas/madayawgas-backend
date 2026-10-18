@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { pool } = require('../../../../database/connection');
 const { historyService } = require('../../history');
 const { EVENTS } = require('../../history/history.events');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Sync Service
@@ -19,8 +20,11 @@ class SyncService {
    * @returns {Promise<Object>} Ingestion summary with processed IDs and status
    */
   async processBatchSync(actorUser, syncPayload = {}) {
-    const { tripId, trip_id, transactions } = syncPayload;
+    const { tripId, trip_id, transactions, batches, items: rootItems } = syncPayload;
     const resolvedTripId = tripId || trip_id;
+    const rawList = Array.isArray(transactions)
+      ? transactions
+      : (Array.isArray(batches) ? batches : (Array.isArray(rootItems) ? rootItems : null));
 
     if (!resolvedTripId || typeof resolvedTripId !== 'string') {
       const err = new Error('Trip ID is required');
@@ -28,7 +32,7 @@ class SyncService {
       throw err;
     }
 
-    if (!Array.isArray(transactions)) {
+    if (!Array.isArray(rawList)) {
       const err = new Error('Transactions must be an array');
       err.statusCode = 400;
       throw err;
@@ -57,9 +61,10 @@ class SyncService {
       let ignoredCount = 0;
       const transactionIds = [];
 
-      for (const tx of transactions) {
+      for (const entry of rawList) {
+        const tx = entry.payload || entry;
         const txId = tx.id || crypto.randomUUID();
-        const txNo = tx.transactionNo || tx.transaction_no;
+        const txNo = tx.transactionNo || tx.transaction_no || tx.order_number || tx.orderNumber;
         const customerId = tx.customerId || tx.customer_id;
 
         if (!txNo) {
@@ -81,7 +86,7 @@ class SyncService {
           continue;
         }
 
-        const transactedAt = tx.transactedAt || tx.transacted_at || new Date().toISOString();
+        const transactedAt = tx.transactedAt || tx.transacted_at || tx.ordered_at || tx.created_at || new Date().toISOString();
 
         // 2. Insert sales transaction header
         const insertTxSql = `
@@ -117,28 +122,30 @@ class SyncService {
         }
 
         // 3. Insert transaction line items & evaluate canister receivables deltas
-        const items = Array.isArray(tx.items) ? tx.items : [];
+        const items = Array.isArray(tx.items)
+          ? tx.items
+          : (Array.isArray(tx.order_items) ? tx.order_items : (Array.isArray(tx.line_items) ? tx.line_items : []));
 
         for (const item of items) {
           const itemId = item.id || crypto.randomUUID();
           const productId = item.productId || item.product_id;
           const quantitySold = parseInt(
-            item.quantitySold !== undefined ? item.quantitySold : item.quantity_sold,
+            item.quantitySold !== undefined ? item.quantitySold : (item.quantity_sold !== undefined ? item.quantity_sold : (item.quantity !== undefined ? item.quantity : item.qty)),
             10
           ) || 0;
           const emptiesReturned = parseInt(
-            item.emptiesReturned !== undefined ? item.emptiesReturned : item.empties_returned,
+            item.emptiesReturned !== undefined ? item.emptiesReturned : (item.empties_returned !== undefined ? item.empties_returned : (item.emptiesReturnedCount !== undefined ? item.emptiesReturnedCount : item.empties_returned_count)),
             10
           ) || 0;
           const emptiesDefective = parseInt(
-            item.emptiesDefective !== undefined ? item.emptiesDefective : item.empties_defective,
+            item.emptiesDefective !== undefined ? item.emptiesDefective : (item.empties_defective !== undefined ? item.empties_defective : 0),
             10
           ) || 0;
           const unitPrice = Number(
-            item.unitPriceAtSale !== undefined ? item.unitPriceAtSale : item.unit_price_at_sale
+            item.unitPriceAtSale !== undefined ? item.unitPriceAtSale : (item.unit_price_at_sale !== undefined ? item.unit_price_at_sale : (item.unitPrice !== undefined ? item.unitPrice : item.unit_price))
           ) || 0;
           const subtotal = Number(
-            item.subtotalAmount !== undefined ? item.subtotalAmount : item.subtotal_amount
+            item.subtotalAmount !== undefined ? item.subtotalAmount : (item.subtotal_amount !== undefined ? item.subtotal_amount : (item.totalPrice !== undefined ? item.totalPrice : item.total_price))
           ) || (quantitySold * unitPrice);
 
           if (!productId) {
@@ -267,8 +274,15 @@ class SyncService {
 
       await client.query('COMMIT');
 
-      // 5. Centralized Audit History
+      // 5. Centralized Audit History & Real-Time WebSocket Broadcast
       if (processedCount > 0) {
+        safeEmitSocketEvent('SALES_BATCH_SYNCED', {
+          tripId: resolvedTripId,
+          tripNumber: trip.trip_number,
+          processedCount,
+          syncedAt: new Date().toISOString(),
+        }, 'room:sales');
+
         await historyService.log(EVENTS.SALES_BATCH_SYNCED, {
           actorUser,
           targetId: resolvedTripId,

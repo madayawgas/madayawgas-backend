@@ -15,9 +15,14 @@ const envAllowedOrigins = process.env.CORS_ORIGIN
       .filter(Boolean)
   : [];
 
+const frontendUrlOrigins = process.env.FRONTEND_URL
+  ? [process.env.FRONTEND_URL.trim().replace(/\/+$/, '')]
+  : [];
+
 const allowedOriginsSet = new Set([
   ...defaultAllowedOrigins.map((origin) => origin.replace(/\/+$/, '')),
   ...envAllowedOrigins,
+  ...frontendUrlOrigins,
 ]);
 
 // Localhost, IPv4 private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16),

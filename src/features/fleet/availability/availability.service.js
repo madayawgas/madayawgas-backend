@@ -1,6 +1,7 @@
 const availabilityRepository = require('./availability.repository');
 const vehiclesRepository = require('../vehicles/vehicles.repository');
 const { historyService, EVENTS } = require('../../history');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Availability Service
@@ -143,6 +144,26 @@ class AvailabilityService {
     const targetDriverId = shouldClearDriver ? null : existing.driver_id;
 
     await availabilityRepository.updateTruckStatus(vehicleId, cleanStatus, targetDriverId);
+
+    // Real-Time WebSocket Operational Status Broadcast
+    if (cleanStatus === 'UNDER_MAINTENANCE') {
+      safeEmitSocketEvent('FLEET_VEHICLE_GROUNDED', {
+        vehicleId,
+        plateNumber: existing.plate_number,
+        status: 'UNDER_MAINTENANCE',
+        reason: 'MANUAL_STATUS_UPDATE',
+        sourceId: vehicleId,
+        findings: `Vehicle status manually transitioned from ${existing.status} to UNDER_MAINTENANCE`,
+        groundedAt: new Date().toISOString(),
+      }, 'room:fleet');
+    } else if (cleanStatus === 'ACTIVE') {
+      safeEmitSocketEvent('FLEET_VEHICLE_RELEASED', {
+        vehicleId,
+        plateNumber: existing.plate_number,
+        status: 'ACTIVE',
+        releasedAt: new Date().toISOString(),
+      }, 'room:fleet');
+    }
 
     try {
       const eventKey = EVENTS.VEHICLE_STATUS_UPDATED || EVENTS.TRUCK_STATUS_UPDATED;

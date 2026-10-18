@@ -23,6 +23,13 @@ router.get(
   asyncHandler(tripsController.getAllTrips.bind(tripsController))
 );
 
+router.get(
+  '/active-assignment',
+  authenticate,
+  requirePermission(['route.view', 'route.view_own']),
+  asyncHandler(tripsController.getActiveAssignment.bind(tripsController))
+);
+
 
 // ============================================================
 // 2. Action Endpoints on Specific Trips

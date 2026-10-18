@@ -10,14 +10,15 @@
 MadayawGas Backend is a modular RESTful API built for an internal enterprise LPG distribution and operations management system.
 
 - **Runtime & Language**: Node.js `22.19.0` (native `node:test` runner, native `crypto`, `fetch`).
-- **Web Framework**: Express `v5.2.1` (`express.json()`, custom cookie middleware, centralized error handling).
+- **Web Framework & Real-Time**: Express `v5.2.1` (`express.json()`, custom cookie middleware, centralized error handling) & Socket.IO (`v4.8.4`).
 - **Database Engine**: PostgreSQL `18.x` (managed with `pg` / `pg.Pool` connection pooling).
 - **Security & Cryptography**:
   - `bcrypt` (`v6.0.0`, 10 salt rounds) for password hashing.
   - Native `crypto` for session tokens (32-byte hex) and SHA-256 token hashing.
 - **Validation**: `zod` (`v4.4.3`).
 - **Primary Entry Points**:
-  - `src/server.js`: Server startup, port binding (`PORT || 3000`), graceful shutdown handling.
+  - `src/server.js`: Server startup, native HTTP server + Socket.IO binding, graceful shutdown handling.
+  - `src/socket.js`: Centralized Socket.IO lifecycle, standardized event envelope, and room emission.
   - `src/app.js`: Express application setup, global middleware pipeline, and route mount points.
   - `database/connection.js`: PostgreSQL connection pool helper (`query`, `pool`).
 - **Database Lifecycle Scripts (`package.json`)**:
@@ -98,7 +99,8 @@ madayawgas-backend/
 │   └── user-management-guide.md             # Non-technical PM & QA user flow handbook
 ├── src/
 │   ├── app.js                               # Express app configuration & middleware pipeline
-│   ├── server.js                            # Server entry point
+│   ├── server.js                            # Server entry point (native HTTP + Socket.IO)
+│   ├── socket.js                            # Centralized Socket.IO lifecycle & standardized event emitter
 │   ├── config/                              # Constants & environment configurations
 │   ├── features/
 │   │   ├── users/                           # User Management Domain
@@ -184,7 +186,8 @@ madayawgas-backend/
 │   │   ├── profile.test.js                  # Profile tests (prefix: test_prof_)
 │   │   ├── sales.customer.test.js           # Sales customer master data & receivables tests (prefix: test_sales_cust_)
 │   │   ├── sales.transactions.test.js       # Store-and-forward batch sync, invoices & shift tests (prefix: test_sales_tx_)
-│   │   └── schedules.trips.test.js          # Schedule & Trip Subsystem tests (prefix: test_sched_)
+│   │   ├── schedules.trips.test.js          # Schedule & Trip Subsystem tests (prefix: test_sched_)
+│   │   └── socket.test.js                   # Socket.IO foundation & event envelope tests
 │   └── utils/
 │       ├── asyncHandler.js                  # Wrapper for async route error catching
 │       ├── passwordGenerator.js             # Cryptographic temporary password generator
@@ -264,6 +267,31 @@ madayawgas-backend/
   });
   ```
 * **Template Resolver Engine (`resolveEvent`)**: Resolves module, actionType, and renders dynamic detail templates with safe fallbacks.
+
+### G. Socket.IO Real-Time Foundation (`src/socket.js`)
+* **Dedicated Singleton Module**: Encapsulates Socket.IO server initialization, connection lifecycle, room emission, and shutdown management.
+* **Exports**:
+  - `initializeSocket(httpServer, customOptions = {})`: Initializes Socket.IO on the native HTTP server with unified CORS configuration, transports `['websocket', 'polling']`, and credentials `true`. Idempotent: repeated calls emit a non-production warning and return the existing singleton.
+  - `getIO()`: Retrieves the active `io` server or throws descriptive `Error('Socket.IO has not been initialized. Call initializeSocket(httpServer) first.')`.
+  - `emitSocketEvent(eventName, data = {}, room = null)`: Emits an application-level event using the standardized event envelope. If `room` is provided, dispatches to `io.to(room).emit()`; otherwise dispatches to `io.emit()`.
+  - `closeSocket()`: Cleanly terminates active connections, closes the socket server, and resets the singleton instance (used in graceful shutdown and automated test teardowns).
+* **Standardized Event Envelope**:
+  ```json
+  {
+    "event": "EVENT_NAME",
+    "data": {},
+    "meta": {
+      "timestamp": "2026-10-17T08:00:00.000Z",
+      "version": "1.0"
+    }
+  }
+  ```
+  - `event`: String event name.
+  - `data`: Caller-provided payload (defaults to `{}` if null or undefined).
+  - `meta.timestamp`: Server-generated ISO 8601 UTC timestamp.
+  - `meta.version`: String `"1.0"`.
+* **CORS & Origin Validation**: Reuses `src/config/cors.js` (`isOriginAllowed`). Supports whitelisted web domains, `FRONTEND_URL`, `CORS_ORIGIN`, localhost development, and mobile private networks.
+* **Room Security Invariant**: No unrestricted client-side `join_room` or `leave_room` listeners are exposed. Room subscriptions are managed strictly server-side by future authorized domain services.
 
 ---
 
@@ -798,6 +826,19 @@ madayawgas-backend/
     * **Comprehensive Integration Test Suite (`src/test/operations.logging.test.js`)**:
       - 5 modular subtests verifying driver scoping, duty attendance cycles, road apprehensions, fuel tracking with odometer updates, and emergency SOS alerts.
       - 100% test pass rate across all 18 test suites (157 out of 157 tests passing) with `npm test`.
+22. **Socket.IO Foundation Integration (`src/socket.js`)**:
+    * **Dependency & Server Binding**: Installed production dependency `socket.io` (v4.8.4) and devDependency `socket.io-client` (v4.8.4). Refactored `src/server.js` to create native `node:http.createServer(app)`, initialize Socket.IO before listening, implement graceful shutdown handlers (`SIGTERM`, `SIGINT`), and export `{ server, startServer }`.
+    * **Centralized Configuration & Single Source of Truth**:
+      - Created `src/socket.js` exporting `initializeSocket`, `getIO`, `emitSocketEvent`, and `closeSocket`.
+      - Idempotent initialization prevents multiple socket servers; descriptive error throws if `getIO()` is invoked prior to initialization.
+      - Reuses `src/config/cors.js` origin checking (`isOriginAllowed`) with `FRONTEND_URL` support, enabling unified CORS for both REST and real-time transports (`['websocket', 'polling']`).
+    * **Standardized Event Envelope**:
+      - Emits all application-level events via `emitSocketEvent(eventName, data, room)` wrapped in the standardized envelope:
+        `{ event, data, meta: { timestamp, version: "1.0" } }`.
+      - Provides safe room-targeted broadcasting (`io.to(room).emit`) without exposing client-side join listeners.
+    * **Automated Test Suite (`src/test/socket.test.js`)**:
+      - 10 unit and integration tests verifying pre-init guards, idempotent re-initialization, envelope construction, timestamp validity, global and room-scoped event delivery, whitelisted vs disallowed CORS origins, and teardown cleanup.
+      - 100% test pass rate across all 19 test suites (167 out of 167 tests passing) with `npm test`.
 
 ---
 
