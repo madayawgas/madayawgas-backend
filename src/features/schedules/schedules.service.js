@@ -4,6 +4,7 @@ const templatesService = require('./templates/templates.service');
 const zonesRepository = require('./zones/zones.repository');
 const vehiclesRepository = require('../fleet/vehicles/vehicles.repository');
 const { historyService, EVENTS } = require('../history');
+const { safeEmitSocketEvent } = require('../../socket');
 
 /**
  * Truck Schedules Service
@@ -187,6 +188,21 @@ class SchedulesService {
       },
     });
 
+    // Real-Time WebSocket Emission
+    safeEmitSocketEvent('SCHEDULE_CREATED', {
+      scheduleId: created.id,
+      scheduledDate: created.scheduled_date,
+      truckId: created.truck_id,
+      truckPlateNumber: created.truck_plate_number,
+      salesUserId: created.sales_user_id,
+      salesUserName: created.sales_username,
+      zoneId: created.zone_id,
+      zoneName: created.zone_name,
+      status: created.status,
+      notes: created.notes,
+      createdAt: new Date().toISOString(),
+    }, ['room:schedules', `user:${created.sales_user_id}`]);
+
     return created;
   }
 
@@ -348,6 +364,31 @@ class SchedulesService {
       current.setUTCDate(current.getUTCDate() + 1);
     }
 
+    if (generatedSchedules.length > 0) {
+      safeEmitSocketEvent('SCHEDULES_BATCH_GENERATED', {
+        startDate: startDate.trim(),
+        endDate: endDate.trim(),
+        generatedCount: generatedSchedules.length,
+        generatedAt: new Date().toISOString(),
+      }, 'room:schedules');
+
+      for (const sched of generatedSchedules) {
+        if (sched.sales_user_id) {
+          safeEmitSocketEvent('SCHEDULE_CREATED', {
+            scheduleId: sched.id,
+            scheduledDate: sched.scheduled_date,
+            truckId: sched.truck_id,
+            truckPlateNumber: sched.truck_plate_number,
+            salesUserId: sched.sales_user_id,
+            zoneId: sched.zone_id,
+            zoneName: sched.zone_name,
+            status: sched.status,
+            createdAt: new Date().toISOString(),
+          }, `user:${sched.sales_user_id}`);
+        }
+      }
+    }
+
     return {
       dateRange: { startDate: startDate.trim(), endDate: endDate.trim() },
       generatedCount: generatedSchedules.length,
@@ -451,7 +492,27 @@ class SchedulesService {
       updatePayload.scheduledDate = data.scheduledDate.trim();
     }
 
-    return schedulesRepository.updateSchedule(id, updatePayload);
+    const updated = await schedulesRepository.updateSchedule(id, updatePayload);
+
+    const targetSales = updatePayload.salesUserId || current.sales_user_id;
+    const targetRooms = ['room:schedules'];
+    if (targetSales) targetRooms.push(`user:${targetSales}`);
+    if (updatePayload.salesUserId && updatePayload.salesUserId !== current.sales_user_id) {
+      targetRooms.push(`user:${current.sales_user_id}`);
+    }
+
+    safeEmitSocketEvent('SCHEDULE_UPDATED', {
+      scheduleId: updated.id,
+      scheduledDate: updated.scheduled_date,
+      truckId: updated.truck_id,
+      salesUserId: updated.sales_user_id,
+      zoneId: updated.zone_id,
+      status: updated.status,
+      notes: updated.notes,
+      updatedAt: new Date().toISOString(),
+    }, targetRooms);
+
+    return updated;
   }
 
   /**
@@ -492,6 +553,19 @@ class SchedulesService {
         zoneName: current.zone_name,
       },
     });
+
+    const cancelTargets = ['room:schedules'];
+    if (current.sales_user_id) cancelTargets.push(`user:${current.sales_user_id}`);
+
+    safeEmitSocketEvent('SCHEDULE_CANCELLED', {
+      scheduleId: updated.id,
+      scheduledDate: current.scheduled_date,
+      truckPlateNumber: current.truck_plate_number,
+      salesUserId: current.sales_user_id,
+      status: 'CANCELLED',
+      reason: data.reason ? data.reason.trim() : null,
+      cancelledAt: new Date().toISOString(),
+    }, cancelTargets);
 
     return updated;
   }

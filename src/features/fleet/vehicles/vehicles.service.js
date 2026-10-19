@@ -1,6 +1,7 @@
 const vehiclesRepository = require('./vehicles.repository');
 const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 const VALID_VEHICLE_TYPES = ['DELIVERY_TRUCK', 'SERVICE_PICKUP', 'MOTORCYCLE', 'UTILITY_VAN'];
 const VALID_STATUSES = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
@@ -452,6 +453,15 @@ class VehiclesService {
       console.error('Failed to emit history log for VEHICLE_STATUS_UPDATED:', auditErr);
     }
 
+    const statusTargets = ['room:fleet'];
+    if (existing.driver_id) statusTargets.push(`user:${existing.driver_id}`);
+    safeEmitSocketEvent('VEHICLE_STATUS_UPDATED', {
+      vehicleId: existing.id,
+      plateNumber: updatedRow.plate_number,
+      status: cleanStatus,
+      updatedAt: new Date().toISOString(),
+    }, statusTargets);
+
     return this.getVehicleById(existing.id);
   }
 
@@ -484,6 +494,15 @@ class VehiclesService {
     } catch (auditErr) {
       console.error('Failed to emit history log for VEHICLE_DEACTIVATED:', auditErr);
     }
+
+    const deactTargets = ['room:fleet'];
+    if (existing.driver_id) deactTargets.push(`user:${existing.driver_id}`);
+    safeEmitSocketEvent('VEHICLE_STATUS_UPDATED', {
+      vehicleId: existing.id,
+      plateNumber: deactivatedRow.plate_number,
+      status: 'INACTIVE',
+      updatedAt: new Date().toISOString(),
+    }, deactTargets);
 
     return this.getVehicleById(existing.id);
   }
@@ -568,6 +587,15 @@ class VehiclesService {
       console.error('Failed to emit history log for VEHICLE_DRIVER_ASSIGNED:', auditErr);
     }
 
+    safeEmitSocketEvent('VEHICLE_DRIVER_ASSIGNED', {
+      vehicleId: vehicle.id,
+      plateNumber: vehicle.plate_number,
+      model: vehicle.model,
+      driverId: cleanDriverId,
+      driverName: `${driver.first_name} ${driver.last_name}`.trim(),
+      assignedAt: new Date().toISOString(),
+    }, ['room:fleet', `user:${cleanDriverId}`]);
+
     return this.getVehicleById(vehicle.id);
   }
 
@@ -591,6 +619,7 @@ class VehiclesService {
       throw new Error('Vehicle does not have an assigned driver');
     }
 
+    const previousDriverId = vehicle.driver_id;
     await vehiclesRepository.unassignDriver(vehicle.id);
 
     try {
@@ -605,6 +634,13 @@ class VehiclesService {
     } catch (auditErr) {
       console.error('Failed to emit history log for VEHICLE_DRIVER_UNASSIGNED:', auditErr);
     }
+
+    safeEmitSocketEvent('VEHICLE_DRIVER_UNASSIGNED', {
+      vehicleId: vehicle.id,
+      plateNumber: vehicle.plate_number,
+      driverId: previousDriverId,
+      unassignedAt: new Date().toISOString(),
+    }, ['room:fleet', `user:${previousDriverId}`]);
 
     return this.getVehicleById(vehicle.id);
   }

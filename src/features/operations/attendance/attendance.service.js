@@ -2,6 +2,7 @@ const attendanceRepository = require('./attendance.repository');
 const usersRepository = require('../../users/users.repository');
 const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Formats duration in minutes into a structured object and human-readable string.
@@ -156,6 +157,18 @@ class AttendanceService {
       },
     });
 
+    safeEmitSocketEvent('ATTENDANCE_DUTY_UPDATED', {
+      attendanceId: created.id,
+      userId: targetUserId,
+      username: dto.user.username,
+      fullName: dto.user.fullName,
+      role: dto.user.role,
+      status: 'ON_DUTY',
+      clockInTime: created.clock_in_time,
+      onBehalf: targetUserId !== actorUser.id,
+      updatedAt: new Date().toISOString(),
+    }, ['room:operations', `user:${targetUserId}`]);
+
     return dto;
   }
 
@@ -254,6 +267,21 @@ class AttendanceService {
         onBehalf: activeCycle.user_id !== actorUser.id,
       },
     });
+
+    safeEmitSocketEvent('ATTENDANCE_DUTY_UPDATED', {
+      attendanceId: activeCycle.id,
+      userId: activeCycle.user_id,
+      username: dto.user.username,
+      fullName: dto.user.fullName,
+      role: dto.user.role,
+      status: 'OFF_DUTY',
+      clockInTime: activeCycle.clock_in_time,
+      clockOutTime: clockOutDate.toISOString(),
+      durationMinutes,
+      durationFormatted: dto.duration.formatted,
+      onBehalf: activeCycle.user_id !== actorUser.id,
+      updatedAt: new Date().toISOString(),
+    }, ['room:operations', `user:${activeCycle.user_id}`]);
 
     return dto;
   }

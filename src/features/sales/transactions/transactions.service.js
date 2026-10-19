@@ -6,6 +6,7 @@ const {
   calculateOffset,
   buildPaginationMeta,
 } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 const ALLOWED_TRANSACTION_SORT_FIELDS = Object.freeze({
   transactedAt: 'st.transacted_at',
@@ -170,6 +171,15 @@ class TransactionsService {
         reason: cleanReason,
       },
     });
+
+    safeEmitSocketEvent('SALES_TRANSACTION_CANCELLED', {
+      transactionId: id,
+      transactionNo: tx.transaction_no,
+      tripId: tx.trip_id,
+      customerId: tx.customer_id,
+      reason: cleanReason,
+      cancelledAt: new Date().toISOString(),
+    }, ['room:sales', 'room:inventory']);
 
     return cancelledTx;
   }

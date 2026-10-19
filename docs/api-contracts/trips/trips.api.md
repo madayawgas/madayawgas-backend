@@ -117,6 +117,18 @@ Dispatches a delivery truck for a scheduled or ad-hoc run.
   "notes": "Emergency hospital supply run"
 }
 ```
+- **Driver Attendance Prerequisite**:
+  - The assigned Driver (from payload `driverId` or vehicle's assigned driver) **must be actively clocked in** (`status = 'ACTIVE'` and `clock_out_time IS NULL`) via `/api/operations/attendance/clock-in` prior to dispatch.
+  - Vehicles can be scheduled in advance without attendance; this condition is checked strictly at dispatch time.
+  - Once clocked in, the driver does not need to re-clock-in for subsequent trips (e.g., ad-hoc deliveries) on the same shift until they clock out.
+- **Error Response (Driver Off-Duty - 400 Bad Request)**:
+```json
+{
+  "status": "fail",
+  "message": "Cannot dispatch trip: Assigned driver 'jdoe' has not clocked in yet. Driver must be clocked in on active duty to be dispatched.",
+  "code": "DRIVER_NOT_CLOCKED_IN"
+}
+```
 
 ---
 

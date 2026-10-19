@@ -9,9 +9,11 @@ const zonesRepository = require('../schedules/zones/zones.repository');
 const vehiclesRepository = require('../fleet/vehicles/vehicles.repository');
 const productsRepository = require('../inventory/products/products.repository');
 const inventoryRepository = require('../inventory/inventory.repository');
+const attendanceRepository = require('../operations/attendance/attendance.repository');
 const { maintenanceService } = require('../fleet/maintenance');
 const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../socket');
 
 /**
  * Trips Service
@@ -314,6 +316,17 @@ class TripsService {
       throw err;
     }
 
+    // 4.1 Attendance Verification: Driver must be clocked in on active duty
+    const activeDriverDuty = await attendanceRepository.getActiveDutyCycle(driverUser.id);
+    if (!activeDriverDuty) {
+      const err = new Error(
+        `Cannot dispatch trip: Assigned driver '${driverUser.username}' has not clocked in yet. Driver must be clocked in on active duty to be dispatched.`
+      );
+      err.statusCode = 400;
+      err.code = 'DRIVER_NOT_CLOCKED_IN';
+      throw err;
+    }
+
     // 5. Sales Person Verification
     const salesUser = await templatesService.verifySalesUser(salesUserId.trim());
 
@@ -460,6 +473,52 @@ class TripsService {
       });
     }
 
+    // 11. Real-Time WebSocket Emission
+    const dispatchTargets = [
+      'room:trips',
+      'room:schedules',
+      `user:${driverUser.id}`,
+      `user:${salesUser.id}`,
+    ];
+    safeEmitSocketEvent('TRIP_DISPATCHED', {
+      tripId: createdTrip.id,
+      tripNumber: createdTrip.trip_number,
+      truckId: vehicle.id,
+      truckPlateNumber: vehicle.plate_number,
+      truckModel: vehicle.model,
+      driverId: driverUser.id,
+      driverName: `${driverUser.first_name} ${driverUser.last_name}`.trim(),
+      salesUserId: salesUser.id,
+      salesUserName: `${salesUser.first_name} ${salesUser.last_name}`.trim(),
+      zoneId: zone.id,
+      zoneName: zone.name,
+      status: 'IN_PROGRESS',
+      departureTime: createdTrip.departure_time,
+      scheduleId: schedule ? schedule.id : null,
+      notes: createdTrip.notes,
+      initialLoads: validatedLoads || [],
+      dispatchedAt: now.toISOString(),
+    }, dispatchTargets);
+
+    if (initialLoadSlip) {
+      safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+        operation: 'DISPATCH_LOAD',
+        tripId: createdTrip.id,
+        slipNumber: initialLoadSlip.slip_number,
+        affectedProductIds: validatedLoads.map((it) => it.productId),
+        updatedAt: now.toISOString(),
+      }, 'room:inventory');
+
+      safeEmitSocketEvent('VEHICLE_STOCK_UPDATED', {
+        tripId: createdTrip.id,
+        tripNumber: createdTrip.trip_number,
+        operation: 'DISPATCH_LOAD',
+        slipNumber: initialLoadSlip.slip_number,
+        items: validatedLoads,
+        updatedAt: now.toISOString(),
+      }, ['room:inventory', `user:${driverUser.id}`, `user:${salesUser.id}`]);
+    }
+
     return this.getTripById(createdTrip.id, actorUser);
   }
 
@@ -580,6 +639,39 @@ class TripsService {
         totalUnits: validatedItems.reduce((sum, it) => sum + it.quantityUnits, 0),
       },
     });
+
+    const crewRooms = [
+      'room:trips',
+      trip.driver_id ? `user:${trip.driver_id}` : null,
+      trip.sales_user_id ? `user:${trip.sales_user_id}` : null,
+    ].filter(Boolean);
+
+    safeEmitSocketEvent('TRIP_LOAD_RECORDED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      transferType: typeUpper,
+      slipNumber: createdLoad.slip_number,
+      items: validatedItems,
+      totalUnits: validatedItems.reduce((sum, it) => sum + it.quantityUnits, 0),
+      recordedAt: now.toISOString(),
+    }, crewRooms);
+
+    safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+      operation: typeUpper,
+      tripId: trip.id,
+      slipNumber: createdLoad.slip_number,
+      affectedProductIds: validatedItems.map((it) => it.productId),
+      updatedAt: now.toISOString(),
+    }, 'room:inventory');
+
+    safeEmitSocketEvent('VEHICLE_STOCK_UPDATED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      operation: typeUpper,
+      slipNumber: createdLoad.slip_number,
+      items: validatedItems,
+      updatedAt: now.toISOString(),
+    }, ['room:inventory', ...crewRooms]);
 
     return createdLoad;
   }
@@ -749,6 +841,34 @@ class TripsService {
       },
     });
 
+    const crewRooms = [
+      'room:trips',
+      'room:fleet',
+      trip.driver_id ? `user:${trip.driver_id}` : null,
+      trip.sales_user_id ? `user:${trip.sales_user_id}` : null,
+    ].filter(Boolean);
+
+    safeEmitSocketEvent('TRIP_COMPLETED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      plateNumber: trip.truck_plate_number,
+      status: 'COMPLETED',
+      returnOdometerKm: numOdometer,
+      distanceDrivenKm: odoResult.distanceDrivenThisTrip,
+      isPmDue: odoResult.isPmDue,
+      returnTime: resolvedReturnTime.toISOString(),
+      reconciliationStatus: reconciliation.status,
+    }, crewRooms);
+
+    if (returnLoads && Array.isArray(returnLoads) && returnLoads.length > 0) {
+      safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+        operation: 'RETURN_UNLOAD',
+        tripId: trip.id,
+        affectedProductIds: returnLoads.map((it) => it.productId).filter(Boolean),
+        updatedAt: resolvedReturnTime.toISOString(),
+      }, 'room:inventory');
+    }
+
     return {
       trip: updatedTrip,
       odometerTelemetry: odoResult,
@@ -865,6 +985,23 @@ class TripsService {
         emptyDiscrepancy,
       },
     });
+
+    safeEmitSocketEvent('TRIP_RECONCILED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      status: reconciledRecord.status,
+      isSettled: status === 'SETTLED',
+      hasVariance: status === 'FLAGGED_VARIANCE',
+      totalLoadedFull,
+      totalSoldFull: soldFull,
+      totalReturnedFull,
+      totalReturnedEmptyGood,
+      totalReturnedDefective,
+      netCustomerDebtCreated: netDebt,
+      fullDiscrepancy,
+      emptyDiscrepancy,
+      reconciledAt: reconciledRecord.reconciled_at ? new Date(reconciledRecord.reconciled_at).toISOString() : null,
+    }, ['room:trips', 'room:inventory', 'room:sales']);
 
     return {
       tripId: trip.id,
@@ -1005,6 +1142,31 @@ class TripsService {
       throw txErr;
     } finally {
       client.release();
+    }
+
+    const crewRooms = [
+      'room:trips',
+      'room:schedules',
+      trip.driver_id ? `user:${trip.driver_id}` : null,
+      trip.sales_user_id ? `user:${trip.sales_user_id}` : null,
+    ].filter(Boolean);
+
+    safeEmitSocketEvent('TRIP_CANCELLED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      status: 'CANCELLED',
+      cancellationReason: data.cancellationReason ? data.cancellationReason.trim() : null,
+      scheduleId: trip.schedule_id || null,
+      cancelledAt: new Date().toISOString(),
+    }, crewRooms);
+
+    if (itemsToReverse.length > 0) {
+      safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+        operation: 'CANCEL_REVERSAL',
+        tripId: trip.id,
+        affectedProductIds: itemsToReverse.map((it) => it.productId),
+        updatedAt: new Date().toISOString(),
+      }, 'room:inventory');
     }
 
     return updated;

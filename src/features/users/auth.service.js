@@ -210,6 +210,15 @@ class AuthService {
   async revokeAllUserSessions(userId) {
     if (!userId) return;
     await usersRepository.revokeAllUserSessions(userId);
+    try {
+      const { safeEmitSocketEvent } = require('../../socket');
+      safeEmitSocketEvent('AUTH_SESSION_REVOKED', {
+        userId,
+        revokedAt: new Date().toISOString(),
+      }, `user:${userId}`);
+    } catch (_) {
+      // Safe fallback
+    }
   }
 
   /**

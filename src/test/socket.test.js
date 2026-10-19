@@ -554,4 +554,316 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
 
     client.disconnect();
   });
+
+  test('18. Array-based multi-room emission delivers event to all targeted rooms and users', async () => {
+    server = http.createServer();
+    const ioInstance = initializeSocket(server, { skipAuth: true });
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const clientA = ioClient(socketUrl, { transports: ['websocket'], forceNew: true });
+    const clientB = ioClient(socketUrl, { transports: ['websocket'], forceNew: true });
+    const clientC = ioClient(socketUrl, { transports: ['websocket'], forceNew: true });
+
+    await Promise.all([
+      new Promise((res) => clientA.on('connect', res)),
+      new Promise((res) => clientB.on('connect', res)),
+      new Promise((res) => clientC.on('connect', res)),
+    ]);
+
+    const serverSockets = await ioInstance.fetchSockets();
+    const socketA = serverSockets.find((s) => s.id === clientA.id);
+    const socketB = serverSockets.find((s) => s.id === clientB.id);
+    await socketA.join('room:alpha');
+    await socketB.join('room:beta');
+
+    let payloadA = null;
+    let payloadB = null;
+    let payloadC = null;
+
+    clientA.on('MULTI_TARGET_EVENT', (p) => { payloadA = p; });
+    clientB.on('MULTI_TARGET_EVENT', (p) => { payloadB = p; });
+    clientC.on('MULTI_TARGET_EVENT', (p) => { payloadC = p; });
+
+    emitSocketEvent('MULTI_TARGET_EVENT', { message: 'Multi-room delivery active' }, ['room:alpha', 'room:beta']);
+
+    await new Promise((res) => setTimeout(res, 300));
+
+    assert.ok(payloadA, 'Client A in room:alpha should receive event');
+    assert.strictEqual(payloadA.data.message, 'Multi-room delivery active');
+    assert.ok(payloadB, 'Client B in room:beta should receive event');
+    assert.strictEqual(payloadB.data.message, 'Multi-room delivery active');
+    assert.strictEqual(payloadC, null, 'Client C in neither room must not receive event');
+
+    clientA.disconnect();
+    clientB.disconnect();
+    clientC.disconnect();
+  });
+
+  test('19. Server automatically joins clients into room:trips, room:schedules, and room:operations based on RBAC', async () => {
+    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_ops`, 'Logistics Supervisor');
+    const supervisorSession = await authService.createSession(supervisorUser.id);
+
+    const driverUser = await createTestUser(`${TEST_PREFIX}drv_ops`, 'Driver');
+    const driverSession = await authService.createSession(driverUser.id);
+
+    server = http.createServer();
+    initializeSocket(server);
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const supClient = ioClient(socketUrl, {
+      transports: ['websocket'],
+      forceNew: true,
+      auth: { token: supervisorSession.token },
+    });
+
+    const drvClient = ioClient(socketUrl, {
+      transports: ['websocket'],
+      forceNew: true,
+      auth: { token: driverSession.token },
+    });
+
+    await Promise.all([
+      new Promise((res) => supClient.on('connect', res)),
+      new Promise((res) => drvClient.on('connect', res)),
+    ]);
+
+    let supTripPayload = null;
+    let drvTripPayload = null;
+    let supOpsPayload = null;
+    let drvOpsPayload = null;
+
+    supClient.on('TRIP_EVENT', (p) => { supTripPayload = p; });
+    drvClient.on('TRIP_EVENT', (p) => { drvTripPayload = p; });
+    supClient.on('OPS_EVENT', (p) => { supOpsPayload = p; });
+    drvClient.on('OPS_EVENT', (p) => { drvOpsPayload = p; });
+
+    // Emit to room:trips
+    emitSocketEvent('TRIP_EVENT', { route: 'Davao-Tagum' }, 'room:trips');
+    // Emit to room:operations
+    emitSocketEvent('OPS_EVENT', { dutyNotice: 'Shift roster updated' }, 'room:operations');
+
+    await new Promise((res) => setTimeout(res, 300));
+
+    assert.ok(supTripPayload, 'Logistics Supervisor should receive event from room:trips');
+    assert.strictEqual(drvTripPayload, null, 'Driver lacking route.view must NOT receive event from room:trips');
+    assert.ok(supOpsPayload, 'Logistics Supervisor should receive event from room:operations');
+    assert.strictEqual(drvOpsPayload, null, 'Driver lacking attendance.view must NOT receive event from room:operations');
+
+    supClient.disconnect();
+    drvClient.disconnect();
+  });
+
+  test('20. Targeted trip assignment delivers TRIP_DISPATCHED to room:trips and assigned driver private room', async () => {
+    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_trip`, 'Logistics Supervisor');
+    const supervisorSession = await authService.createSession(supervisorUser.id);
+
+    const assignedDriver = await createTestUser(`${TEST_PREFIX}assigned_drv`, 'Driver');
+    const assignedSession = await authService.createSession(assignedDriver.id);
+
+    const otherDriver = await createTestUser(`${TEST_PREFIX}other_drv`, 'Driver');
+    const otherSession = await authService.createSession(otherDriver.id);
+
+    server = http.createServer();
+    initializeSocket(server);
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const supClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: supervisorSession.token } });
+    const assignedClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: assignedSession.token } });
+    const otherClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: otherSession.token } });
+
+    await Promise.all([
+      new Promise((res) => supClient.on('connect', res)),
+      new Promise((res) => assignedClient.on('connect', res)),
+      new Promise((res) => otherClient.on('connect', res)),
+    ]);
+
+    let supReceived = null;
+    let assignedReceived = null;
+    let otherReceived = null;
+
+    supClient.on('TRIP_DISPATCHED', (p) => { supReceived = p; });
+    assignedClient.on('TRIP_DISPATCHED', (p) => { assignedReceived = p; });
+    otherClient.on('TRIP_DISPATCHED', (p) => { otherReceived = p; });
+
+    // Target room:trips, room:schedules, and user:${assignedDriver.id}
+    emitSocketEvent('TRIP_DISPATCHED', {
+      tripNumber: 'TRIP-20261019-TEST',
+      truckPlateNumber: 'ABC-1234',
+      status: 'IN_PROGRESS',
+    }, ['room:trips', `user:${assignedDriver.id}`]);
+
+    await new Promise((res) => setTimeout(res, 300));
+
+    assert.ok(supReceived, 'Supervisor should receive TRIP_DISPATCHED from room:trips');
+    assert.ok(assignedReceived, 'Assigned driver should receive TRIP_DISPATCHED via private user room');
+    assert.strictEqual(assignedReceived.data.tripNumber, 'TRIP-20261019-TEST');
+    assert.strictEqual(otherReceived, null, 'Unassigned driver must NOT receive TRIP_DISPATCHED');
+
+    supClient.disconnect();
+    assignedClient.disconnect();
+    otherClient.disconnect();
+  });
+
+  test('21. Driver vehicle assignment delivers VEHICLE_DRIVER_ASSIGNED to room:fleet and driver private room', async () => {
+    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_flt`, 'Logistics Supervisor');
+    const supervisorSession = await authService.createSession(supervisorUser.id);
+
+    const driverUser = await createTestUser(`${TEST_PREFIX}drv_flt`, 'Driver');
+    const driverSession = await authService.createSession(driverUser.id);
+
+    server = http.createServer();
+    initializeSocket(server);
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const supClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: supervisorSession.token } });
+    const drvClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: driverSession.token } });
+
+    await Promise.all([
+      new Promise((res) => supClient.on('connect', res)),
+      new Promise((res) => drvClient.on('connect', res)),
+    ]);
+
+    let supReceived = null;
+    let drvReceived = null;
+
+    supClient.on('VEHICLE_DRIVER_ASSIGNED', (p) => { supReceived = p; });
+    drvClient.on('VEHICLE_DRIVER_ASSIGNED', (p) => { drvReceived = p; });
+
+    safeEmitSocketEvent('VEHICLE_DRIVER_ASSIGNED', {
+      vehicleId: 'veh-123',
+      plateNumber: 'LPG-888',
+      driverId: driverUser.id,
+      driverName: 'Test Driver',
+    }, ['room:fleet', `user:${driverUser.id}`]);
+
+    await new Promise((res) => setTimeout(res, 300));
+
+    assert.ok(supReceived, 'Supervisor should receive VEHICLE_DRIVER_ASSIGNED via room:fleet');
+    assert.ok(drvReceived, 'Driver should receive VEHICLE_DRIVER_ASSIGNED via private user room');
+    assert.strictEqual(drvReceived.data.plateNumber, 'LPG-888');
+
+    supClient.disconnect();
+    drvClient.disconnect();
+  });
+
+  test('22. Attendance duty update delivers ATTENDANCE_DUTY_UPDATED to room:operations and user private room', async () => {
+    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_att`, 'Logistics Supervisor');
+    const supervisorSession = await authService.createSession(supervisorUser.id);
+
+    const driverUser = await createTestUser(`${TEST_PREFIX}drv_att`, 'Driver');
+    const driverSession = await authService.createSession(driverUser.id);
+
+    server = http.createServer();
+    initializeSocket(server);
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const supClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: supervisorSession.token } });
+    const drvClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: driverSession.token } });
+
+    await Promise.all([
+      new Promise((res) => supClient.on('connect', res)),
+      new Promise((res) => drvClient.on('connect', res)),
+    ]);
+
+    let supReceived = null;
+    let drvReceived = null;
+
+    supClient.on('ATTENDANCE_DUTY_UPDATED', (p) => { supReceived = p; });
+    drvClient.on('ATTENDANCE_DUTY_UPDATED', (p) => { drvReceived = p; });
+
+    safeEmitSocketEvent('ATTENDANCE_DUTY_UPDATED', {
+      userId: driverUser.id,
+      status: 'ON_DUTY',
+      clockInTime: new Date().toISOString(),
+    }, ['room:operations', `user:${driverUser.id}`]);
+
+    await new Promise((res) => setTimeout(res, 300));
+
+    assert.ok(supReceived, 'Supervisor should receive ATTENDANCE_DUTY_UPDATED via room:operations');
+    assert.ok(drvReceived, 'Driver should receive ATTENDANCE_DUTY_UPDATED via private user room');
+    assert.strictEqual(drvReceived.data.status, 'ON_DUTY');
+
+    supClient.disconnect();
+    drvClient.disconnect();
+  });
+
+  test('23. authService.revokeAllUserSessions delivers AUTH_SESSION_REVOKED to target user private room', async () => {
+    const targetUser = await createTestUser(`${TEST_PREFIX}target_rev`, 'Driver');
+    const targetSession = await authService.createSession(targetUser.id);
+
+    const unrelatedUser = await createTestUser(`${TEST_PREFIX}unrel_rev`, 'Driver');
+    const unrelatedSession = await authService.createSession(unrelatedUser.id);
+
+    server = http.createServer();
+    initializeSocket(server);
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const targetClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: targetSession.token } });
+    const unrelatedClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: unrelatedSession.token } });
+
+    await Promise.all([
+      new Promise((res) => targetClient.on('connect', res)),
+      new Promise((res) => unrelatedClient.on('connect', res)),
+    ]);
+
+    let targetReceivedRevoke = null;
+    let unrelatedReceivedRevoke = null;
+
+    targetClient.on('AUTH_SESSION_REVOKED', (p) => { targetReceivedRevoke = p; });
+    unrelatedClient.on('AUTH_SESSION_REVOKED', (p) => { unrelatedReceivedRevoke = p; });
+
+    // Revoke all sessions for targetUser
+    await authService.revokeAllUserSessions(targetUser.id);
+
+    await new Promise((res) => setTimeout(res, 300));
+
+    assert.ok(targetReceivedRevoke, 'Target user should receive AUTH_SESSION_REVOKED');
+    assert.strictEqual(targetReceivedRevoke.data.userId, targetUser.id);
+    assert.strictEqual(unrelatedReceivedRevoke, null, 'Unrelated user must NOT receive session revocation');
+
+    targetClient.disconnect();
+    unrelatedClient.disconnect();
+  });
 });

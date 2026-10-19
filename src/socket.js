@@ -140,6 +140,25 @@ function initializeSocket(httpServer, customOptions = {}) {
         socket.join('room:sales');
       }
 
+      // Route Dispatch & Daily Schedules Rooms (Supervisors / Dispatchers)
+      if (permissions.includes('route.view') || permissions.includes('route.manage')) {
+        socket.join('room:trips');
+        socket.join('room:schedules');
+      }
+
+      // Operations (Duty Attendance, Apprehensions, Fuel Telemetry)
+      if (
+        permissions.includes('attendance.view') ||
+        permissions.includes('attendance.manage') ||
+        permissions.includes('apprehensions.view') ||
+        permissions.includes('apprehensions.manage') ||
+        permissions.includes('fuel.view') ||
+        permissions.includes('fuel.manage') ||
+        permissions.includes('fleet.manage')
+      ) {
+        socket.join('room:operations');
+      }
+
       // User Private Room
       if (socket.user.id) {
         socket.join(`user:${socket.user.id}`);
@@ -183,7 +202,7 @@ function isSocketInitialized() {
  *
  * @param {string} eventName - The event name to emit
  * @param {any} [data={}] - Caller-supplied event payload
- * @param {string|null} [room=null] - Target room name for scoped broadcasts
+ * @param {string|string[]|null} [room=null] - Target room name(s) for scoped broadcasts
  * @returns {object} The emitted envelope payload
  */
 function emitSocketEvent(eventName, data = {}, room = null) {
@@ -203,7 +222,16 @@ function emitSocketEvent(eventName, data = {}, room = null) {
   };
 
   if (room) {
-    activeIO.to(room).emit(eventName, payload);
+    if (Array.isArray(room)) {
+      const cleanRooms = [...new Set(room.filter((r) => typeof r === 'string' && r.trim().length > 0))];
+      if (cleanRooms.length > 0) {
+        activeIO.to(cleanRooms).emit(eventName, payload);
+      } else {
+        activeIO.emit(eventName, payload);
+      }
+    } else {
+      activeIO.to(room).emit(eventName, payload);
+    }
   } else {
     activeIO.emit(eventName, payload);
   }
@@ -217,7 +245,7 @@ function emitSocketEvent(eventName, data = {}, room = null) {
  *
  * @param {string} eventName - The event name to emit
  * @param {any} [data={}] - Caller-supplied event payload
- * @param {string|null} [room=null] - Target room name for scoped broadcasts
+ * @param {string|string[]|null} [room=null] - Target room name(s) for scoped broadcasts
  * @returns {object|null} The emitted payload, or null if Socket.IO is uninitialized
  */
 function safeEmitSocketEvent(eventName, data = {}, room = null) {

@@ -6,6 +6,7 @@ const tripsRepository = require('../../trips/trips.repository');
 const { historyService, EVENTS } = require('../../history');
 const { mediaStorage, extractStorageKey } = require('../../media');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Formats database row into camelCase API DTO with resolved receipt URL.
@@ -303,6 +304,20 @@ class FuelService {
         odometerReading: validOdometer,
       },
     });
+
+    safeEmitSocketEvent('FUEL_LOGGED', {
+      id: dto.id,
+      vehicleId: dto.vehicleId,
+      plateNumber: dto.vehicle.plateNumber,
+      driverId: dto.driverId,
+      driverName: dto.driver ? dto.driver.fullName : null,
+      tripId: dto.tripId,
+      litersPumped: dto.litersPumped,
+      totalCost: dto.totalCost,
+      odometerReading: validOdometer,
+      fueledAt: dto.fueledAt,
+      recordedAt: new Date().toISOString(),
+    }, 'room:fleet');
 
     return dto;
   }

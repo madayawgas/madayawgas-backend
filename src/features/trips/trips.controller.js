@@ -115,6 +115,7 @@ class TripsController {
       return res.status(err.statusCode || 400).json({
         status: 'fail',
         message: err.message,
+        ...(err.code && { code: err.code }),
       });
     }
   }

@@ -5,6 +5,7 @@ const tripsRepository = require('../../trips/trips.repository');
 const { historyService, EVENTS } = require('../../history');
 const { mediaStorage, extractStorageKey } = require('../../media');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Formats database row into camelCase API DTO with resolved media URLs.
@@ -227,6 +228,24 @@ class ApprehensionsService {
       },
     });
 
+    safeEmitSocketEvent('APPREHENSION_LOGGED', {
+      id: dto.id,
+      vehicleId: dto.vehicleId,
+      plateNumber: dto.vehicle.plateNumber,
+      driverId: dto.driverId,
+      driverName: dto.driver.fullName,
+      tripId: dto.tripId,
+      tripNumber: dto.trip ? dto.trip.tripNumber : null,
+      citationTicketNo: dto.citationTicketNo,
+      violationType: dto.violationType,
+      apprehendingAgency: dto.apprehendingAgency,
+      incidentTime: dto.incidentTime,
+      location: dto.location,
+      penaltyAmount: dto.penaltyAmount,
+      status: dto.status,
+      recordedAt: new Date().toISOString(),
+    }, ['room:operations', 'room:fleet', `user:${dto.driverId}`]);
+
     return dto;
   }
 
@@ -310,6 +329,15 @@ class ApprehensionsService {
         status: newStatus,
       },
     });
+
+    safeEmitSocketEvent('APPREHENSION_STATUS_UPDATED', {
+      id: dto.id,
+      citationTicketNo: dto.citationTicketNo,
+      status: newStatus,
+      settledAt: dto.settledAt,
+      settledByName: dto.settledByName,
+      updatedAt: new Date().toISOString(),
+    }, ['room:operations', 'room:fleet', `user:${dto.driverId}`]);
 
     return dto;
   }

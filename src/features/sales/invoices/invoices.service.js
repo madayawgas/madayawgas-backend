@@ -6,6 +6,7 @@ const {
   calculateOffset,
   buildPaginationMeta,
 } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 const ALLOWED_INVOICE_SORT_FIELDS = Object.freeze({
   transactedAt: 'si.transacted_at',
@@ -160,6 +161,16 @@ class InvoicesService {
         verifiedBy: actorUser?.id,
       },
     });
+
+    safeEmitSocketEvent('SALES_INVOICE_VERIFIED', {
+      invoiceId: id,
+      invoiceNumber: invoice.invoice_number,
+      paymentMethod: invoice.payment_method,
+      totalAmount: invoice.total_amount,
+      paymentStatus: 'VERIFIED',
+      verifiedBy: actorUser?.id || null,
+      verifiedAt: new Date().toISOString(),
+    }, 'room:sales');
 
     return updatedInvoice;
   }

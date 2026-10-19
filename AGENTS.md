@@ -273,15 +273,26 @@ madayawgas-backend/
 * **Exports**:
   - `initializeSocket(httpServer, customOptions = {})`: Initializes Socket.IO on the native HTTP server with unified CORS configuration, transports `['websocket', 'polling']`, and credentials `true`. Idempotent: repeated calls emit a non-production warning and return the existing singleton.
   - `getIO()`: Retrieves the active `io` server or throws descriptive `Error('Socket.IO has not been initialized. Call initializeSocket(httpServer) first.')`.
-  - `emitSocketEvent(eventName, data = {}, room = null)`: Emits an application-level event using the standardized event envelope. If `room` is provided, dispatches to `io.to(room).emit()`; otherwise dispatches to `io.emit()`.
+  - `emitSocketEvent(eventName, data = {}, room = null)`: Emits an application-level event using the standardized event envelope. If `room` is provided (string or array of room strings), dispatches to `io.to(room).emit()`; otherwise dispatches to `io.emit()`.
+  - `safeEmitSocketEvent(eventName, data = {}, room = null)`: Headless-safe wrapper that catches and swallows uninitialized socket errors, allowing domain services to execute smoothly during automated testing or offline/CLI execution.
   - `closeSocket()`: Cleanly terminates active connections, closes the socket server, and resets the singleton instance (used in graceful shutdown and automated test teardowns).
+* **Auto-Joined RBAC Rooms**:
+  Upon connection authentication, clients are joined to authorized rooms:
+  - `room:alerts`: `alerts.view` / `alerts.manage`
+  - `room:fleet`: `fleet.view` / `fleet.manage` / `route.manage`
+  - `room:inventory`: `inventory.view` / `inventory.plant.manage` / `inventory.vehicle.manage`
+  - `room:sales`: `sales.view` / `dashboard.view`
+  - `room:trips`: `route.manage` / `route.view_all` / `route.reconcile`
+  - `room:schedules`: `route.manage` / `route.view_all`
+  - `room:operations`: `operations.attendance.*` / `operations.apprehensions.*` / `operations.fuel.*`
+  - `user:${userId}`: Dedicated private channel for all authenticated users (used for driver targeted dispatches, assignments, and session revocations).
 * **Standardized Event Envelope**:
   ```json
   {
     "event": "EVENT_NAME",
     "data": {},
     "meta": {
-      "timestamp": "2026-10-17T08:00:00.000Z",
+      "timestamp": "2026-10-19T08:00:00.000Z",
       "version": "1.0"
     }
   }
@@ -291,7 +302,7 @@ madayawgas-backend/
   - `meta.timestamp`: Server-generated ISO 8601 UTC timestamp.
   - `meta.version`: String `"1.0"`.
 * **CORS & Origin Validation**: Reuses `src/config/cors.js` (`isOriginAllowed`). Supports whitelisted web domains, `FRONTEND_URL`, `CORS_ORIGIN`, localhost development, and mobile private networks.
-* **Room Security Invariant**: No unrestricted client-side `join_room` or `leave_room` listeners are exposed. Room subscriptions are managed strictly server-side by future authorized domain services.
+* **Room Security Invariant**: No unrestricted client-side `join_room` or `leave_room` listeners are exposed. Room subscriptions are managed strictly server-side by database-verified RBAC permissions and user identities.
 
 ---
 
@@ -838,7 +849,35 @@ madayawgas-backend/
       - Provides safe room-targeted broadcasting (`io.to(room).emit`) without exposing client-side join listeners.
     * **Automated Test Suite (`src/test/socket.test.js`)**:
       - 10 unit and integration tests verifying pre-init guards, idempotent re-initialization, envelope construction, timestamp validity, global and room-scoped event delivery, whitelisted vs disallowed CORS origins, and teardown cleanup.
-      - 100% test pass rate across all 19 test suites (167 out of 167 tests passing) with `npm test`.
+25. **Domain-Wide Real-Time WebSocket Synchronization (Trips, Schedules, Fleet, Inventory, Sales, Operations, Auth)**:
+    * **Targeted Delivery & Privacy Scoping**:
+      - Solved mobile field worker pull-to-refresh friction: Dispatched trips, midday reload slips, return completions, vehicle assignments, and emergency notifications are instantly broadcast to target drivers via private `user:${driverUserId}` rooms.
+      - Field crews holding scoped permissions (`route.view_own`, `fleet.view_own`) are excluded from broad supervisor rooms (`room:trips`, `room:fleet`) to protect operational confidentiality.
+    * **Multi-Room & Headless Resilience (`src/socket.js`)**:
+      - Upgraded `emitSocketEvent` and added `safeEmitSocketEvent` to accept multi-room arrays (`string[]`), automatically trimming, validating, and deduplicating targets.
+      - Headless safety ensures domain services never crash during test execution or when Socket.IO is uninitialized.
+    * **Domain Emissions Implemented Across 7 Subsystems**:
+      - **Trips (`trips.service.js`)**: `TRIP_DISPATCHED`, `TRIP_LOAD_RECORDED`, `VEHICLE_STOCK_UPDATED`, `TRIP_COMPLETED`, `TRIP_RECONCILED`, `TRIP_CANCELLED`, and `PLANT_STOCK_UPDATED`.
+      - **Schedules (`schedules.service.js`)**: `SCHEDULE_CREATED`, `SCHEDULES_BATCH_GENERATED`, `SCHEDULE_UPDATED`, `SCHEDULE_CANCELLED`.
+      - **Fleet (`vehicles.service.js`)**: `VEHICLE_DRIVER_ASSIGNED`, `VEHICLE_DRIVER_UNASSIGNED`, `VEHICLE_STATUS_UPDATED` (alongside existing `FLEET_VEHICLE_GROUNDED`, `FLEET_VEHICLE_RELEASED`).
+      - **Inventory (`products.service.js`)**: `PRODUCT_CATALOG_UPDATED` on item creation, modification, and deactivation.
+      - **Sales (`transactions.service.js`, `invoices.service.js`, `sync.service.js`)**: `SALES_TRANSACTION_CANCELLED`, `SALES_INVOICE_VERIFIED` (alongside existing `SALES_BATCH_SYNCED`).
+      - **Operations (`attendance.service.js`, `apprehensions.service.js`, `fuel.service.js`)**: `ATTENDANCE_DUTY_UPDATED`, `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`.
+      - **Authentication (`auth.service.js`)**: `AUTH_SESSION_REVOKED` emitted to `user:${userId}` on role changes, password resets, account deactivation, or password changes (with lazy require preventing circular dependency).
+    * **Comprehensive Integration Test Suite (`src/test/socket.test.js`)**:
+      - Extended test suite with tests 18–23 verifying multi-room arrays, driver user room targeting, and uninitialized socket graceful fallbacks.
+      - 100% test pass rate across all 19 test suites (180 out of 180 tests passing) with `npm test`.
+26. **Driver Duty Attendance Dispatch Gatekeeper & Shift Invariants Enforcement (`src/features/trips/`)**:
+    * **Attendance Enforcement on Dispatch (`dispatchTrip`)**:
+      - Resolved Driver (either explicitly supplied via `driverId` or snapshotted from the assigned vehicle) is strictly validated against `duty_attendance` via `attendanceRepository.getActiveDutyCycle(driverUser.id)`.
+      - Dispatches (both scheduled and ad-hoc runs) are rejected with `400 Bad Request` and `code: 'DRIVER_NOT_CLOCKED_IN'` if the driver has not clocked in or has already clocked out.
+    * **Advance Scheduling Invariant Preserved (`createSchedule`, `generateWeeklySchedules`)**:
+      - Scheduling a vehicle remains unblocked and independent of driver clock-in status, enabling logistics supervisors to plan future routes days or weeks ahead.
+    * **Multi-Trip Shift Persistence**:
+      - Post-trip yard check-in (`POST /api/trips/:id/complete`) preserves the driver's active duty cycle. Drivers are not required to clock out and in again between deliveries; sequential trips (e.g. morning scheduled route followed by afternoon ad-hoc runs) dispatch seamlessly on the same active shift until evening clock-out.
+    * **Integration Test Coverage (`src/test/schedules.trips.test.js`)**:
+      - Added Subtest 13 verifying: advance scheduling without clock-in, scheduled dispatch blocked when driver is off-duty, ad-hoc dispatch blocked when driver is off-duty, clock-in unblocking dispatch, multi-trip persistence across sequential runs without re-clock-in, and clock-out re-blocking subsequent dispatches.
+      - Hardened `inventory.reconciliation.test.js` test teardown queries to isolate test vehicles/drivers and prevent foreign key conflicts during concurrent test runs.
 
 ---
 
