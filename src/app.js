@@ -8,6 +8,7 @@ const cookieParser = require('./middleware/cookie.middleware');
 
 const app = express();
 
+
 // Trust reverse proxy (Render, Railway, Nginx) for TLS termination & secure cookie transmission
 app.set('trust proxy', 1);
 
