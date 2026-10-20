@@ -217,6 +217,8 @@ test('Cross-Origin CORS & Cookie Authentication Tests', async (t) => {
       'https://my-phone-test.ngrok-free.app',
       'https://madayaw-mobile.localtunnel.me',
       'https://preview-tunnel.trycloudflare.com',
+      'https://u2849-8081.exp.direct',
+      'https://my-app.expo.dev',
     ];
 
     for (const origin of mobileOrigins) {

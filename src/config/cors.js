@@ -33,9 +33,9 @@ const LOCAL_AND_PRIVATE_NETWORK_REGEX =
 // Mobile hybrid webview schemes (Capacitor, Ionic)
 const MOBILE_HYBRID_REGEX = /^(capacitor|ionic):\/\/localhost$/;
 
-// Mobile development tunnels (ngrok, localtunnel, Cloudflare tunnels)
+// Mobile development tunnels (Expo tunnels, ngrok, localtunnel, Cloudflare tunnels)
 const DEV_TUNNEL_REGEX =
-  /^https:\/\/[a-zA-Z0-9-]+\.(ngrok-free\.app|ngrok\.io|localtunnel\.me|trycloudflare\.com)$/;
+  /^https?:\/\/[a-zA-Z0-9.-]+\.(exp\.direct|expo\.dev|ngrok-free\.app|ngrok\.io|ngrok\.app|localtunnel\.me|trycloudflare\.com)(:\d+)?$/;
 
 // Vercel deployment and preview URLs for madayawgas
 const VERCEL_PREVIEW_REGEX =
