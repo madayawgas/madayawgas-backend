@@ -224,6 +224,106 @@ class TransactionsService {
   async getTransactionsByTripId(tripId) {
     return transactionsRepository.getTransactionsByTripId(null, tripId);
   }
+
+  /**
+   * Retrieves authoritative sales analytics with KPI summaries, trends,
+   * product SKU performance, and payment breakdown.
+   *
+   * @param {Object} actorUser
+   * @param {Object} queryFilters
+   * @returns {Promise<Object>}
+   */
+  async getSalesAnalytics(actorUser, queryFilters = {}) {
+    const permissions = actorUser?.permissions || [];
+    const hasGlobalView = permissions.includes('sales.view') || permissions.includes('dashboard.view');
+    const hasOwnView = permissions.includes('sales.view_own');
+
+    const filters = {
+      startDate: queryFilters.startDate || queryFilters.start_date,
+      endDate: queryFilters.endDate || queryFilters.end_date,
+      timeframe: (queryFilters.timeframe || 'monthly').toLowerCase(),
+      tripId: queryFilters.tripId || queryFilters.trip_id,
+      truckId: queryFilters.truckId || queryFilters.truck_id,
+    };
+
+    if (!hasGlobalView && hasOwnView) {
+      filters.recordedBy = actorUser.id;
+    }
+
+    const analytics = await transactionsRepository.getSalesAnalytics(null, filters);
+
+    // Also populate weekly, monthly, annually trend series for dashboard charts
+    const [weeklyData, monthlyData, annualData] = await Promise.all([
+      transactionsRepository.getSalesAnalytics(null, { ...filters, timeframe: 'weekly' }),
+      transactionsRepository.getSalesAnalytics(null, { ...filters, timeframe: 'monthly' }),
+      transactionsRepository.getSalesAnalytics(null, { ...filters, timeframe: 'annually' }),
+    ]);
+
+    return {
+      ...analytics,
+      weekly: weeklyData.salesTrends || [],
+      monthly: monthlyData.salesTrends || [],
+      annually: annualData.salesTrends || [],
+    };
+  }
+
+  /**
+   * Retrieves delivery trip sales performance with revenue and unit attribution.
+   *
+   * @param {Object} actorUser
+   * @param {Object} queryFilters
+   * @returns {Promise<Object|Array>}
+   */
+  async getTripSalesPerformance(actorUser, queryFilters = {}) {
+    const filters = {
+      startDate: queryFilters.startDate || queryFilters.start_date,
+      endDate: queryFilters.endDate || queryFilters.end_date,
+      truckId: queryFilters.truckId || queryFilters.truck_id,
+      status: queryFilters.status,
+      search: queryFilters.search,
+    };
+
+    const pagination = parsePaginationQuery(queryFilters, {
+      defaultLimit: 20,
+      maxLimit: 100,
+      defaultSort: 'departureTime',
+      defaultOrder: 'DESC',
+      allowedSortFields: {
+        departureTime: 't.departure_time',
+        departure_time: 't.departure_time',
+        tripNumber: 't.trip_number',
+        trip_number: 't.trip_number',
+        totalRevenue: 'rev_agg.total_revenue',
+        total_revenue: 'rev_agg.total_revenue',
+        status: 't.status',
+      },
+    });
+
+    if (!pagination.isPaginated) {
+      return transactionsRepository.getTripSalesPerformance(null, filters, null);
+    }
+
+    const calcOffset = calculateOffset(pagination.page, pagination.limit);
+    const paginationParams = {
+      limit: pagination.limit,
+      offset: calcOffset,
+      sortColumn: pagination.sortColumn,
+      sortOrder: pagination.sortOrder,
+    };
+
+    const { rows, total } = await transactionsRepository.getTripSalesPerformance(
+      null,
+      filters,
+      paginationParams
+    );
+
+    const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
+    return {
+      items: rows,
+      meta,
+    };
+  }
 }
 
 module.exports = new TransactionsService();
+

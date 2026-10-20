@@ -867,4 +867,403 @@ test('Sales & Delivery Subsystem - Batch Sync, Invoicing & Receivables (Phase 4 
     assert.ok(cancelLog, 'SALES_TRANSACTION_CANCELLED log should exist');
     assert.equal(cancelLog.module, 'Sales & Delivery');
   });
+
+  // ============================================================
+  // Subtest 9: Partial Batch Resilience — HoL Blocking Elimination
+  // ============================================================
+  await t.test('9. Partial Batch Resilience - Valid Orders Survive One Bad Item', async () => {
+    const goodTxId1 = crypto.randomUUID();
+    const goodTxId2 = crypto.randomUUID();
+    const badTxId = crypto.randomUUID();
+    const goodItemId1 = crypto.randomUUID();
+    const goodItemId2 = crypto.randomUUID();
+    const fakeProdId = '00000000-dead-4000-beef-000000000000';
+
+    const partialRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        tripId: testTripId,
+        transactions: [
+          // Transaction 1 — valid
+          {
+            id: goodTxId1,
+            transactionNo: 'TEST-TXSYNC-PARTIAL-GOOD-1',
+            customerId: testCustomerId1,
+            transactedAt: '2026-10-19T08:00:00.000Z',
+            items: [
+              {
+                id: goodItemId1,
+                productId: butaneProductId,
+                quantitySold: 3,
+                emptiesReturned: 1,
+                unitPriceAtSale: 120.00,
+                subtotalAmount: 360.00,
+              },
+            ],
+            invoice: {
+              invoiceNumber: 'INV-TEST-TXSYNC-PARTIAL-GOOD-1',
+              declarationNumber: 'CD-TEST-TXSYNC-PARTIAL-GOOD-1',
+              totalAmount: 360.00,
+              paymentMethod: 'CASH',
+            },
+          },
+          // Transaction 2 — bad productId (non-existent UUID → FK violation)
+          {
+            id: badTxId,
+            transactionNo: 'TEST-TXSYNC-PARTIAL-BAD',
+            customerId: testCustomerId1,
+            transactedAt: '2026-10-19T08:05:00.000Z',
+            items: [
+              {
+                productId: fakeProdId,
+                quantitySold: 5,
+                emptiesReturned: 0,
+                unitPriceAtSale: 950.00,
+                subtotalAmount: 4750.00,
+              },
+            ],
+          },
+          // Transaction 3 — valid
+          {
+            id: goodTxId2,
+            transactionNo: 'TEST-TXSYNC-PARTIAL-GOOD-2',
+            customerId: testCustomerId2,
+            transactedAt: '2026-10-19T08:10:00.000Z',
+            items: [
+              {
+                id: goodItemId2,
+                productId: lpg11kgProductId,
+                quantitySold: 1,
+                emptiesReturned: 1,
+                unitPriceAtSale: 900.00,
+                subtotalAmount: 900.00,
+              },
+            ],
+            invoice: {
+              invoiceNumber: 'INV-TEST-TXSYNC-PARTIAL-GOOD-2',
+              declarationNumber: 'CD-TEST-TXSYNC-PARTIAL-GOOD-2',
+              totalAmount: 900.00,
+              paymentMethod: 'CASH',
+            },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(partialRes.status, 200);
+    const partialJson = await partialRes.json();
+
+    // Top-level status should be partial_success
+    assert.equal(partialJson.status, 'partial_success');
+
+    const d = partialJson.data;
+    assert.equal(d.processedCount, 2);
+    assert.equal(d.ignoredCount, 0);
+    assert.equal(d.failedCount, 1);
+    assert.equal(d.summary.totalSubmitted, 3);
+    assert.equal(d.summary.processed, 2);
+    assert.equal(d.summary.failed, 1);
+
+    // Both good orders must be acknowledged
+    assert.ok(d.syncedTransactionIds.includes(goodTxId1), 'Good TX 1 must be in syncedTransactionIds');
+    assert.ok(d.syncedTransactionIds.includes(goodTxId2), 'Good TX 2 must be in syncedTransactionIds');
+    assert.ok(!d.syncedTransactionIds.includes(badTxId), 'Bad TX must NOT be in syncedTransactionIds');
+
+    // Failed item must be in failedTransactions with correct errorCode
+    assert.equal(d.failedTransactions.length, 1);
+    assert.equal(d.failedTransactions[0].id, badTxId);
+    assert.equal(d.failedTransactions[0].transactionNo, 'TEST-TXSYNC-PARTIAL-BAD');
+    assert.ok(
+      d.failedTransactions[0].errorCode === 'INVALID_ITEM_PAYLOAD' ||
+      d.failedTransactions[0].errorCode === 'DB_CONSTRAINT_ERROR',
+      `Unexpected errorCode: ${d.failedTransactions[0].errorCode}`
+    );
+    assert.ok(d.failedTransactions[0].errorMessage, 'errorMessage should be present');
+    assert.ok(d.failedTransactions[0].details, 'details should be present');
+
+    // Verify the two good orders are actually in the database
+    const good1Row = (await query(`SELECT id FROM sales_transactions WHERE id = $1`, [goodTxId1])).rows[0];
+    assert.ok(good1Row, 'Good TX 1 must exist in sales_transactions');
+
+    const good2Row = (await query(`SELECT id FROM sales_transactions WHERE id = $1`, [goodTxId2])).rows[0];
+    assert.ok(good2Row, 'Good TX 2 must exist in sales_transactions');
+
+    // The bad order must NOT exist in the database
+    const badRow = (await query(`SELECT id FROM sales_transactions WHERE id = $1`, [badTxId])).rows[0];
+    assert.ok(!badRow, 'Bad TX must NOT exist in sales_transactions');
+  });
+
+  // ============================================================
+  // Subtest 10: Idempotency Completeness — syncedTransactionIds Includes Ignored Items
+  // ============================================================
+  await t.test('10. Idempotency Completeness - syncedTransactionIds Covers Ignored Items on Re-Submission', async () => {
+    const fixedTxId = crypto.randomUUID();
+
+    const originalPayload = {
+      tripId: testTripId,
+      transactions: [
+        {
+          id: fixedTxId,
+          transactionNo: 'TEST-TXSYNC-IDEMP2',
+          customerId: testCustomerId1,
+          transactedAt: '2026-10-19T09:00:00.000Z',
+          items: [
+            {
+              productId: butaneProductId,
+              quantitySold: 2,
+              emptiesReturned: 2,
+              unitPriceAtSale: 120.00,
+              subtotalAmount: 240.00,
+            },
+          ],
+          invoice: {
+            invoiceNumber: 'INV-TEST-TXSYNC-IDEMP2',
+            declarationNumber: 'CD-TEST-TXSYNC-IDEMP2',
+            totalAmount: 240.00,
+            paymentMethod: 'CASH',
+          },
+        },
+      ],
+    };
+
+    // First push — should process
+    const firstRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify(originalPayload),
+    });
+    const firstJson = await firstRes.json();
+    assert.equal(firstRes.status, 200);
+    assert.equal(firstJson.data.processedCount, 1);
+    assert.equal(firstJson.data.ignoredCount, 0);
+    assert.ok(firstJson.data.syncedTransactionIds.includes(fixedTxId));
+
+    // Re-submit identical payload (simulating network retry after ambiguous response)
+    const retryRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify(originalPayload),
+    });
+    const retryJson = await retryRes.json();
+    assert.equal(retryRes.status, 200);
+    assert.equal(retryJson.status, 'success');
+    assert.equal(retryJson.data.processedCount, 0);
+    assert.equal(retryJson.data.ignoredCount, 1);
+
+    // Critical: The re-submitted ID MUST appear in syncedTransactionIds so the
+    // mobile client can safely mark it SYNCED and remove it from the queue.
+    assert.ok(
+      retryJson.data.syncedTransactionIds.includes(fixedTxId),
+      'Re-submitted transaction UUID must appear in syncedTransactionIds even when ignored'
+    );
+    assert.ok(
+      retryJson.data.ignoredTransactionIds.includes(fixedTxId),
+      'Re-submitted transaction UUID must appear in ignoredTransactionIds'
+    );
+
+    // Confirm still exactly one record in DB
+    const count = (await query(
+      `SELECT COUNT(*)::int AS c FROM sales_transactions WHERE transaction_no = 'TEST-TXSYNC-IDEMP2'`
+    )).rows[0].c;
+    assert.equal(count, 1, 'Only one record should exist after idempotent re-submission');
+  });
+
+  // ============================================================
+  // Subtest 11: Duplicate Transaction Number Isolation
+  // ============================================================
+  await t.test('11. Duplicate Transaction Number Conflict - First Commits, Second Idempotently Handled', async () => {
+    const tx1Id = crypto.randomUUID();
+    const tx2Id = crypto.randomUUID(); // Different UUID, same transactionNo as tx1Id
+
+    const batchRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        tripId: testTripId,
+        transactions: [
+          {
+            id: tx1Id,
+            transactionNo: 'TEST-TXSYNC-DUP-NO',
+            customerId: testCustomerId1,
+            transactedAt: '2026-10-19T10:00:00.000Z',
+            items: [
+              {
+                productId: butaneProductId,
+                quantitySold: 2,
+                emptiesReturned: 0,
+                unitPriceAtSale: 120.00,
+                subtotalAmount: 240.00,
+              },
+            ],
+          },
+          {
+            id: tx2Id,
+            transactionNo: 'TEST-TXSYNC-DUP-NO', // Same transactionNo — caught by idempotency pre-check
+            customerId: testCustomerId2,
+            transactedAt: '2026-10-19T10:05:00.000Z',
+            items: [
+              {
+                productId: lpg11kgProductId,
+                quantitySold: 1,
+                emptiesReturned: 0,
+                unitPriceAtSale: 900.00,
+                subtotalAmount: 900.00,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    assert.equal(batchRes.status, 200);
+    const batchJson = await batchRes.json();
+
+    // The idempotency pre-check catches the duplicate transactionNo before any DB transaction
+    // is opened for the second entry. tx2 is resolved to the existing tx1Id row and counted
+    // as ignoredCount=1. No failures. Total result: 1 processed + 1 ignored = 'success'.
+    assert.equal(batchJson.status, 'success');
+    assert.equal(batchJson.data.processedCount, 1);
+    assert.equal(batchJson.data.ignoredCount, 1);
+    assert.equal(batchJson.data.failedCount, 0);
+
+    // tx1Id must be in syncedTransactionIds (committed normally)
+    assert.ok(batchJson.data.syncedTransactionIds.includes(tx1Id), 'First TX must be in syncedTransactionIds');
+    // The first tx1Id should also appear in ignoredTransactionIds because the second entry
+    // resolved to it via transactionNo match
+    assert.ok(batchJson.data.ignoredTransactionIds.includes(tx1Id), 'Duplicate-no resolution should appear in ignoredTransactionIds');
+
+    // DB: only one record with this transactionNo (the first one)
+    const dbCount = (await query(
+      `SELECT COUNT(*)::int AS c FROM sales_transactions WHERE transaction_no = 'TEST-TXSYNC-DUP-NO'`
+    )).rows[0].c;
+    assert.equal(dbCount, 1, 'Only one transaction should be persisted for a duplicate transactionNo batch');
+
+    // Verify it is the first submitted transaction (tx1Id) that was committed
+    const committedRow = (await query(
+      `SELECT id FROM sales_transactions WHERE transaction_no = 'TEST-TXSYNC-DUP-NO'`
+    )).rows[0];
+    assert.equal(committedRow.id, tx1Id, 'Only the first transaction UUID should be in the DB');
+  });
+
+  // ============================================================
+  // Subtest 12: Optional Offline Customer Pre-Ingestion
+  // ============================================================
+  await t.test('12. Offline Customer Pre-Ingestion - New Customers Created Before Referencing Transactions', async () => {
+    // Customer created offline on mobile with a device-generated UUID
+    const offlineCustId = crypto.randomUUID();
+    const offlineTxId = crypto.randomUUID();
+
+    const preIngestRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        tripId: testTripId,
+        customers: [
+          {
+            id: offlineCustId,
+            businessName: 'TEST-TXSYNC- Offline Sari Sari Store',
+            contactPerson: 'TEST-TXSYNC- Pedro Offline',
+            contactNumber: '+639171239999',
+            deliveryAddress: 'Talomo District, Davao City',
+            customerType: 'RETAILER',
+          },
+        ],
+        transactions: [
+          {
+            id: offlineTxId,
+            transactionNo: 'TEST-TXSYNC-OFFLINE-CUST-1',
+            customerId: offlineCustId, // References the newly created offline customer
+            transactedAt: '2026-10-19T11:00:00.000Z',
+            items: [
+              {
+                productId: butaneProductId,
+                quantitySold: 4,
+                emptiesReturned: 0,
+                unitPriceAtSale: 125.00,
+                subtotalAmount: 500.00,
+              },
+            ],
+            invoice: {
+              invoiceNumber: 'INV-TEST-TXSYNC-OFFLINE-CUST-1',
+              declarationNumber: 'CD-TEST-TXSYNC-OFFLINE-CUST-1',
+              totalAmount: 500.00,
+              paymentMethod: 'CASH',
+            },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(preIngestRes.status, 200);
+    const preIngestJson = await preIngestRes.json();
+
+    // Should be full success — customer pre-ingested then transaction committed
+    assert.equal(preIngestJson.status, 'success');
+    assert.equal(preIngestJson.data.processedCount, 1);
+    assert.equal(preIngestJson.data.failedCount, 0);
+    assert.ok(preIngestJson.data.syncedTransactionIds.includes(offlineTxId));
+    assert.ok(preIngestJson.data.syncedCustomerIds.includes(offlineCustId));
+    assert.equal(preIngestJson.data.failedCustomers.length, 0);
+
+    // Verify customer exists in DB with correct data
+    const custRow = (await query(`SELECT * FROM customers WHERE id = $1`, [offlineCustId])).rows[0];
+    assert.ok(custRow, 'Offline customer must exist in customers table');
+    assert.equal(custRow.contact_number, '+639171239999');
+
+    // Verify the transaction referencing the offline customer is also persisted
+    const txRow = (await query(`SELECT id, customer_id FROM sales_transactions WHERE id = $1`, [offlineTxId])).rows[0];
+    assert.ok(txRow, 'Transaction referencing offline customer must exist');
+    assert.equal(txRow.customer_id, offlineCustId);
+
+    // Re-submit same payload — customer pre-ingestion must be idempotent (ON CONFLICT DO NOTHING)
+    const resubmitRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        tripId: testTripId,
+        customers: [
+          {
+            id: offlineCustId,
+            businessName: 'TEST-TXSYNC- Offline Sari Sari Store',
+            contactPerson: 'TEST-TXSYNC- Pedro Offline',
+            contactNumber: '+639171239999',
+            deliveryAddress: 'Talomo District, Davao City',
+            customerType: 'RETAILER',
+          },
+        ],
+        transactions: [
+          {
+            id: offlineTxId,
+            transactionNo: 'TEST-TXSYNC-OFFLINE-CUST-1',
+            customerId: offlineCustId,
+            transactedAt: '2026-10-19T11:00:00.000Z',
+            items: [
+              {
+                productId: butaneProductId,
+                quantitySold: 4,
+                emptiesReturned: 0,
+                unitPriceAtSale: 125.00,
+                subtotalAmount: 500.00,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    assert.equal(resubmitRes.status, 200);
+    const resubmitJson = await resubmitRes.json();
+    assert.equal(resubmitJson.status, 'success');
+    assert.equal(resubmitJson.data.processedCount, 0);
+    assert.equal(resubmitJson.data.ignoredCount, 1);
+    // The idempotently ignored transaction must still be acknowledged to the mobile client
+    assert.ok(resubmitJson.data.syncedTransactionIds.includes(offlineTxId));
+
+    // DB count still = 1 customer
+    const custCount = (await query(
+      `SELECT COUNT(*)::int AS c FROM customers WHERE id = $1`, [offlineCustId]
+    )).rows[0].c;
+    assert.equal(custCount, 1, 'Idempotent re-submission must not create duplicate customer');
+  });
 });

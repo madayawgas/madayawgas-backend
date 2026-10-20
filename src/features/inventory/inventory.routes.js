@@ -177,7 +177,7 @@ router.get(
 router.get(
   '/products',
   authenticate,
-  requirePermission('inventory.view'),
+  requirePermission(['inventory.view', 'sales.view', 'sales.view_own', 'sales.create']),
   asyncHandler(productsController.getAllProducts.bind(productsController))
 );
 
@@ -211,7 +211,7 @@ router.patch(
 router.get(
   '/products/:id',
   authenticate,
-  requirePermission('inventory.view'),
+  requirePermission(['inventory.view', 'sales.view', 'sales.view_own', 'sales.create']),
   asyncHandler(productsController.getProductById.bind(productsController))
 );
 

@@ -169,6 +169,9 @@ VALUES
     -- Fleet Scoped
     ('fleet.view_own', 'View details and maintenance records for own assigned vehicle.'),
 
+    -- Route Scoped
+    ('route.view_own', 'View routes and trip schedules assigned to the current user.'),
+
     -- Attendance
     ('attendance.view', 'View attendance logs across all personnel.'),
     ('attendance.view_own', 'View own duty shift attendance records.'),

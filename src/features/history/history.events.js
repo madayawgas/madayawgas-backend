@@ -414,7 +414,7 @@ const EVENT_DEFINITIONS = {
     actionType: ACTION_TYPES.CREATED,
     targetType: 'sales_batch',
     template: (p) =>
-      `Synchronized batch of ${p.count || p.processedCount || 0} mobile sales transaction(s) for trip #${p.tripNumber || p.tripId}`,
+      `Synchronized batch of ${p.count || p.processedCount || 0} mobile sales transaction(s) for trip #${p.tripNumber || p.tripId}${p.failedCount ? ` (${p.failedCount} quarantined/failed)` : ''}`,
   },
   SALES_TRANSACTION_CANCELLED: {
     module: MODULES.SALES,

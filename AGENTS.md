@@ -175,7 +175,9 @@ madayawgas-backend/
 │   │   ├── customer.test.js                 # Sales customer CRUD tests (prefix: test_cust_)
 │   │   ├── fleet.maintenance.test.js        # Fleet odometer & PM tests (prefix: test_maint_odo_)
 │   │   ├── fleet.test.js                    # Fleet subsystem tests (prefix: test_fleet_)
+│   │   ├── fuel.analysis.test.js            # Vehicle & fleet fuel analysis telemetry tests (prefix: test_fa_)
 │   │   ├── history.test.js                  # System event history log tests (prefix: test_hist_)
+
 │   │   ├── inventory.test.js                # Inventory product CRUD tests (prefix: test_inv_)
 │   │   ├── management.test.js               # User management tests (prefix: test_mgmt_)
 │   │   ├── media.test.js                    # Media subsystem tests (prefix: test_media_)
@@ -245,7 +247,9 @@ madayawgas-backend/
   - `auth.test.js` uses prefix `test_auth_`
   - `customer.test.js` uses prefix `test_cust_`
   - `fleet.test.js` uses prefix `test_fleet_`
+  - `fuel.analysis.test.js` uses prefix `test_fa_` and `TEST-FA-`
   - `history.test.js` uses prefix `test_hist_`
+
   - `inventory.test.js` uses prefix `test_inv_`
   - `management.test.js` uses prefix `test_mgmt_`
   - `permission.test.js` uses prefix `test_perm_`
@@ -878,6 +882,14 @@ madayawgas-backend/
     * **Integration Test Coverage (`src/test/schedules.trips.test.js`)**:
       - Added Subtest 13 verifying: advance scheduling without clock-in, scheduled dispatch blocked when driver is off-duty, ad-hoc dispatch blocked when driver is off-duty, clock-in unblocking dispatch, multi-trip persistence across sequential runs without re-clock-in, and clock-out re-blocking subsequent dispatches.
       - Hardened `inventory.reconciliation.test.js` test teardown queries to isolate test vehicles/drivers and prevent foreign key conflicts during concurrent test runs.
+27. **Frontline Product Catalog Viewing Authorization Alignment (`src/features/inventory/inventory.routes.js`)**:
+    * **Expanded Product Catalog Permissions**:
+      - Updated `GET /api/inventory/products` and `GET /api/inventory/products/:id` route guards from strictly requiring `inventory.view` to accepting `['inventory.view', 'sales.view', 'sales.view_own', 'sales.create']`.
+      - Empowers frontline mobile sales agents (`sales_user` holding `Sales Person` role) to query the authoritative product catalog during mobile order placement without receiving `403 Forbidden`.
+      - Preserved strict security boundaries: Plant bulk inventory (`/plant`), restock (`/plant/restock`), quarantine (`/plant/quarantine-defects`), and global cross-fleet transfers (`/transfers`) remain strictly guarded by `inventory.view` and `inventory.plant.manage`.
+    * **Test Suite & API Contracts Synchronization**:
+      - Updated Subtest 1 in `src/test/inventory.test.js` verifying that `Sales Person` can view the product catalog (`200 OK`) while remaining forbidden from registering or modifying products (`403 Forbidden`), and that unauthorized roles (e.g. `Fleet Manager`) receive `403 Forbidden`.
+      - Synchronized `docs/api-contracts/inventory/products.api.md` and `docs/permissions.md`.
 
 ---
 

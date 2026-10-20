@@ -126,6 +126,22 @@ class AlertsService {
       ? payload.vehicleId.trim()
       : null;
 
+    // Verify provided tripId exists in database to prevent foreign key violations
+    if (resolvedTripId) {
+      const existingTrip = await tripsRepository.getTripById(resolvedTripId);
+      if (!existingTrip) {
+        resolvedTripId = null;
+      }
+    }
+
+    // Verify provided vehicleId exists in database to prevent foreign key violations
+    if (resolvedVehicleId) {
+      const existingVehicle = await vehiclesRepository.getVehicleById(resolvedVehicleId);
+      if (!existingVehicle) {
+        resolvedVehicleId = null;
+      }
+    }
+
     if (!resolvedTripId || !resolvedVehicleId) {
       const activeTrip = await tripsRepository.findActiveTripByDriverId(driverId);
       if (activeTrip) {

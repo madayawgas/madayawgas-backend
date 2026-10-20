@@ -111,6 +111,51 @@ class TransactionsController {
       });
     }
   }
+
+  /**
+   * GET /api/sales/overview and GET /api/sales/analytics
+   * Retrieves high-level business analytics, trends, and category distribution.
+   */
+  async getSalesAnalytics(req, res) {
+    try {
+      const analytics = await transactionsService.getSalesAnalytics(req.user, req.query || {});
+      return res.status(200).json({
+        status: 'success',
+        data: analytics,
+      });
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/sales/trip-performance
+   * Retrieves operational delivery trip performance with sales revenue attribution.
+   */
+  async getTripSalesPerformance(req, res) {
+    try {
+      const result = await transactionsService.getTripSalesPerformance(req.user, req.query || {});
+      if (result.items && result.meta) {
+        return res.status(200).json(formatPaginatedEnvelope(result.items, result.meta));
+      }
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          count: result.length,
+          trips: result,
+        },
+      });
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
 }
 
 module.exports = new TransactionsController();
+

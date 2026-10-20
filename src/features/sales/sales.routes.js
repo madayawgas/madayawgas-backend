@@ -23,6 +23,30 @@ router.get(
   asyncHandler(transactionsController.getShiftSummary.bind(transactionsController))
 );
 
+// 2. High-Level Sales Analytics & Dashboard Overview
+router.get(
+  '/overview',
+  authenticate,
+  requirePermission(['sales.view', 'sales.view_own', 'dashboard.view']),
+  asyncHandler(transactionsController.getSalesAnalytics.bind(transactionsController))
+);
+
+router.get(
+  '/analytics',
+  authenticate,
+  requirePermission(['sales.view', 'sales.view_own', 'dashboard.view']),
+  asyncHandler(transactionsController.getSalesAnalytics.bind(transactionsController))
+);
+
+// 3. Operational Delivery Trip Performance
+router.get(
+  '/trip-performance',
+  authenticate,
+  requirePermission(['sales.view', 'sales.view_own']),
+  asyncHandler(transactionsController.getTripSalesPerformance.bind(transactionsController))
+);
+
+
 // 2. Submodule Routes
 router.use('/customers', customerRoutes);
 router.use('/sync-batch', syncRoutes);

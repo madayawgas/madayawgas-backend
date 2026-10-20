@@ -141,14 +141,11 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(unauthPost.status, 401);
 
-    // B. Sales Person & Fleet Manager (no inventory permissions) -> 403 Forbidden
+    // B. Sales Person can view product catalog (200 OK) for sales selection, but cannot register products (403 Forbidden)
     const salesGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${salesPersonCookie}` },
     });
-    assert.equal(salesGet.status, 403);
-    const salesGetJson = await salesGet.json();
-    assert.equal(salesGetJson.status, 'fail');
-    assert.equal(salesGetJson.message, 'Forbidden');
+    assert.equal(salesGet.status, 200);
 
     const fmGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },

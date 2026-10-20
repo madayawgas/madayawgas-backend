@@ -87,6 +87,32 @@ class FuelController {
 
     return res.status(200).json(envelope);
   }
+
+  /**
+   * GET /api/operations/fuel/analysis
+   * Fleet-wide fuel analytics, total fuel used, cost, km/L, and vehicle breakdowns.
+   */
+  async getFleetFuelAnalysis(req, res) {
+    const data = await fuelService.getFleetFuelAnalysis(req.user, req.query || {});
+    return res.status(200).json({
+      status: 'success',
+      data,
+    });
+  }
+
+  /**
+   * GET /api/operations/fuel/analysis/:vehicleId
+   * Detailed single-vehicle fuel consumption, km/L efficiency, and fill-up logs.
+   */
+  async getSingleVehicleFuelAnalysis(req, res) {
+    const targetVehicleId = req.params.vehicleId || req.params.id;
+    const data = await fuelService.getSingleVehicleFuelAnalysis(targetVehicleId, req.user, req.query || {});
+    return res.status(200).json({
+      status: 'success',
+      data,
+    });
+  }
 }
 
 module.exports = new FuelController();
+
