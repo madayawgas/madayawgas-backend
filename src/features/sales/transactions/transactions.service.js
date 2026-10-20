@@ -1,6 +1,7 @@
 const transactionsRepository = require('./transactions.repository');
 const { historyService } = require('../../history');
 const { EVENTS } = require('../../history/history.events');
+const { mediaStorage, extractStorageKey } = require('../../media');
 const {
   parsePaginationQuery,
   calculateOffset,
@@ -17,6 +18,52 @@ const ALLOWED_TRANSACTION_SORT_FIELDS = Object.freeze({
   transaction_no: 'st.transaction_no',
   status: 'st.status',
 });
+
+/**
+ * Enriches a sales transaction entity and any nested invoice with resolved public media URLs.
+ *
+ * @param {Object|null} tx
+ * @returns {Object|null}
+ */
+function enrichTransactionMedia(tx) {
+  if (!tx) return null;
+
+  const enriched = { ...tx };
+  const rawKey = tx.payment_proof_key || tx.paymentProofKey;
+  const canonicalKey = rawKey ? (extractStorageKey(rawKey) || rawKey) : null;
+  const publicUrl = canonicalKey ? mediaStorage.resolveMediaUrl(canonicalKey) : null;
+
+  if (tx.payment_proof_key !== undefined || tx.paymentProofKey !== undefined) {
+    enriched.payment_proof_key = canonicalKey;
+    enriched.paymentProofKey = canonicalKey;
+    enriched.payment_proof_url = publicUrl;
+    enriched.paymentProofUrl = publicUrl;
+  }
+
+  // If nested invoice object exists (e.g. from getTransactionById / getTransactionDetails)
+  if (enriched.invoice) {
+    const invRawKey = enriched.invoice.payment_proof_key || enriched.invoice.paymentProofKey;
+    const invCanonicalKey = invRawKey ? (extractStorageKey(invRawKey) || invRawKey) : null;
+    const invPublicUrl = invCanonicalKey ? mediaStorage.resolveMediaUrl(invCanonicalKey) : null;
+
+    enriched.invoice = {
+      ...enriched.invoice,
+      payment_proof_key: invCanonicalKey,
+      paymentProofKey: invCanonicalKey,
+      payment_proof_url: invPublicUrl,
+      paymentProofUrl: invPublicUrl,
+    };
+
+    if (!enriched.payment_proof_url && invPublicUrl) {
+      enriched.payment_proof_url = invPublicUrl;
+      enriched.paymentProofUrl = invPublicUrl;
+      enriched.payment_proof_key = invCanonicalKey;
+      enriched.paymentProofKey = invCanonicalKey;
+    }
+  }
+
+  return enriched;
+}
 
 /**
  * Transactions Service
@@ -59,7 +106,7 @@ class TransactionsService {
 
     if (!pagination.isPaginated) {
       const rows = await transactionsRepository.findPaginatedTransactions(null, filters, null);
-      return rows;
+      return rows.map(enrichTransactionMedia);
     }
 
     const calcOffset = calculateOffset(pagination.page, pagination.limit);
@@ -78,7 +125,7 @@ class TransactionsService {
 
     const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
     return {
-      items: rows,
+      items: rows.map(enrichTransactionMedia),
       meta,
     };
   }
@@ -113,7 +160,7 @@ class TransactionsService {
       throw err;
     }
 
-    return tx;
+    return enrichTransactionMedia(tx);
   }
 
   /**
@@ -181,7 +228,7 @@ class TransactionsService {
       cancelledAt: new Date().toISOString(),
     }, ['room:sales', 'room:inventory']);
 
-    return cancelledTx;
+    return enrichTransactionMedia(cancelledTx);
   }
 
   /**
@@ -197,7 +244,27 @@ class TransactionsService {
       throw err;
     }
 
-    return transactionsRepository.getTripShiftSummary(null, tripId);
+    const summary = await transactionsRepository.getTripShiftSummary(null, tripId);
+    const payments = summary?.revenue?.gcash?.payments || summary?.gcashPayments;
+    if (summary && Array.isArray(payments)) {
+      const enrichedPayments = payments.map((p) => {
+        const rawKey = p.paymentProofKey || p.payment_proof_key;
+        const key = rawKey ? (extractStorageKey(rawKey) || rawKey) : null;
+        const url = key ? mediaStorage.resolveMediaUrl(key) : null;
+        return {
+          ...p,
+          paymentProofKey: key,
+          payment_proof_key: key,
+          paymentProofUrl: url,
+          payment_proof_url: url,
+        };
+      });
+      if (summary.revenue?.gcash) {
+        summary.revenue.gcash.payments = enrichedPayments;
+      }
+      summary.gcashPayments = enrichedPayments;
+    }
+    return summary;
   }
 
   // ============================================================
@@ -222,7 +289,8 @@ class TransactionsService {
   }
 
   async getTransactionsByTripId(tripId) {
-    return transactionsRepository.getTransactionsByTripId(null, tripId);
+    const rows = await transactionsRepository.getTransactionsByTripId(null, tripId);
+    return rows.map(enrichTransactionMedia);
   }
 
   /**
@@ -326,4 +394,3 @@ class TransactionsService {
 }
 
 module.exports = new TransactionsService();
-

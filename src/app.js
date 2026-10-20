@@ -5,6 +5,7 @@ const corsOptions = require('./config/cors');
 const routes = require('./routes');
 const errorHandler = require('./middleware/error.middleware');
 const cookieParser = require('./middleware/cookie.middleware');
+const { mediaStorage, isProductionMode } = require('./features/media');
 
 const app = express();
 
@@ -36,12 +37,26 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/problem', (req, res) => {
+  res.status(500).json({
+    status: 'error',
+    message: 'Ang problem kay si von',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // API Routes (Direct endpoints without versioning)
 app.use('/api', routes);
 
-// Static Media Serving for Local Development
+// Static & Cloud Media Serving
 app.use('/media', (req, res, next) => {
-  if (String(process.env.PRODUCTION).trim().toLowerCase() === 'true') {
+  if (isProductionMode()) {
+    const rawKey = decodeURIComponent(req.path || '').replace(/^\/+/, '').replace(/^media\//i, '');
+    if (!rawKey) return next();
+    const publicUrl = mediaStorage.resolveMediaUrl(rawKey);
+    if (publicUrl && /^https?:\/\//i.test(publicUrl)) {
+      return res.redirect(302, publicUrl);
+    }
     return next();
   }
   const localUploadDir = path.resolve(process.env.LOCAL_MEDIA_PATH || './uploads');

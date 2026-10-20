@@ -15,4 +15,5 @@ module.exports = {
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE_BYTES,
   extractStorageKey,
+  isProductionMode: mediaStorage.isProductionMode,
 };

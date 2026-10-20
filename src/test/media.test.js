@@ -489,4 +489,35 @@ test('Media Subsystem Integration Tests', async (t) => {
     assert.equal(extractStorageKey(''), null);
     assert.equal(extractStorageKey('   '), null);
   });
+
+  await t.test('12. /media Static and Production Redirect Behavior', async () => {
+    const key = 'sales/payments/test-payment-proof.jpg';
+    const originalProd = process.env.PRODUCTION;
+    const originalSupabaseUrl = process.env.SUPABASE_URL;
+
+    try {
+      // In production mode: GET /media/:storageKey redirects (302) to Supabase CDN
+      process.env.PRODUCTION = 'true';
+      process.env.SUPABASE_URL = 'https://test-project.supabase.co';
+      process.env.SUPABASE_MEDIA_BUCKET = 'madayawgas-media';
+
+      const prodRes = await fetch(`${baseUrl}/media/${key}`, {
+        redirect: 'manual',
+      });
+
+      assert.equal(prodRes.status, 302);
+      assert.equal(
+        prodRes.headers.get('location'),
+        `https://test-project.supabase.co/storage/v1/object/public/madayawgas-media/${key}`
+      );
+
+      // In local mode: nonexistent file falls through to 404
+      process.env.PRODUCTION = 'false';
+      const localMissingRes = await fetch(`${baseUrl}/media/nonexistent/file.jpg`);
+      assert.equal(localMissingRes.status, 404);
+    } finally {
+      process.env.PRODUCTION = originalProd;
+      process.env.SUPABASE_URL = originalSupabaseUrl;
+    }
+  });
 });
