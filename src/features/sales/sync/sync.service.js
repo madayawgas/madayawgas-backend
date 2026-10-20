@@ -3,6 +3,7 @@ const { pool } = require('../../../../database/connection');
 const { historyService } = require('../../history');
 const { EVENTS } = require('../../history/history.events');
 const { safeEmitSocketEvent } = require('../../../socket');
+const { extractStorageKey } = require('../../media');
 
 // ============================================================
 // Standardized Sync Error Code Classifier
@@ -434,7 +435,8 @@ class SyncService {
             const paymentMethod = (inv.paymentMethod || inv.payment_method || 'CASH').toUpperCase();
             const paymentStatus = (inv.paymentStatus || inv.payment_status || 'PAID_UNVERIFIED').toUpperCase();
             const paymentRef = inv.paymentReferenceNumber || inv.payment_reference_number || null;
-            const paymentProof = inv.paymentProofKey || inv.payment_proof_key || null;
+            const rawProof = inv.paymentProofKey || inv.payment_proof_key || null;
+            const paymentProof = rawProof ? (extractStorageKey(rawProof) || rawProof) : null;
 
             const insertInvoiceSql = `
               INSERT INTO sales_invoices (

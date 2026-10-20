@@ -1,6 +1,7 @@
 const invoicesRepository = require('./invoices.repository');
 const { historyService } = require('../../history');
 const { EVENTS } = require('../../history/history.events');
+const { mediaStorage, extractStorageKey } = require('../../media');
 const {
   parsePaginationQuery,
   calculateOffset,
@@ -20,6 +21,27 @@ const ALLOWED_INVOICE_SORT_FIELDS = Object.freeze({
   paymentStatus: 'si.payment_status',
   payment_status: 'si.payment_status',
 });
+
+/**
+ * Enriches an invoice entity with resolved public payment proof URL and normalized keys.
+ *
+ * @param {Object|null} inv
+ * @returns {Object|null}
+ */
+function enrichInvoiceMedia(inv) {
+  if (!inv) return null;
+  const rawKey = inv.payment_proof_key || inv.paymentProofKey;
+  const canonicalKey = rawKey ? (extractStorageKey(rawKey) || rawKey) : null;
+  const publicUrl = canonicalKey ? mediaStorage.resolveMediaUrl(canonicalKey) : null;
+
+  return {
+    ...inv,
+    payment_proof_key: canonicalKey,
+    paymentProofKey: canonicalKey,
+    payment_proof_url: publicUrl,
+    paymentProofUrl: publicUrl,
+  };
+}
 
 /**
  * Invoices Service
@@ -61,7 +83,7 @@ class InvoicesService {
 
     if (!pagination.isPaginated) {
       const rows = await invoicesRepository.findPaginatedInvoices(null, filters, null);
-      return rows;
+      return rows.map(enrichInvoiceMedia);
     }
 
     const calcOffset = calculateOffset(pagination.page, pagination.limit);
@@ -80,7 +102,7 @@ class InvoicesService {
 
     const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
     return {
-      items: rows,
+      items: rows.map(enrichInvoiceMedia),
       meta,
     };
   }
@@ -115,7 +137,7 @@ class InvoicesService {
       throw err;
     }
 
-    return invoice;
+    return enrichInvoiceMedia(invoice);
   }
 
   /**
@@ -172,7 +194,7 @@ class InvoicesService {
       verifiedAt: new Date().toISOString(),
     }, 'room:sales');
 
-    return updatedInvoice;
+    return enrichInvoiceMedia(updatedInvoice);
   }
 
   // Backward-compatible aliases
@@ -186,7 +208,7 @@ class InvoicesService {
       throw new Error('Invoice not found');
     }
 
-    return inv;
+    return enrichInvoiceMedia(inv);
   }
 
   async getInvoiceByNumber(invoiceNumber) {
@@ -199,7 +221,7 @@ class InvoicesService {
       throw new Error('Invoice not found');
     }
 
-    return inv;
+    return enrichInvoiceMedia(inv);
   }
 }
 

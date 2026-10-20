@@ -557,6 +557,9 @@ test('Sales & Delivery Subsystem - Batch Sync, Invoicing & Receivables (Phase 4 
     assert.equal(inv.payment_status, 'VERIFIED');
     assert.equal(inv.verified_by, salesSupervisorUser.id);
     assert.ok(inv.verified_at);
+    assert.equal(inv.payment_proof_key, 'proofs/gcash-889900.png');
+    assert.ok(inv.payment_proof_url.includes('proofs/gcash-889900.png'));
+    assert.ok(inv.paymentProofUrl.includes('proofs/gcash-889900.png'));
 
     // 4. Re-verification should fail with 400 (already verified)
     const repeatVerify = await fetch(`${baseUrl}/api/sales/invoices/${gcashInvId}/verify`, {
@@ -651,6 +654,9 @@ test('Sales & Delivery Subsystem - Batch Sync, Invoicing & Receivables (Phase 4 
     assert.ok(Array.isArray(summary.revenue.gcash.payments));
     assert.equal(summary.revenue.gcash.payments.length, 1);
     assert.equal(summary.revenue.gcash.payments[0].paymentReferenceNumber, 'GCASH-REF-554433');
+    assert.equal(summary.revenue.gcash.payments[0].paymentProofKey, 'proofs/gcash-554433.jpg');
+    assert.ok(summary.revenue.gcash.payments[0].paymentProofUrl.includes('proofs/gcash-554433.jpg'));
+    assert.ok(summary.revenue.gcash.payments[0].payment_proof_url.includes('proofs/gcash-554433.jpg'));
 
     // Empties returned breakdown
     assert.equal(summary.empties.totalEmptiesCount, 4); // 3 butane + 1 lpg
