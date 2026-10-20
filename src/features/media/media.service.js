@@ -9,7 +9,13 @@ const mediaStorage = require('./media.storage');
 const ALLOWED_DOMAINS = Object.freeze([
   'maintenance/receipts',
   'maintenance/inspections',
+  'maintenance/incidents',
   'fleet/vehicles',
+  'fleet/apprehensions',
+  'fleet/fuel',
+  'fleet/incidents',
+  'operations/apprehensions',
+  'operations/fuel',
   'sales/receipts',
   'sales/payments',
   'users/avatars',

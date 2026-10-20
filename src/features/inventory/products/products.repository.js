@@ -194,7 +194,17 @@ class ProductsRepository {
       isActive,
     ]);
 
-    return result.rows[0];
+    const createdProduct = result.rows[0];
+    if (createdProduct?.id) {
+      await query(
+        `INSERT INTO plant_inventory (product_id, quantity_filled, quantity_empty_good, quantity_defective)
+         VALUES ($1, 0, 0, 0)
+         ON CONFLICT (product_id) DO NOTHING`,
+        [createdProduct.id]
+      );
+    }
+
+    return createdProduct;
   }
 
   /**

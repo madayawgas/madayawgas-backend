@@ -1,76 +1,56 @@
 const express = require('express');
 const router = express.Router();
 
-const customerController = require('./customer/customer.controller');
-const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
+const customerRoutes = require('./customers/customer.routes');
+const { syncRoutes } = require('./sync');
+const { transactionsRoutes, transactionsController } = require('./transactions');
+const { invoicesRoutes } = require('./invoices');
+const {
+  authenticate,
+  requirePermission,
+} = require('../../middleware/auth.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
 
 // ============================================================
-// 1. Collection Endpoints (/customers)
+// Sales & Delivery Subsystem Route Mounts
 // ============================================================
 
-/**
- * GET /api/sales/customers
- * List all customers with optional filtering / overview.
- */
+// 1. Shift Closeout Remittance Summary
 router.get(
-  '/customers',
+  '/trips/:tripId/shift-summary',
   authenticate,
   requirePermission(['sales.view', 'sales.view_own']),
-  asyncHandler(customerController.getAllCustomers.bind(customerController))
+  asyncHandler(transactionsController.getShiftSummary.bind(transactionsController))
 );
 
-/**
- * POST /api/sales/customers
- * Register a new customer.
- */
-router.post(
-  '/customers',
-  authenticate,
-  requirePermission('sales.create'),
-  asyncHandler(customerController.createCustomer.bind(customerController))
-);
-
-// ============================================================
-// 2. Sub-Resource / Action Endpoints (Before generic :id)
-// ============================================================
-
-/**
- * PATCH /api/sales/customers/:id/deactivate
- * Deactivate a customer.
- */
-router.patch(
-  '/customers/:id/deactivate',
-  authenticate,
-  requirePermission('sales.update'),
-  requirePasswordConfirmation,
-  asyncHandler(customerController.deactivateCustomer.bind(customerController))
-);
-
-// ============================================================
-// 3. Generic Parameterized Endpoints (:id)
-// ============================================================
-
-/**
- * GET /api/sales/customers/:id
- * Retrieve single customer profile by UUID.
- */
+// 2. High-Level Sales Analytics & Dashboard Overview
 router.get(
-  '/customers/:id',
+  '/overview',
+  authenticate,
+  requirePermission(['sales.view', 'sales.view_own', 'dashboard.view']),
+  asyncHandler(transactionsController.getSalesAnalytics.bind(transactionsController))
+);
+
+router.get(
+  '/analytics',
+  authenticate,
+  requirePermission(['sales.view', 'sales.view_own', 'dashboard.view']),
+  asyncHandler(transactionsController.getSalesAnalytics.bind(transactionsController))
+);
+
+// 3. Operational Delivery Trip Performance
+router.get(
+  '/trip-performance',
   authenticate,
   requirePermission(['sales.view', 'sales.view_own']),
-  asyncHandler(customerController.getCustomerById.bind(customerController))
+  asyncHandler(transactionsController.getTripSalesPerformance.bind(transactionsController))
 );
 
-/**
- * PATCH /api/sales/customers/:id
- * Update customer profile details.
- */
-router.patch(
-  '/customers/:id',
-  authenticate,
-  requirePermission('sales.update'),
-  asyncHandler(customerController.updateCustomer.bind(customerController))
-);
+
+// 2. Submodule Routes
+router.use('/customers', customerRoutes);
+router.use('/sync-batch', syncRoutes);
+router.use('/transactions', transactionsRoutes);
+router.use('/invoices', invoicesRoutes);
 
 module.exports = router;

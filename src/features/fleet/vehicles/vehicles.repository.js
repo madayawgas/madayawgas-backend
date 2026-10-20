@@ -11,7 +11,7 @@ class VehiclesRepository {
    * @param {Object|null} pagination - Optional { sortColumn, sortOrder, limit, offset }
    */
   async getAllVehicles(filters = {}, pagination = null) {
-    const { status, search, driverAssigned, vehicleType, type } = filters;
+    const { status, search, driverAssigned, vehicleType, type, driverId } = filters;
     const conditions = [];
     const params = [];
     let paramIndex = 1;
@@ -31,6 +31,11 @@ class VehiclesRepository {
       conditions.push(`(v.plate_number ILIKE $${paramIndex} OR v.model ILIKE $${paramIndex})`);
       params.push(`%${search.trim()}%`);
       paramIndex++;
+    }
+
+    if (driverId) {
+      conditions.push(`v.driver_id = $${paramIndex++}`);
+      params.push(driverId);
     }
 
     if (driverAssigned !== undefined) {

@@ -1,7 +1,10 @@
 const { pool } = require('../../../../database/connection');
 const maintenanceRepository = require('./maintenance.repository');
+const vehiclesRepository = require('../vehicles/vehicles.repository');
+const tripsRepository = require('../../trips/trips.repository');
 const { historyService, EVENTS } = require('../../../features/history');
 const { mediaStorage, mediaService, extractStorageKey } = require('../../media');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 /**
  * Normalizes and formats receipt file path adhering to the Storage Path Invariant:
@@ -183,7 +186,7 @@ class MaintenanceService {
    * @param {Object} [queryParams] - { page, limit }
    * @returns {Promise<Object>} Paginated logs with vehicle metadata
    */
-  async getTruckOdometerHistory(truckId, queryParams = {}) {
+  async getTruckOdometerHistory(truckId, queryParams = {}, actorUser = null) {
     const targetVehicleId = truckId;
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
       const err = new Error('Vehicle ID is required');
@@ -196,6 +199,17 @@ class MaintenanceService {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && truck.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view maintenance records for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const page = Math.max(1, parseInt(queryParams.page, 10) || 1);
@@ -400,6 +414,19 @@ class MaintenanceService {
       client.release();
     }
 
+    // Real-Time WebSocket Grounding Broadcast
+    if (shouldGround) {
+      safeEmitSocketEvent('FLEET_VEHICLE_GROUNDED', {
+        vehicleId: truck.id,
+        plateNumber: truck.plate_number,
+        status: 'UNDER_MAINTENANCE',
+        reason: 'FAILED_INSPECTION',
+        sourceId: createdInspection.id,
+        findings: createdInspection.findings,
+        groundedAt: new Date().toISOString(),
+      }, 'room:fleet');
+    }
+
     // 7. Centralized History Audit Logging
     try {
       await historyService.log(EVENTS.MAINTENANCE_INSPECTION_RECORDED, {
@@ -453,7 +480,7 @@ class MaintenanceService {
    * @param {Object} [queryParams] - Query parameters { page, limit, result }
    * @returns {Promise<Object>} Paginated inspections list
    */
-  async getTruckInspections(truckId, queryParams = {}) {
+  async getTruckInspections(truckId, queryParams = {}, actorUser = null) {
     const targetVehicleId = truckId;
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
       const err = new Error('Vehicle ID is required');
@@ -466,6 +493,17 @@ class MaintenanceService {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && truck.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view maintenance records for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const page = Math.max(1, parseInt(queryParams.page) || 1);
@@ -586,8 +624,26 @@ class MaintenanceService {
    * @returns {Promise<Object>} Created incident report and truck status update
    */
   async reportIncident(actorUser, payload = {}) {
-    const targetVehicleId = payload.vehicleId || payload.truckId;
-    const { incidentTypeId, severity, incidentLocation, description, reportDate } = payload;
+    let targetVehicleId = payload.vehicleId || payload.truckId;
+    const { severity, incidentLocation, description, reportDate } = payload;
+    let incidentTypeId = payload.incidentTypeId;
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isValidUuid = (val) => typeof val === 'string' && UUID_REGEX.test(val.trim());
+
+    // Resolve vehicle from active trip or assigned vehicle if not a valid UUID
+    if ((!targetVehicleId || !isValidUuid(targetVehicleId)) && actorUser?.id) {
+      const activeTrip = await tripsRepository.findActiveTripByDriverId(actorUser.id);
+      const tripVehicleId = activeTrip?.vehicle_id || activeTrip?.truck_id;
+      if (tripVehicleId) {
+        targetVehicleId = tripVehicleId;
+      } else {
+        const assignedVehicle = await vehiclesRepository.findVehicleByDriverId(actorUser.id);
+        if (assignedVehicle && assignedVehicle.id) {
+          targetVehicleId = assignedVehicle.id;
+        }
+      }
+    }
 
     // 1. Validation: Vehicle ID
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
@@ -596,14 +652,36 @@ class MaintenanceService {
       throw err;
     }
 
-    const truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
+    let truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId.trim());
+    if (!truck && actorUser?.id) {
+      const assignedVehicle = await vehiclesRepository.findVehicleByDriverId(actorUser.id);
+      if (assignedVehicle && assignedVehicle.id) {
+        targetVehicleId = assignedVehicle.id;
+        truck = await maintenanceRepository.getTruckOdometerState(targetVehicleId);
+      }
+    }
     if (!truck) {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
     }
 
-    // 2. Validation: Incident Type ID
+    // 2. Validation: Incident Type ID (support string incidentType fallback)
+    if ((incidentTypeId === undefined || incidentTypeId === null || incidentTypeId === '') && (payload.incidentType || payload.type)) {
+      const typeStr = String(payload.incidentType || payload.type).toUpperCase().trim();
+      if (typeStr.includes('DEFECT') || typeStr.includes('ENGINE') || typeStr.includes('BRAKE') || typeStr.includes('MECHANIC')) {
+        incidentTypeId = 1; // MECHANICAL_DEFECT
+      } else if (typeStr.includes('ACCIDENT') || typeStr.includes('COLLISION') || typeStr.includes('CRASH')) {
+        incidentTypeId = 2; // ROAD_ACCIDENT
+      } else if (typeStr.includes('TIRE') || typeStr.includes('TYRE') || typeStr.includes('PUNCTURE') || typeStr.includes('FLAT')) {
+        incidentTypeId = 3; // TIRE_FAILURE
+      } else if (typeStr.includes('LEAK') || typeStr.includes('FLUID') || typeStr.includes('OIL') || typeStr.includes('GAS')) {
+        incidentTypeId = 4; // LEAK_ISSUE
+      } else {
+        incidentTypeId = 1;
+      }
+    }
+
     if (incidentTypeId === undefined || incidentTypeId === null || incidentTypeId === '') {
       const err = new Error('Incident type ID is required');
       err.statusCode = 400;
@@ -693,6 +771,19 @@ class MaintenanceService {
       throw dbErr;
     } finally {
       client.release();
+    }
+
+    // Real-Time WebSocket Grounding Broadcast
+    if (cleanSeverity === 'CRITICAL') {
+      safeEmitSocketEvent('FLEET_VEHICLE_GROUNDED', {
+        vehicleId: truck.id,
+        plateNumber: truck.plate_number,
+        status: 'UNDER_MAINTENANCE',
+        reason: 'CRITICAL_INCIDENT',
+        sourceId: createdIncident.id,
+        findings: createdIncident.description,
+        groundedAt: new Date().toISOString(),
+      }, 'room:fleet');
     }
 
     // 6. Centralized History Audit Logging
@@ -803,7 +894,7 @@ class MaintenanceService {
    * @param {Object} queryParams - Query parameters { page, limit }
    * @returns {Promise<Object>} Paginated incidents for truck
    */
-  async getTruckIncidents(truckId, queryParams = {}) {
+  async getTruckIncidents(truckId, queryParams = {}, actorUser = null) {
     const targetVehicleId = truckId;
     if (!targetVehicleId || typeof targetVehicleId !== 'string' || targetVehicleId.trim().length === 0) {
       const err = new Error('Vehicle ID is required');
@@ -816,6 +907,17 @@ class MaintenanceService {
       const err = new Error('Vehicle not found');
       err.statusCode = 404;
       throw err;
+    }
+
+    if (actorUser) {
+      const permissions = actorUser.permissions || [];
+      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasOwn = permissions.includes('fleet.view_own');
+      if (!hasGlobal && hasOwn && truck.driver_id !== actorUser.id) {
+        const err = new Error('Access denied: You can only view maintenance records for your assigned vehicle');
+        err.statusCode = 403;
+        throw err;
+      }
     }
 
     const page = Math.max(1, parseInt(queryParams.page) || 1);
@@ -2016,6 +2118,15 @@ class MaintenanceService {
     } finally {
       client.release();
     }
+
+    // Real-Time WebSocket Operational Release Broadcast
+    safeEmitSocketEvent('FLEET_VEHICLE_RELEASED', {
+      vehicleId: order.vehicle_id || order.truck_id,
+      plateNumber: order.plate_number,
+      status: 'ACTIVE',
+      workOrderId: order.id,
+      releasedAt: new Date().toISOString(),
+    }, 'room:fleet');
 
     // 8. History Audit Logging
     try {

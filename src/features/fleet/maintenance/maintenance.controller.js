@@ -83,7 +83,8 @@ class MaintenanceController {
       const targetVehicleId = req.params.vehicleId || req.params.truckId;
       const data = await maintenanceService.getTruckOdometerHistory(
         targetVehicleId,
-        req.query
+        req.query,
+        req.user
       );
 
       return res.status(200).json({
@@ -152,7 +153,7 @@ class MaintenanceController {
   async getTruckInspections(req, res) {
     try {
       const targetVehicleId = req.params.vehicleId || req.params.truckId;
-      const data = await maintenanceService.getTruckInspections(targetVehicleId, req.query);
+      const data = await maintenanceService.getTruckInspections(targetVehicleId, req.query, req.user);
       return res.status(200).json({
         status: 'success',
         data,
@@ -258,7 +259,7 @@ class MaintenanceController {
   async getTruckIncidents(req, res) {
     try {
       const targetVehicleId = req.params.vehicleId || req.params.truckId;
-      const data = await maintenanceService.getTruckIncidents(targetVehicleId, req.query);
+      const data = await maintenanceService.getTruckIncidents(targetVehicleId, req.query, req.user);
       return res.status(200).json({
         status: 'success',
         data,

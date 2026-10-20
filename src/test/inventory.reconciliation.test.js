@@ -62,25 +62,43 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
 
     await query(`
       DELETE FROM trip_stock_reconciliations 
-      WHERE trip_id IN (SELECT id FROM trips WHERE trip_number LIKE 'TEST-RECON-%')
-    `);
-
-    await query(`
-      DELETE FROM trip_load_items 
-      WHERE load_id IN (
-        SELECT id FROM trip_loads 
-        WHERE trip_id IN (SELECT id FROM trips WHERE trip_number LIKE 'TEST-RECON-%')
+      WHERE trip_id IN (
+        SELECT id FROM trips 
+        WHERE trip_number LIKE 'TEST-RECON-%' 
+           OR truck_id IN (SELECT id FROM vehicles WHERE plate_number LIKE 'TEST-RECON-%')
+           OR driver_id IN (SELECT id FROM users WHERE username LIKE 'test_recon_%')
       )
     `);
 
     await query(`
+      DELETE FROM trip_load_items 
+      WHERE product_id IN (SELECT id FROM products WHERE name LIKE 'TEST-RECON-%')
+         OR load_id IN (
+           SELECT id FROM trip_loads 
+           WHERE trip_id IN (
+             SELECT id FROM trips 
+             WHERE trip_number LIKE 'TEST-RECON-%' 
+                OR truck_id IN (SELECT id FROM vehicles WHERE plate_number LIKE 'TEST-RECON-%')
+                OR driver_id IN (SELECT id FROM users WHERE username LIKE 'test_recon_%')
+           )
+         )
+    `);
+
+    await query(`
       DELETE FROM trip_loads 
-      WHERE trip_id IN (SELECT id FROM trips WHERE trip_number LIKE 'TEST-RECON-%')
+      WHERE trip_id IN (
+        SELECT id FROM trips 
+        WHERE trip_number LIKE 'TEST-RECON-%' 
+           OR truck_id IN (SELECT id FROM vehicles WHERE plate_number LIKE 'TEST-RECON-%')
+           OR driver_id IN (SELECT id FROM users WHERE username LIKE 'test_recon_%')
+      )
     `);
 
     await query(`
       DELETE FROM trips 
-      WHERE trip_number LIKE 'TEST-RECON-%'
+      WHERE trip_number LIKE 'TEST-RECON-%' 
+         OR truck_id IN (SELECT id FROM vehicles WHERE plate_number LIKE 'TEST-RECON-%')
+         OR driver_id IN (SELECT id FROM users WHERE username LIKE 'test_recon_%')
     `);
 
     await query(`

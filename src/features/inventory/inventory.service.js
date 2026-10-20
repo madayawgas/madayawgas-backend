@@ -4,6 +4,7 @@ const inventoryRepository = require('./inventory.repository');
 const productsRepository = require('./products/products.repository');
 const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../socket');
 
 /**
  * Inventory Service
@@ -197,6 +198,15 @@ class InventoryService {
       client.release();
     }
 
+    // Real-Time WebSocket Plant Stock Broadcast
+    safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+      operation: 'SUPPLIER_RESTOCK',
+      tripId: null,
+      slipNumber: supplierInvoiceNumber || null,
+      affectedProductIds: [product.id],
+      updatedAt: new Date().toISOString(),
+    }, 'room:inventory');
+
     await historyService.log(EVENTS.INVENTORY_SUPPLIER_RESTOCKED, {
       actorUser,
       targetId: updatedStock.id,
@@ -328,6 +338,15 @@ class InventoryService {
     } finally {
       client.release();
     }
+
+    // Real-Time WebSocket Plant Stock Broadcast
+    safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+      operation: 'DEFECT_QUARANTINE',
+      tripId: null,
+      slipNumber: null,
+      affectedProductIds: [product.id],
+      updatedAt: new Date().toISOString(),
+    }, 'room:inventory');
 
     await historyService.log(EVENTS.INVENTORY_DEFECT_QUARANTINED, {
       actorUser,
@@ -510,6 +529,15 @@ class InventoryService {
       client.release();
     }
 
+    // Real-Time WebSocket Plant Stock Invalidation Broadcast
+    safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+      operation: 'DISPATCH_LOAD',
+      tripId: trip.id,
+      slipNumber: createdLoad.slip_number,
+      affectedProductIds: validatedItems.map((it) => it.productId),
+      updatedAt: new Date().toISOString(),
+    }, 'room:inventory');
+
     const totalUnits = validatedItems.reduce((sum, it) => sum + it.quantityUnits, 0);
 
     await historyService.log(EVENTS.INVENTORY_TRIP_LOADED, {
@@ -606,6 +634,15 @@ class InventoryService {
     } finally {
       client.release();
     }
+
+    // Real-Time WebSocket Plant Stock Invalidation Broadcast
+    safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+      operation: 'RETURN_UNLOAD',
+      tripId: trip.id,
+      slipNumber: createdUnload.slip_number,
+      affectedProductIds: validatedItems.map((it) => it.productId),
+      updatedAt: new Date().toISOString(),
+    }, 'room:inventory');
 
     const totalUnits = validatedItems.reduce((sum, it) => sum + it.quantityUnits, 0);
 
@@ -868,6 +905,15 @@ class InventoryService {
       supervisorNotes: supervisorNotes ? supervisorNotes.trim() : null,
       reconciledAt,
     });
+
+    // Real-Time WebSocket Reconciliation Broadcast
+    safeEmitSocketEvent('TRIP_RECONCILIATION_UPDATED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      status: reconciledRecord.status,
+      hasVariance: reconciledRecord.status === 'FLAGGED_VARIANCE',
+      reconciledAt: reconciledAt ? reconciledAt.toISOString() : null,
+    }, 'room:inventory');
 
     // 5. Centralized Event History Logging
     const eventType =

@@ -354,7 +354,38 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 -- 8. DRIVER
 -- ============================================================
--- Driver does not have login credentials or system permissions.
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT
+    r.id,
+    p.id
+FROM roles r
+JOIN permissions p
+    ON p.name IN (
+        -- Fleet
+        'fleet.view_own',
+
+        -- Route
+        'route.view_own',
+
+        -- Attendance
+        'attendance.record',
+        'attendance.view_own',
+
+        -- Apprehensions
+        'apprehensions.create',
+        'apprehensions.view_own',
+
+        -- Fuel
+        'fuel.create',
+        'fuel.view_own',
+
+        -- Emergency Alerts
+        'alerts.trigger',
+        'alerts.view_own'
+    )
+WHERE r.name = 'Driver'
+ON CONFLICT DO NOTHING;
 
 
 -- ============================================================

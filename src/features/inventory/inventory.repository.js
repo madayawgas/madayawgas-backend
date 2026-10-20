@@ -12,22 +12,23 @@ class InventoryRepository {
   async getPlantInventory() {
     const sql = `
       SELECT 
-        pi.id,
-        pi.product_id,
-        pi.quantity_filled,
-        pi.quantity_empty_good,
-        pi.quantity_defective,
-        (pi.quantity_filled + pi.quantity_empty_good + pi.quantity_defective) AS total_physical_units,
-        pi.last_counted_at,
-        pi.created_at,
-        pi.updated_at,
+        COALESCE(pi.id, gen_random_uuid()) AS id,
+        p.id AS product_id,
+        COALESCE(pi.quantity_filled, 0) AS quantity_filled,
+        COALESCE(pi.quantity_empty_good, 0) AS quantity_empty_good,
+        COALESCE(pi.quantity_defective, 0) AS quantity_defective,
+        (COALESCE(pi.quantity_filled, 0) + COALESCE(pi.quantity_empty_good, 0) + COALESCE(pi.quantity_defective, 0)) AS total_physical_units,
+        COALESCE(pi.last_counted_at, p.created_at) AS last_counted_at,
+        COALESCE(pi.created_at, p.created_at) AS created_at,
+        COALESCE(pi.updated_at, p.updated_at) AS updated_at,
         p.name AS product_name,
         p.category,
         p.container_type,
         p.net_weight_kg,
         p.is_active
-      FROM plant_inventory pi
-      JOIN products p ON pi.product_id = p.id
+      FROM products p
+      LEFT JOIN plant_inventory pi ON p.id = pi.product_id
+      WHERE p.is_active = TRUE
       ORDER BY p.name ASC
     `;
     const res = await query(sql);
@@ -40,9 +41,17 @@ class InventoryRepository {
    */
   async getPlantStockByProductId(productId, client = null, forUpdate = false) {
     const runner = client || { query };
+    await runner.query(
+      `INSERT INTO plant_inventory (product_id, quantity_filled, quantity_empty_good, quantity_defective)
+       VALUES ($1, 0, 0, 0)
+       ON CONFLICT (product_id) DO NOTHING`,
+      [productId]
+    );
+
     const sql = `
       SELECT 
         pi.*,
+        (pi.quantity_filled + pi.quantity_empty_good + pi.quantity_defective) AS total_physical_units,
         p.name AS product_name,
         p.category,
         p.container_type,
@@ -51,7 +60,7 @@ class InventoryRepository {
       FROM plant_inventory pi
       JOIN products p ON pi.product_id = p.id
       WHERE pi.product_id = $1
-      ${forUpdate ? 'FOR UPDATE' : ''}
+      ${forUpdate ? 'FOR UPDATE OF pi' : ''}
     `;
     const res = await runner.query(sql, [productId]);
     return res.rows[0] || null;
@@ -65,6 +74,13 @@ class InventoryRepository {
     client = null
   ) {
     const runner = client || { query };
+    await runner.query(
+      `INSERT INTO plant_inventory (product_id, quantity_filled, quantity_empty_good, quantity_defective)
+       VALUES ($1, 0, 0, 0)
+       ON CONFLICT (product_id) DO NOTHING`,
+      [productId]
+    );
+
     const sql = `
       UPDATE plant_inventory
       SET 

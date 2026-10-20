@@ -11,10 +11,16 @@ class SchedulesRepository {
    * @param {Object|null} pagination - Optional pagination options
    */
   async getAllSchedules(filters = {}, pagination = null) {
-    const { startDate, endDate, date, truckId, salesUserId, zoneId, status, search } = filters;
+    const { startDate, endDate, date, truckId, salesUserId, crewUserId, zoneId, status, search } = filters;
     const conditions = [];
     const params = [];
     let paramIndex = 1;
+
+    if (crewUserId) {
+      conditions.push(`(ts.sales_user_id = $${paramIndex} OR v.driver_id = $${paramIndex})`);
+      params.push(crewUserId);
+      paramIndex++;
+    }
 
     if (date) {
       conditions.push(`ts.scheduled_date = $${paramIndex++}`);

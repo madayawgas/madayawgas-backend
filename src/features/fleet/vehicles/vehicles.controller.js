@@ -47,12 +47,16 @@ class VehiclesController {
     });
 
     if (!pagination.isPaginated) {
-      const vehicles = await vehiclesService.getAllVehicles({
-        status,
-        search,
-        driverAssigned,
-        vehicleType: vehicleType || type,
-      });
+      const vehicles = await vehiclesService.getAllVehicles(
+        {
+          status,
+          search,
+          driverAssigned,
+          vehicleType: vehicleType || type,
+        },
+        null,
+        req.user
+      );
       return res.status(200).json({
         status: 'success',
         data: {
@@ -65,18 +69,19 @@ class VehiclesController {
 
     const { items, meta } = await vehiclesService.getAllVehicles(
       { status, search, driverAssigned, vehicleType: vehicleType || type },
-      pagination
+      pagination,
+      req.user
     );
 
     return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
 
   /**
-   * GET /api/fleet/vehicles/:id
+   * GET /api/fleet/my-vehicle
    */
-  async getVehicleById(req, res) {
+  async getMyAssignedVehicle(req, res) {
     try {
-      const vehicle = await vehiclesService.getVehicleById(req.params.id);
+      const vehicle = await vehiclesService.getMyAssignedVehicle(req.user);
       return res.status(200).json({
         status: 'success',
         data: {
@@ -85,6 +90,33 @@ class VehiclesController {
         },
       });
     } catch (err) {
+      return res.status(err.statusCode || 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/fleet/vehicles/:id
+   */
+  async getVehicleById(req, res) {
+    try {
+      const vehicle = await vehiclesService.getVehicleById(req.params.id, req.user);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          vehicle,
+          truck: vehicle,
+        },
+      });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({
+          status: 'fail',
+          message: err.message,
+        });
+      }
       const isNotFound = err.message === 'Vehicle not found';
       return res.status(isNotFound ? 404 : 400).json({
         status: 'fail',

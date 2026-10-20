@@ -4,7 +4,9 @@ const router = express.Router();
 const vehiclesController = require('./vehicles/vehicles.controller');
 const availabilityController = require('./availability/availability.controller');
 const maintenanceRoutes = require('./maintenance/maintenance.routes');
+const fuelController = require('../operations/fuel/fuel.controller');
 const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
+
 const asyncHandler = require('../../utils/asyncHandler');
 
 // ============================================================
@@ -36,6 +38,17 @@ router.get(
   authenticate,
   requirePermission('fleet.view'),
   asyncHandler(availabilityController.getAvailability.bind(availabilityController))
+);
+
+/**
+ * GET /api/fleet/my-vehicle
+ * Assigned vehicle profile for the authenticated driver.
+ */
+router.get(
+  '/my-vehicle',
+  authenticate,
+  requirePermission(['fleet.view', 'fleet.view_own']),
+  asyncHandler(vehiclesController.getMyAssignedVehicle.bind(vehiclesController))
 );
 
 /**
@@ -78,6 +91,18 @@ router.get(
   asyncHandler(vehiclesController.getAvailableDrivers.bind(vehiclesController))
 );
 
+/**
+ * GET /api/fleet/fuel-analysis
+ * Fleet-wide fuel analytics alias.
+ */
+router.get(
+  '/fuel-analysis',
+  authenticate,
+  requirePermission(['fleet.view', 'fleet.view_own', 'fuel.view', 'fuel.view_own']),
+  asyncHandler(fuelController.getFleetFuelAnalysis.bind(fuelController))
+);
+
+
 // ============================================================
 // 2. Collection Level Endpoints (/vehicles and root /)
 // ============================================================
@@ -89,14 +114,14 @@ router.get(
 router.get(
   '/vehicles',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
 router.get(
   '/',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
@@ -129,7 +154,7 @@ router.post(
 router.get(
   '/vehicles/:id/status',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(availabilityController.getTruckStatus.bind(availabilityController))
 );
 
@@ -238,9 +263,21 @@ router.patch(
   asyncHandler(vehiclesController.recordMileage.bind(vehiclesController))
 );
 
+/**
+ * GET /api/fleet/vehicles/:id/fuel-analysis
+ * Single vehicle fuel analysis alias.
+ */
+router.get(
+  '/vehicles/:id/fuel-analysis',
+  authenticate,
+  requirePermission(['fleet.view', 'fleet.view_own', 'fuel.view', 'fuel.view_own']),
+  asyncHandler(fuelController.getSingleVehicleFuelAnalysis.bind(fuelController))
+);
+
 // ============================================================
 // 4. Generic Parameterized Endpoints (:id)
 // ============================================================
+
 
 /**
  * GET /api/fleet/vehicles/:id
@@ -249,7 +286,7 @@ router.patch(
 router.get(
   '/vehicles/:id',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'fleet.view_own']),
   asyncHandler(vehiclesController.getVehicleById.bind(vehiclesController))
 );
 

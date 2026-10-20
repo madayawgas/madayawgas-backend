@@ -87,6 +87,7 @@ The contracts are organized by subsystem, strictly mirroring the backend codebas
 ```text
 docs/api-contracts/
 ├── README.md                                # This master directory & route index
+├── websockets.md                            # Real-Time WebSocket events, handshake auth & rooms catalog
 │
 ├── fleet/                                   # Subsystem: Fleet & Maintenance
 │   ├── availability.api.md                  # Overview, availability metrics, vehicle state changes
@@ -273,8 +274,16 @@ docs/api-contracts/
 | `GET` | `/api/sales/customers/:id` | View single customer profile by UUID | `sales.view` / `sales.view_own` | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#3-view-single-customer-profile) |
 | `PATCH` | `/api/sales/customers/:id` | Update customer profile attributes | `sales.update` | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#4-update-customer-profile) |
 | `PATCH` | `/api/sales/customers/:id/deactivate` | Soft-deactivate customer profile | `sales.update` + Password | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#5-deactivate-customer) |
+| `POST` | `/api/sales/sync-batch` | Itemized batch ingestion of offline mobile sales transactions with partial-success resilience | `sales.create` / `sales.view_own` | [sales/sync.api.md](file:///docs/api-contracts/sales/sync.api.md) |
+| `GET` | `/api/sales/transactions` | List and search sales transactions with filters & pagination | `sales.view` / `sales.view_own` | — |
+| `GET` | `/api/sales/transactions/:id` | View single transaction details with line items and invoice | `sales.view` / `sales.view_own` | — |
+| `PATCH` | `/api/sales/transactions/:id/cancel` | Supervisor cancellation of a transaction with canister ledger reversal | `sales.delete` | — |
+| `GET` | `/api/sales/trips/:tripId/shift-summary` | End-of-shift remittance summary — revenue, GCash refs, empties aggregation | `sales.view` / `sales.view_own` | — |
+| `GET` | `/api/sales/invoices` | List sales invoices with payment status filters | `sales.view` / `sales.view_own` | — |
+| `PATCH` | `/api/sales/invoices/:id/verify` | Supervisor GCash payment verification | `sales.view` (global) | — |
 
 ---
+
 
 ### Subsystem: System History (`/api/history`)
 
@@ -292,4 +301,42 @@ docs/api-contracts/
 | `POST` | `/api/media/upload` | Upload binary media asset & generate canonical storage key | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#41-upload-media-post-apimediaupload) |
 | `POST` | `/api/media/resolve` | Resolve canonical relative storage key into public URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#42-resolve-media-key-post-apimediaresolve) |
 | `DELETE` | `/api/media` | Delete media asset from active storage by key or URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#43-delete-media-delete-apimedia) |
+
+---
+
+## 4. Real-Time WebSocket Events & Subscriptions
+
+Comprehensive WebSocket event schemas, handshake authentication requirements, mobile client hooks, and room scoping rules are documented in [**websockets.md**](file:///docs/api-contracts/websockets.md).
+
+| Event Name | Domain Channel | Target Room(s) | Trigger Origin | Invalidation / Client Action |
+| :--- | :--- | :--- | :--- | :--- |
+| **`EMERGENCY_ALERT_TRIGGERED`** | Driver SOS | `room:alerts` | `POST /api/operations/alerts` | Alarm audio + Modal takeover |
+| **`EMERGENCY_ALERT_STATUS_UPDATED`** | Driver SOS | `room:alerts` | `PATCH /api/operations/alerts/:id/acknowledge` or `.../resolve` | Update triage badge |
+| **`TRIP_DISPATCHED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/dispatch` | Driver mobile auto-hydrates active trip; invalidate `['active-trips']` |
+| **`TRIP_LOAD_RECORDED`** | Trips & Route | `room:trips`, `room:inventory`, `user:{driverUserId}` | `POST /api/trips/:id/loads` | Update cabin stock; invalidate transfers |
+| **`VEHICLE_STOCK_UPDATED`** | Cabin Inventory | `room:inventory`, `room:trips`, `user:{driverUserId}` | Load additions or trip return settlement | Invalidate `['vehicle-stock']`, `['trip-stock']` |
+| **`TRIP_COMPLETED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/complete` | Driver transitions to return summary; queue for variance audit |
+| **`TRIP_RECONCILED`** | Trips & Inventory | `room:trips`, `room:inventory`, `user:{driverUserId}` | `POST /api/trips/:id/reconcile` | Invalidate `['trip-reconciliation']`, `['active-trips']` |
+| **`TRIP_CANCELLED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/cancel` | Reset driver active trip screen to standby |
+| **`SCHEDULE_CREATED`** | Daily Schedules | `room:schedules` | `POST /api/schedules` | Invalidate `['daily-schedules']` |
+| **`SCHEDULES_BATCH_GENERATED`** | Daily Schedules | `room:schedules` | `POST /api/schedules/generate-batch` | Invalidate `['daily-schedules']` |
+| **`SCHEDULE_UPDATED`** | Daily Schedules | `room:schedules` | `PUT/PATCH /api/schedules/:id` | Invalidate `['daily-schedules']` |
+| **`SCHEDULE_CANCELLED`** | Daily Schedules | `room:schedules` | `POST /api/schedules/:id/cancel` | Invalidate `['daily-schedules']` |
+| **`FLEET_VEHICLE_GROUNDED`** | Fleet Readiness | `room:fleet` | Failed inspection, critical incident, or status change | Invalidate `['fleet-availability']`, `['fleet-vehicles']` |
+| **`FLEET_VEHICLE_RELEASED`** | Fleet Readiness | `room:fleet` | Work order finalized or status returned to `ACTIVE` | Invalidate `['fleet-availability']`, `['fleet-vehicles']` |
+| **`VEHICLE_DRIVER_ASSIGNED`** | Fleet Assets | `room:fleet`, `user:{driverUserId}` | `POST /api/fleet/trucks/:id/assign-driver` | Driver mobile updates assigned truck profile |
+| **`VEHICLE_DRIVER_UNASSIGNED`** | Fleet Assets | `room:fleet`, `user:{unassignedDriverUserId}` | `POST /api/fleet/trucks/:id/unassign-driver` | Driver mobile clears assigned truck profile |
+| **`VEHICLE_STATUS_UPDATED`** | Fleet Assets | `room:fleet` | `PATCH /api/fleet/trucks/:id/status` | Invalidate `['fleet-vehicles']`, `['fleet-availability']` |
+| **`PLANT_STOCK_UPDATED`** | Yard Inventory | `room:inventory` | Dispatch load, return unload, restock, or quarantine | Invalidate `['inventory-plant']`, `['transfers']` |
+| **`PRODUCT_CATALOG_UPDATED`** | Product Catalog | `room:inventory` | Product created, updated, or deactivated | Invalidate `['inventory-products']` |
+| **`SALES_BATCH_SYNCED`** | Commercial Sales | `room:sales` | `POST /api/sales/sync-batch` (`processedCount > 0`) | Invalidate `['sales-shift-summary']`, `['sales-transactions']` |
+| **`SALES_TRANSACTION_CANCELLED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/transactions/:id/cancel` | Invalidate `['sales-transactions']`, reverse customer debt |
+| **`SALES_INVOICE_VERIFIED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/invoices/:id/verify` | Invalidate `['sales-invoices']`, badge `VERIFIED` |
+| **`ATTENDANCE_DUTY_UPDATED`** | Operational Telemetry | `room:operations`, `user:{userId}` | Clock-in or clock-out | Update mobile duty switch & supervisor duty roster |
+| **`APPREHENSION_LOGGED`** | Operational Telemetry | `room:operations`, `user:{driverUserId}` | `POST /api/operations/apprehensions` | Invalidate `['operations-apprehensions']` |
+| **`APPREHENSION_STATUS_UPDATED`** | Operational Telemetry | `room:operations`, `user:{driverUserId}` | `PATCH /api/operations/apprehensions/:id/status` | Update citation resolution status |
+| **`FUEL_LOGGED`** | Operational Telemetry | `room:operations` | `POST /api/operations/fuel` | Invalidate `['operations-fuel']`, update truck odometer |
+| **`AUTH_SESSION_REVOKED`** | User Security | `user:{userId}` | Password change, role update, deactivation | Immediate disconnect, clear token & redirect to login |
+
+
 

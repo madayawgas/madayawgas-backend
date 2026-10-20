@@ -17,7 +17,7 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 
 | Permission | Description | Allowed Roles (Default) |
 | :--- | :--- | :--- |
-| `inventory.view` | View inventory items, product listings, and item profiles | Super Admin, Admin, Fleet Manager |
+| `inventory.view` / `sales.view` / `sales.view_own` / `sales.create` | View product catalog listings and item profiles | Super Admin, Admin, Fleet Manager, Sales Supervisor, Sales Person |
 | `inventory.manage` | Register new products, update item profiles, and deactivate products | Super Admin, Admin |
 
 ---
@@ -130,7 +130,7 @@ Retrieves a list of product items with optional filtering by status, container t
 - **HTTP Method**: `GET`
 - **URL**: `/api/inventory/products`
 - **Authentication**: Required (`mg_sid` cookie)
-- **Permission Required**: `inventory.view`
+- **Permission Required**: `inventory.view`, `sales.view`, `sales.view_own`, or `sales.create`
 
 #### Query Parameters
 
@@ -238,7 +238,7 @@ Retrieves the complete profile information of a single product item by UUID.
 - **HTTP Method**: `GET`
 - **URL**: `/api/inventory/products/:id`
 - **Authentication**: Required (`mg_sid` cookie)
-- **Permission Required**: `inventory.view`
+- **Permission Required**: `inventory.view`, `sales.view`, `sales.view_own`, or `sales.create`
 
 #### URL Parameters
 

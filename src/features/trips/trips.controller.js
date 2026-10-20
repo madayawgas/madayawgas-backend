@@ -63,6 +63,25 @@ class TripsController {
   }
 
   /**
+   * GET /api/trips/active-assignment
+   * Retrieve active trip assigned to authenticated driver or sales person.
+   */
+  async getActiveAssignment(req, res) {
+    try {
+      const trip = await tripsService.getActiveAssignment(req.user);
+      return res.status(200).json({
+        status: 'success',
+        data: { trip },
+      });
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
    * GET /api/trips/:id
    * Retrieve single trip by UUID with loads and reconciliation.
    */
@@ -96,6 +115,7 @@ class TripsController {
       return res.status(err.statusCode || 400).json({
         status: 'fail',
         message: err.message,
+        ...(err.code && { code: err.code }),
       });
     }
   }

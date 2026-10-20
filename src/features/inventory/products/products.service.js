@@ -1,6 +1,7 @@
 const productsRepository = require('./products.repository');
 const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
+const { safeEmitSocketEvent } = require('../../../socket');
 
 const ALLOWED_CONTAINER_TYPES = ['CYLINDER', 'CANISTER'];
 
@@ -146,6 +147,12 @@ class ProductsService {
       metadata: { containerType: result.containerType, netWeightKg: result.netWeightKg },
     });
 
+    safeEmitSocketEvent('PRODUCT_CATALOG_UPDATED', {
+      product: result,
+      action: 'CREATED',
+      updatedAt: new Date().toISOString(),
+    }, ['room:inventory', 'room:sales']);
+
     return result;
   }
 
@@ -234,6 +241,12 @@ class ProductsService {
       payload: { name: updated.name },
     });
 
+    safeEmitSocketEvent('PRODUCT_CATALOG_UPDATED', {
+      product: updated,
+      action: 'UPDATED',
+      updatedAt: new Date().toISOString(),
+    }, ['room:inventory', 'room:sales']);
+
     return updated;
   }
 
@@ -259,6 +272,12 @@ class ProductsService {
       targetId: id,
       payload: { name: deactivated.name },
     });
+
+    safeEmitSocketEvent('PRODUCT_CATALOG_UPDATED', {
+      product: deactivated,
+      action: 'DEACTIVATED',
+      updatedAt: new Date().toISOString(),
+    }, ['room:inventory', 'room:sales']);
 
     return deactivated;
   }
