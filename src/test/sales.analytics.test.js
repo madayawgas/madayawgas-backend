@@ -34,6 +34,7 @@ test('Sales & Delivery Analytics & Trip Performance API Suite', async (t) => {
     const ssRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`)).rows[0].id;
     const driverRole = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 
+    await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username IN ('test_analytics_ss', 'test_analytics_driver'))`);
     await query(`DELETE FROM users WHERE username IN ('test_analytics_ss', 'test_analytics_driver')`);
 
     await query(

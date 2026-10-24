@@ -114,6 +114,16 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     `);
 
     await query(`
+      DELETE FROM sales_transaction_items 
+      WHERE product_id IN (SELECT id FROM products WHERE name LIKE 'TEST-RECON-%')
+    `);
+
+    await query(`
+      DELETE FROM canister_ledger 
+      WHERE product_id IN (SELECT id FROM products WHERE name LIKE 'TEST-RECON-%')
+    `);
+
+    await query(`
       DELETE FROM products 
       WHERE name LIKE 'TEST-RECON-%'
     `);

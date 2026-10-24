@@ -12,7 +12,8 @@ Welcome to the Entity-Relationship Diagram (ERD) directory for the MadayawGas ba
 
 | Subsystem | Scope & Tables | Document Link |
 | :--- | :--- | :--- |
-| **Unified Master Database** | Complete 27-table system diagram with all cross-domain foreign keys | [**`master_database_erd.md`**](./master_database_erd.md) |
+| **Unified Master Database (Full)** | Complete 33-table system diagram with all fields and constraints | [**`master_database_erd.md`**](./master_database_erd.md) |
+| **Unified Master Database (Relationships Only)** | Clean high-level table-and-connector diagram without fields | [**`master_database_relationships_erd.md`**](./master_database_relationships_erd.md) |
 | **User Management & RBAC** | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [**`users_and_rbac_erd.md`**](./users_and_rbac_erd.md) |
 | **System Event History Logs** | `history_logs` (denormalized actor snapshots, JSONB `metadata`) | [**`system_history_logs_erd.md`**](./system_history_logs_erd.md) |
 | **Fleet & Maintenance** | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts` | [**`fleet_and_maintenance_erd.md`**](./fleet_and_maintenance_erd.md) |

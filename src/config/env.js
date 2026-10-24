@@ -2,7 +2,8 @@ require('dotenv').config();
 
 /**
  * Single source of truth for runtime environment flags.
- * Primary toggle: `PRODUCTION=true` (or `NODE_ENV=production`).
+ * Primary toggle: `PRODUCTION=true` (boolean toggle in .env).
+ * Also falls back to `NODE_ENV=production` for hosting platform defaults (e.g., Render/Vercel).
  */
 const isProduction =
   String(process.env.PRODUCTION).trim().toLowerCase() === 'true' ||
@@ -57,9 +58,9 @@ function sanitizeDatabaseUrl(rawUrl) {
 
 /**
  * Resolves the active database connection string based on environment:
- * - In test mode: prioritizes `DATABASE_URL_TEST` (local) to avoid mutating production Supabase data.
+ * - In test mode (`isTest`): uses `DATABASE_URL_TEST` (local) to avoid mutating production Supabase data.
  * - In production (`PRODUCTION=true`): uses `DATABASE_URL` (Supabase).
- * - In development (`PRODUCTION=false` or default): uses `DATABASE_URL_TEST` (local).
+ * - In development (`PRODUCTION=false`): uses `DATABASE_URL_TEST` (local) with fallback to `DATABASE_URL`.
  */
 function getDatabaseUrl() {
   // Test safety: test runs prioritize local test database unless explicitly overridden
@@ -68,10 +69,10 @@ function getDatabaseUrl() {
   }
 
   if (isProduction) {
-    const url = process.env.DATABASE_URL || process.env.DATABASE_URL_TEST;
+    const url = process.env.DATABASE_URL;
     if (!url) {
       throw new Error(
-        'Production database configuration error: Neither DATABASE_URL nor DATABASE_URL_TEST is set in .env'
+        'Production database configuration error: DATABASE_URL is not set in .env'
       );
     }
     return sanitizeDatabaseUrl(url);
@@ -163,7 +164,7 @@ function getDatabaseUrlSource() {
   }
 
   if (isProduction) {
-    return process.env.DATABASE_URL ? 'DATABASE_URL' : 'DATABASE_URL_TEST';
+    return 'DATABASE_URL';
   }
 
   return process.env.DATABASE_URL_TEST ? 'DATABASE_URL_TEST' : 'DATABASE_URL';

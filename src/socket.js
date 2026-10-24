@@ -28,7 +28,7 @@ function extractCookieToken(cookieHeader, name = COOKIE_NAME) {
  */
 function initializeSocket(httpServer, customOptions = {}) {
   if (io) {
-    if (!isProduction && process.env.NODE_ENV !== 'production') {
+    if (!isProduction) {
       console.warn('[Socket.IO] Warning: initializeSocket called when already initialized. Returning existing instance.');
     }
     return io;
@@ -104,7 +104,7 @@ function initializeSocket(httpServer, customOptions = {}) {
 
   // Connection Lifecycle & Automatic Room Assignment
   io.on('connection', (socket) => {
-    if (!isProduction && process.env.NODE_ENV !== 'production') {
+    if (!isProduction) {
       console.log(`[Socket.IO] Client connected: ${socket.id} (User: ${socket.user?.username || 'unauthenticated'})`);
     }
 
@@ -166,7 +166,7 @@ function initializeSocket(httpServer, customOptions = {}) {
     }
 
     socket.on('disconnect', (reason) => {
-      if (!isProduction && process.env.NODE_ENV !== 'production') {
+      if (!isProduction) {
         console.log(`[Socket.IO] Client disconnected: ${socket.id} (reason: ${reason})`);
       }
     });
@@ -255,7 +255,7 @@ function safeEmitSocketEvent(eventName, data = {}, room = null) {
   try {
     return emitSocketEvent(eventName, data, room);
   } catch (err) {
-    if (!isProduction && process.env.NODE_ENV !== 'production') {
+    if (!isProduction) {
       console.warn(`[Socket.IO] Warning: safeEmitSocketEvent failed for '${eventName}':`, err.message);
     }
     return null;
