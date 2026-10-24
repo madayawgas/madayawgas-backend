@@ -43,7 +43,7 @@ async function startServer() {
 
             console.log("");
             console.log("🚀 MadayawGas Backend");
-            console.log(`Environment : ${isProduction ? "production (PRODUCTION=true)" : (process.env.NODE_ENV || "development") + " (PRODUCTION=false)"}`);
+            console.log(`Environment : ${isProduction ? "production (PRODUCTION=true)" : "development (PRODUCTION=false)"}`);
             console.log(`Database    : PostgreSQL [${dbInfo.mode}]`);
             console.log(`Target Host : ${dbInfo.targetHost}/${dbInfo.targetDatabase}`);
             console.log(`Source Var  : ${dbInfo.sourceEnv}`);
@@ -67,7 +67,7 @@ async function startServer() {
 // ======================
 
 async function handleShutdown(signal) {
-    if (!isProduction && process.env.NODE_ENV !== 'production') {
+    if (!isProduction) {
         console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
     }
     try {

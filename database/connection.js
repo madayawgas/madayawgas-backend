@@ -55,7 +55,7 @@ const getConnectionInfo = () => {
 
     const mode = isProduction
         ? "Production (Supabase)"
-        : (isTest ? "Test Environment" : "Local Development");
+        : (isTest ? "Test Environment (Local)" : "Local Development");
 
     const sourceEnv = getDatabaseUrlSource();
     const maskedUrl = maskDatabaseUrl(connectionString);
@@ -112,4 +112,3 @@ module.exports = {
     getConnectionInfo,
     maskDatabaseUrl,
 };
-
