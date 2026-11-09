@@ -1,16 +1,7 @@
-# Master Database Architecture — Relationships-Only Entity Relationship Diagram (ERD)
-
-> **Database Engine**: PostgreSQL 18.x  
-> **Schema Migrations**: 001 through 015 (`database/migrations/`)  
-> **Total Tables**: 33 application domain tables  
-> **Purpose**: High-level structural view illustrating all table entities and cross-subsystem relational connections without column-level attributes or row fields. For the complete schema with field types and column definitions, see [**`master_database_erd.md`**](./master_database_erd.md).
-
----
-
-## 1. Unified Relationships-Only Entity-Relationship Diagram
 
 ```mermaid
 erDiagram
+
 
     %% ========================================================
     %% 1. USER MANAGEMENT & RBAC SUBSYSTEM (7 Tables)
@@ -163,16 +154,3 @@ erDiagram
     TRIPS ||--o{ CANISTER_LEDGER : "trip_attribution"
     SALES_TRANSACTIONS ||--o{ CANISTER_LEDGER : "generates"
 ```
-
----
-
-## 2. Subsystem Domain Directory
-
-| Subsystem | Table Count | Domain Tables | Documentation File |
-| :--- | :--- | :--- | :--- |
-| **User Management & RBAC** | 7 | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [`users_and_rbac_erd.md`](./users_and_rbac_erd.md) |
-| **System Event History Logs** | 1 | `history_logs` | [`system_history_logs_erd.md`](./system_history_logs_erd.md) |
-| **Fleet & Maintenance** | 10 | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts` | [`fleet_and_maintenance_erd.md`](./fleet_and_maintenance_erd.md) |
-| **Inventory** | 3 | `products`, `plant_inventory`, `plant_stock_adjustments` | [`inventory_erd.md`](./inventory_erd.md) |
-| **Sales & Delivery** | 5 | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` | [`sales_and_delivery_erd.md`](./sales_and_delivery_erd.md) |
-| **Schedule & Trips** | 7 | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [`schedule_and_trip_erd.md`](./schedule_and_trip_erd.md) |
