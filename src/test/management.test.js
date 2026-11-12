@@ -494,7 +494,6 @@ test('User Administration & Management Tests', async (t) => {
 
     const driverRole = roles.find((r) => r.name === 'Driver');
     assert.ok(driverRole.permissions.includes('alerts.trigger'));
-    assert.ok(driverRole.permissions.includes('attendance.record'));
     assert.ok(driverRole.permissions.includes('fuel.create'));
     assert.ok(driverRole.permissions.includes('fleet.view_own'));
 

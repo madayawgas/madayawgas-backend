@@ -185,12 +185,12 @@ class TripsController {
   }
 
   /**
-   * POST /api/trips/:id/complete
-   * Check in trip at plant with return odometer reading.
+   * POST /api/trips/:id/end
+   * Driver ends an active delivery trip and logs mandatory return odometer reading.
    */
-  async completeTrip(req, res) {
+  async endTrip(req, res) {
     try {
-      const result = await tripsService.completeTrip(
+      const result = await tripsService.endTrip(
         req.params.id,
         req.user,
         req.body || {}
@@ -213,14 +213,17 @@ class TripsController {
    */
   async reconcileTrip(req, res) {
     try {
-      const reconciliation = await tripsService.reconcileTrip(
+      const result = await tripsService.reconcileTrip(
         req.params.id,
         req.user,
         req.body || {}
       );
       return res.status(200).json({
         status: 'success',
-        data: { reconciliation },
+        data: {
+          reconciliation: result,
+          trip: result.trip,
+        },
       });
     } catch (err) {
       return res.status(err.statusCode || 400).json({

@@ -9,7 +9,6 @@ const zonesRepository = require('../schedules/zones/zones.repository');
 const vehiclesRepository = require('../fleet/vehicles/vehicles.repository');
 const productsRepository = require('../inventory/products/products.repository');
 const inventoryRepository = require('../inventory/inventory.repository');
-const attendanceRepository = require('../operations/attendance/attendance.repository');
 const { maintenanceService } = require('../fleet/maintenance');
 const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
@@ -85,6 +84,27 @@ class TripsService {
   }
 
   /**
+   * Hydrates an array of trips with their respective load slips and reconciliation records.
+   * @param {Array} trips
+   */
+  async attachDetailsToTrips(trips) {
+    if (!Array.isArray(trips) || trips.length === 0) return trips;
+    const tripIds = trips.map((t) => t.id).filter(Boolean);
+    if (tripIds.length === 0) return trips;
+
+    const [loadsByTrip, reconsByTrip] = await Promise.all([
+      loadsRepository.getLoadsByTripIds(tripIds),
+      reconciliationRepository.getByTripIds(tripIds),
+    ]);
+
+    return trips.map((trip) => ({
+      ...trip,
+      loads: loadsByTrip[trip.id] || [],
+      reconciliation: reconsByTrip[trip.id] || null,
+    }));
+  }
+
+  /**
    * Retrieves trips with optional filtering and pagination.
    * Scopes to actorUser's assignments if user holds only 'route.view_own'.
    * @param {Object} actorUser
@@ -103,13 +123,15 @@ class TripsService {
     }
 
     if (!pagination || !pagination.isPaginated) {
-      return tripsRepository.getAllTrips(effectiveFilters, null);
+      const rows = await tripsRepository.getAllTrips(effectiveFilters, null);
+      return this.attachDetailsToTrips(rows);
     }
 
     const { rows, total } = await tripsRepository.getAllTrips(effectiveFilters, pagination);
+    const enrichedRows = await this.attachDetailsToTrips(rows);
     const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
 
-    return { items: rows, meta };
+    return { items: enrichedRows, meta };
   }
 
   /**
@@ -313,17 +335,6 @@ class TripsService {
         `Driver '${driverUser.username}' already has an ongoing trip (#${activeDriverTrip.trip_number}) currently in progress`
       );
       err.statusCode = 409;
-      throw err;
-    }
-
-    // 4.1 Attendance Verification: Driver must be clocked in on active duty
-    const activeDriverDuty = await attendanceRepository.getActiveDutyCycle(driverUser.id);
-    if (!activeDriverDuty) {
-      const err = new Error(
-        `Cannot dispatch trip: Assigned driver '${driverUser.username}' has not clocked in yet. Driver must be clocked in on active duty to be dispatched.`
-      );
-      err.statusCode = 400;
-      err.code = 'DRIVER_NOT_CLOCKED_IN';
       throw err;
     }
 
@@ -687,18 +698,20 @@ class TripsService {
   }
 
   /**
-   * Completes a trip at plant check-in:
-   * 1. Records return odometer telemetry and invokes 5,000-km PM evaluation.
-   * 2. Automatically records RETURN_UNLOAD transfer slip if returnLoads are provided.
-   * 3. Initializes trip_stock_reconciliations with status AWAITING_SYNC.
-   * 4. Transitions trip status to COMPLETED.
+   * Driver ends an active delivery trip upon returning to the yard.
+   * Mandates current odometer reading to advance vehicle telemetry and PM baseline.
+   * Transitions trip status to 'RETURNED', releasing driver from active route duty
+   * while locking the truck for plant physical count & stock reconciliation.
    *
    * @param {string} tripId
-   * @param {Object} actorUser
-   * @param {Object} payload - { returnOdometerKm, returnLoads, supervisorNotes }
+   * @param {Object} actorUser - Authenticated user (must be assigned Driver or Supervisor override)
+   * @param {Object} payload - { currentOdometer, returnOdometerKm, notes, returnTime }
    */
-  async completeTrip(tripId, actorUser, payload = {}) {
-    const { returnOdometerKm, returnLoads, supervisorNotes, returnTime } = payload;
+  async endTrip(tripId, actorUser, payload = {}) {
+    const rawOdo = payload.currentOdometer !== undefined
+      ? payload.currentOdometer
+      : (payload.odometerReading !== undefined ? payload.odometerReading : payload.returnOdometerKm);
+    const { notes, returnTime } = payload;
 
     const trip = await tripsRepository.getTripById(tripId);
     if (!trip) {
@@ -707,21 +720,41 @@ class TripsService {
       throw err;
     }
 
+    // 1. Authorization: Only assigned Driver or Supervisor with route.manage can end the trip
+    const permissions = actorUser?.permissions || [];
+    const hasManage = permissions.includes('route.manage');
+    const isAssignedDriver = trip.driver_id === actorUser.id;
+
+    if (!hasManage && !isAssignedDriver) {
+      const isSalesUser = trip.sales_user_id === actorUser.id;
+      const err = new Error(
+        isSalesUser
+          ? 'Access denied: Only the assigned driver (or a supervisor) can end this trip'
+          : 'Access denied: You are not authorized to end this trip'
+      );
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // 2. State Guard: Only IN_PROGRESS trips can be ended
     if (trip.status !== 'IN_PROGRESS') {
-      const err = new Error(`Cannot complete trip in '${trip.status}' status`);
+      const err = new Error(
+        `Cannot end trip in '${trip.status}' status (only active trips in 'IN_PROGRESS' can be ended)`
+      );
       err.statusCode = 400;
       throw err;
     }
 
-    if (returnOdometerKm === undefined || returnOdometerKm === null || returnOdometerKm === '') {
-      const err = new Error('returnOdometerKm is required upon plant check-in');
+    // 3. Mandatory Odometer Validation
+    if (rawOdo === undefined || rawOdo === null || rawOdo === '') {
+      const err = new Error('currentOdometer is required to end a trip');
       err.statusCode = 400;
       throw err;
     }
 
-    const numOdometer = Number(returnOdometerKm);
+    const numOdometer = Number(rawOdo);
     if (isNaN(numOdometer) || !Number.isInteger(numOdometer) || numOdometer < 0) {
-      const err = new Error('returnOdometerKm must be a non-negative integer');
+      const err = new Error('currentOdometer must be a non-negative integer');
       err.statusCode = 400;
       throw err;
     }
@@ -742,15 +775,113 @@ class TripsService {
       resolvedReturnTime = parsedReturn;
     }
 
-    // 1. Process single-point return odometer reading through Fleet Maintenance engine
+    // 4. Process single-point return odometer reading through Fleet Maintenance engine
     const odoResult = await maintenanceService.logOdometerReading(actorUser, {
       truckId: trip.truck_id,
       odometerReading: numOdometer,
       source: 'POST_DISPATCH_RETURN',
-      notes: supervisorNotes ? `Trip #${trip.trip_number} return: ${supervisorNotes.trim()}` : `Trip #${trip.trip_number} plant return check-in`,
+      notes: notes ? `Trip #${trip.trip_number} return: ${notes.trim()}` : `Trip #${trip.trip_number} return check-in`,
     });
 
-    // 2. If physical return unload items are specified, record a RETURN_UNLOAD transfer slip
+    // 5. Update Trip status to RETURNED
+    const updatedTrip = await tripsRepository.updateTrip(trip.id, {
+      status: 'RETURNED',
+      endedBy: actorUser.id,
+      returnTime: resolvedReturnTime,
+      returnOdometerLogId: odoResult.logId,
+      notes: notes ? `${trip.notes ? `${trip.notes} | ` : ''}${notes.trim()}` : trip.notes,
+    });
+
+    // 6. Centralized Event History Logging
+    await historyService.log(EVENTS.TRIP_ENDED, {
+      actorUser,
+      targetId: trip.id,
+      payload: {
+        tripNumber: trip.trip_number,
+        plateNumber: trip.truck_plate_number,
+        odometerKm: numOdometer,
+      },
+      metadata: {
+        distanceDrivenKm: odoResult.distanceDrivenThisTrip,
+        isPmDue: odoResult.isPmDue,
+        remainingKmBeforePm: odoResult.remainingKmBeforePm,
+        endedByDriver: isAssignedDriver,
+      },
+    });
+
+    // 7. Real-Time WebSocket Emission
+    const crewRooms = [
+      'room:trips',
+      'room:fleet',
+      'room:operations',
+      trip.driver_id ? `user:${trip.driver_id}` : null,
+      trip.sales_user_id ? `user:${trip.sales_user_id}` : null,
+    ].filter(Boolean);
+
+    safeEmitSocketEvent('TRIP_ENDED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      truckId: trip.truck_id,
+      plateNumber: trip.truck_plate_number,
+      status: 'RETURNED',
+      endedBy: actorUser.id,
+      returnOdometerKm: numOdometer,
+      distanceDrivenKm: odoResult.distanceDrivenThisTrip,
+      isPmDue: odoResult.isPmDue,
+      returnTime: resolvedReturnTime.toISOString(),
+    }, crewRooms);
+
+    return {
+      trip: updatedTrip,
+      odometerTelemetry: odoResult,
+    };
+  }
+
+  /**
+   * Reconciles stock against loaded stock, physical return manifests, and synchronized field sales / canister debt.
+   * Can only occur after the trip has been ended by the driver (status = 'RETURNED').
+   * If physical returnLoads are provided, automatically records a RETURN_UNLOAD transfer slip and updates plant stock.
+   * Sets reconciliation record to SETTLED or FLAGGED_VARIANCE and transitions trip status to COMPLETED.
+   *
+   * Formulas:
+   * Full Discrepancy = Total Loaded Full - Total Sold Full - Total Returned Full - Total Returned Defective
+   * Empty Discrepancy = Total Sold Full - (Total Returned Empty Good + Net Customer Canister Debt Created)
+   *
+   * @param {string} tripId
+   * @param {Object} actorUser
+   * @param {Object} payload - { returnLoads, totalSoldFull, netCustomerDebtCreated, supervisorNotes }
+   */
+  async reconcileTrip(tripId, actorUser, payload = {}) {
+    const { returnLoads, totalSoldFull, netCustomerDebtCreated, supervisorNotes } = payload;
+
+    const trip = await tripsRepository.getTripById(tripId);
+    if (!trip) {
+      const err = new Error('Trip not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (trip.status === 'IN_PROGRESS') {
+      const err = new Error(
+        `Cannot reconcile trip: Trip must be ended by the driver before plant reconciliation can occur (current status: '${trip.status}')`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (trip.status === 'CANCELLED') {
+      const err = new Error('Cannot reconcile a cancelled trip');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!['RETURNED', 'COMPLETED'].includes(trip.status)) {
+      const err = new Error(`Cannot reconcile a trip in '${trip.status}' status`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 1. If physical return unload items are specified at reconciliation, record a RETURN_UNLOAD transfer slip
     if (returnLoads && Array.isArray(returnLoads) && returnLoads.length > 0) {
       const validatedReturnItems = await this.validateLineItems(returnLoads);
       const client = await pool.connect();
@@ -797,113 +928,16 @@ class TripsService {
       } finally {
         client.release();
       }
-    }
 
-    // 3. Compute baseline stock counts from loads
-    const stockSummary = await loadsRepository.calculateTripStockSummary(trip.id);
-
-    // 4. Initialize reconciliation record in AWAITING_SYNC state
-    const reconciliation = await reconciliationRepository.upsertReconciliation({
-      tripId: trip.id,
-      verifiedBy: actorUser?.id || null,
-      totalLoadedFull: stockSummary.total_loaded_full,
-      totalSoldFull: 0,
-      totalReturnedFull: stockSummary.total_returned_full,
-      totalReturnedEmptyGood: stockSummary.total_returned_empty_good,
-      totalReturnedDefective: stockSummary.total_returned_defective,
-      netCustomerDebtCreated: 0,
-      status: 'AWAITING_SYNC',
-      supervisorNotes: supervisorNotes ? supervisorNotes.trim() : null,
-      reconciledAt: null,
-    });
-
-    // 5. Update Trip to COMPLETED
-    const updatedTrip = await tripsRepository.updateTrip(trip.id, {
-      status: 'COMPLETED',
-      returnTime: resolvedReturnTime,
-      returnOdometerLogId: odoResult.logId,
-      notes: supervisorNotes ? `${trip.notes ? `${trip.notes} | ` : ''}${supervisorNotes.trim()}` : trip.notes,
-    });
-
-    // 6. Centralized Event History Logging
-    await historyService.log(EVENTS.TRIP_COMPLETED, {
-      actorUser,
-      targetId: trip.id,
-      payload: {
-        tripNumber: trip.trip_number,
-        plateNumber: trip.truck_plate_number,
-        odometerKm: numOdometer,
-      },
-      metadata: {
-        distanceDrivenKm: odoResult.distanceDrivenThisTrip,
-        isPmDue: odoResult.isPmDue,
-        remainingKmBeforePm: odoResult.remainingKmBeforePm,
-      },
-    });
-
-    const crewRooms = [
-      'room:trips',
-      'room:fleet',
-      trip.driver_id ? `user:${trip.driver_id}` : null,
-      trip.sales_user_id ? `user:${trip.sales_user_id}` : null,
-    ].filter(Boolean);
-
-    safeEmitSocketEvent('TRIP_COMPLETED', {
-      tripId: trip.id,
-      tripNumber: trip.trip_number,
-      plateNumber: trip.truck_plate_number,
-      status: 'COMPLETED',
-      returnOdometerKm: numOdometer,
-      distanceDrivenKm: odoResult.distanceDrivenThisTrip,
-      isPmDue: odoResult.isPmDue,
-      returnTime: resolvedReturnTime.toISOString(),
-      reconciliationStatus: reconciliation.status,
-    }, crewRooms);
-
-    if (returnLoads && Array.isArray(returnLoads) && returnLoads.length > 0) {
       safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
         operation: 'RETURN_UNLOAD',
         tripId: trip.id,
         affectedProductIds: returnLoads.map((it) => it.productId).filter(Boolean),
-        updatedAt: resolvedReturnTime.toISOString(),
+        updatedAt: new Date().toISOString(),
       }, 'room:inventory');
     }
 
-    return {
-      trip: updatedTrip,
-      odometerTelemetry: odoResult,
-      reconciliation,
-    };
-  }
-
-  /**
-   * Reconciles stock against loaded stock, physical return manifests, and synchronized field sales / canister debt.
-   *
-   * Formulas:
-   * Full Discrepancy = Total Loaded Full - Total Sold Full - Total Returned Full
-   * Empty Discrepancy = Total Sold Full - (Total Returned Empty Good + Net Customer Canister Debt Created)
-   *
-   * @param {string} tripId
-   * @param {Object} actorUser
-   * @param {Object} payload - { totalSoldFull, netCustomerDebtCreated, supervisorNotes }
-   */
-  async reconcileTrip(tripId, actorUser, payload = {}) {
-    const { totalSoldFull, netCustomerDebtCreated, supervisorNotes } = payload;
-
-    const trip = await tripsRepository.getTripById(tripId);
-    if (!trip) {
-      const err = new Error('Trip not found');
-      err.statusCode = 404;
-      throw err;
-    }
-
-    if (trip.status !== 'COMPLETED') {
-      const err = new Error(`Cannot reconcile a trip that has not completed check-in (current status: '${trip.status}')`);
-      err.statusCode = 400;
-      throw err;
-    }
-
-    // Calculate aggregated inventory numbers from actual recorded loads
+    // 2. Calculate aggregated inventory numbers from actual recorded loads
     const stockSummary = await loadsRepository.calculateTripStockSummary(trip.id);
     const totalLoadedFull = stockSummary.total_loaded_full;
     const totalReturnedFull = stockSummary.total_returned_full;
@@ -918,14 +952,15 @@ class TripsService {
 
     const salesSubsystem = require('../sales');
 
-    if (totalSoldFull === undefined || totalSoldFull === null) {
+    let resolvedTotalSoldFull = totalSoldFull;
+    if (resolvedTotalSoldFull === undefined || resolvedTotalSoldFull === null) {
       if (payload.useSyncedSales || payload.syncSales) {
-        totalSoldFull = await salesSubsystem.getTripTotalSoldFull(trip.id);
+        resolvedTotalSoldFull = await salesSubsystem.getTripTotalSoldFull(trip.id);
       }
     }
 
-    if (totalSoldFull !== undefined && totalSoldFull !== null) {
-      soldFull = parseInt(totalSoldFull, 10);
+    if (resolvedTotalSoldFull !== undefined && resolvedTotalSoldFull !== null) {
+      soldFull = parseInt(resolvedTotalSoldFull, 10);
       if (isNaN(soldFull) || soldFull < 0) {
         const err = new Error('totalSoldFull must be a non-negative integer');
         err.statusCode = 400;
@@ -968,6 +1003,14 @@ class TripsService {
       reconciledAt: status !== 'AWAITING_SYNC' ? new Date() : null,
     });
 
+    // 3. Update trip status to COMPLETED
+    const updatedTrip = await tripsRepository.updateTrip(trip.id, {
+      status: 'COMPLETED',
+      notes: supervisorNotes
+        ? `${trip.notes ? `${trip.notes} | ` : ''}${supervisorNotes.trim()}`
+        : trip.notes,
+    });
+
     await historyService.log(EVENTS.TRIP_RECONCILED, {
       actorUser,
       targetId: trip.id,
@@ -980,6 +1023,7 @@ class TripsService {
         totalSoldFull: soldFull,
         totalReturnedFull,
         totalReturnedEmptyGood,
+        totalReturnedDefective,
         netCustomerDebtCreated: netDebt,
         fullDiscrepancy,
         emptyDiscrepancy,
@@ -1003,7 +1047,16 @@ class TripsService {
       reconciledAt: reconciledRecord.reconciled_at ? new Date(reconciledRecord.reconciled_at).toISOString() : null,
     }, ['room:trips', 'room:inventory', 'room:sales']);
 
+    safeEmitSocketEvent('TRIP_COMPLETED', {
+      tripId: trip.id,
+      tripNumber: trip.trip_number,
+      plateNumber: trip.truck_plate_number,
+      status: 'COMPLETED',
+      reconciliationStatus: reconciledRecord.status,
+    }, ['room:trips', 'room:fleet']);
+
     return {
+      trip: updatedTrip,
       tripId: trip.id,
       tripNumber: trip.trip_number,
       status: reconciledRecord.status,
@@ -1067,6 +1120,14 @@ class TripsService {
 
     if (trip.status === 'COMPLETED') {
       const err = new Error('Cannot cancel a trip that has already been completed');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (trip.status === 'RETURNED') {
+      const err = new Error(
+        'Cannot cancel a trip that has already been ended by the driver; proceed with reconciliation'
+      );
       err.statusCode = 400;
       throw err;
     }

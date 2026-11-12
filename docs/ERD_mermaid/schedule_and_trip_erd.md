@@ -26,7 +26,7 @@ erDiagram
     %% ENUMS
     %% ==========================================
     %% schedule_status: SCHEDULED, DISPATCHED, CANCELLED
-    %% trip_status: PENDING, IN_PROGRESS, COMPLETED, CANCELLED
+    %% trip_status: PENDING, IN_PROGRESS, RETURNED, COMPLETED, CANCELLED
     %% transfer_type: DISPATCH_LOAD, RETURN_UNLOAD
     %% stock_condition: FILLED, EMPTY_GOOD, DEFECTIVE
     %% reconciliation_status: AWAITING_SYNC, SETTLED, FLAGGED_VARIANCE
@@ -113,9 +113,10 @@ erDiagram
         uuid sales_user_id FK "Frozen Snapshot, References users(id)"
         uuid zone_id FK "References service_zones(id)"
         uuid dispatched_by FK "Nullable, References users(id)"
+        uuid ended_by FK "Nullable, References users(id)"
         uuid return_odometer_log_id FK "Nullable, UK, References vehicle_odometer_logs(id)"
         string trip_number UK
-        enum status "trip_status: PENDING, IN_PROGRESS, COMPLETED, CANCELLED"
+        enum status "trip_status: PENDING, IN_PROGRESS, RETURNED, COMPLETED, CANCELLED"
         timestamptz departure_time
         timestamptz return_time "Nullable"
         string notes "Nullable"
@@ -168,6 +169,7 @@ erDiagram
     USERS ||--o{ TRUCK_SCHEDULES : "assigned_sales_rep (sales_user_id)"
     USERS ||--o{ TRUCK_SCHEDULES : "created_by"
     USERS ||--o{ TRIPS : "dispatched_by"
+    USERS ||--o{ TRIPS : "ended_by"
     USERS ||--o{ TRIPS : "driver_snapshot (driver_id)"
     USERS ||--o{ TRIPS : "sales_rep (sales_user_id)"
     USERS ||--o{ TRIP_LOADS : "recorded_by"
@@ -269,9 +271,10 @@ Tracks live trip execution, departure/return timestamps, and captures frozen cre
 | `sales_user_id` | `UUID` | No | `FK -> users(id) ON DELETE RESTRICT` | Frozen snapshot of cabin sales representative at dispatch time |
 | `zone_id` | `UUID` | No | `FK -> service_zones(id) ON DELETE RESTRICT` | Target delivery zone |
 | `dispatched_by` | `UUID` | Yes | `FK -> users(id) ON DELETE SET NULL` | Supervisor who authorized the dispatch |
+| `ended_by` | `UUID` | Yes | `FK -> users(id) ON DELETE SET NULL` | Driver or supervisor who ended the active run |
 | `return_odometer_log_id` | `UUID` | Yes | `UNIQUE, FK -> vehicle_odometer_logs(id) ON DELETE SET NULL` | Telemetry link to yard return odometer reading |
 | `trip_number` | `VARCHAR(50)` | No | `UNIQUE` | Human-readable sequential identifier (e.g. `TRIP-20260928-1001`) |
-| `status` | `trip_status` | No | `DEFAULT 'IN_PROGRESS'` | Execution lifecycle: `'PENDING'`, `'IN_PROGRESS'`, `'COMPLETED'`, `'CANCELLED'` |
+| `status` | `trip_status` | No | `DEFAULT 'IN_PROGRESS'` | Execution lifecycle: `'PENDING'`, `'IN_PROGRESS'`, `'RETURNED'`, `'COMPLETED'`, `'CANCELLED'` |
 | `departure_time` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Physical plant departure timestamp |
 | `return_time` | `TIMESTAMPTZ` | Yes | `NULL` | Physical plant return check-in timestamp |
 | `notes` | `TEXT` | Yes | `NULL` | Trip log notes or route incident remarks |
@@ -280,6 +283,8 @@ Tracks live trip execution, departure/return timestamps, and captures frozen cre
 
 **Unique Constraints & Partial Indexes:**
 - `UQ_trips_schedule_id`: `CREATE UNIQUE INDEX ... WHERE schedule_id IS NOT NULL` (ensures a schedule is executed at most once, while allowing unlimited ad-hoc trips).
+- `UQ_trips_active_truck`: `CREATE UNIQUE INDEX ... (truck_id) WHERE status IN ('PENDING', 'IN_PROGRESS', 'RETURNED')` (locks truck to prevent double-dispatch until trip is fully reconciled and completed).
+- `IX_trips_ended_by`: `CREATE INDEX ... (ended_by)` (optimizes auditing and querying trips ended by user).
 
 ---
 

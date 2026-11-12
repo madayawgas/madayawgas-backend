@@ -43,6 +43,8 @@ test('Fuel Analysis Subsystem Integration Tests', async (t) => {
   let vehicle1;
   let vehicle2;
   let vehicleStationary;
+  let testStartDate;
+  let testEndDate;
 
   beforeEach(async () => {
     // 1. Clean test records in reverse dependency order
@@ -140,6 +142,10 @@ test('Fuel Analysis Subsystem Integration Tests', async (t) => {
 
     // 5. Establish baseline odometer logs for vehicles
     const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    testStartDate = `${y}-${m}-02`;
+    testEndDate = `${y}-${m}-12`;
     const day1 = new Date(now.getFullYear(), now.getMonth(), 1, 8, 0, 0);
     const day5 = new Date(now.getFullYear(), now.getMonth(), 5, 10, 0, 0);
     const day10 = new Date(now.getFullYear(), now.getMonth(), 10, 14, 0, 0);
@@ -229,7 +235,7 @@ test('Fuel Analysis Subsystem Integration Tests', async (t) => {
   // ============================================================
   await t.test('1. Fleet-Wide Fuel Analysis (Aggregates, Totals, km/L, Cost/km & Vehicle Rankings)', async () => {
     // Query exact time window of test fixtures (Day 2 to Day 12) for complete test isolation
-    const res = await fetch(`${baseUrl}/api/operations/fuel/analysis?startDate=2026-10-02&endDate=2026-10-12`, {
+    const res = await fetch(`${baseUrl}/api/operations/fuel/analysis?startDate=${testStartDate}&endDate=${testEndDate}`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     assert.equal(res.status, 200);
@@ -452,7 +458,7 @@ test('Fuel Analysis Subsystem Integration Tests', async (t) => {
   // ============================================================
   await t.test('6. Fleet Module Route Aliases (/api/fleet/fuel-analysis & /api/fleet/vehicles/:id/fuel-analysis)', async () => {
     // Fleet-wide alias
-    const fleetAliasRes = await fetch(`${baseUrl}/api/fleet/fuel-analysis?startDate=2026-10-02&endDate=2026-10-12`, {
+    const fleetAliasRes = await fetch(`${baseUrl}/api/fleet/fuel-analysis?startDate=${testStartDate}&endDate=${testEndDate}`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
     assert.equal(fleetAliasRes.status, 200);

@@ -57,16 +57,16 @@ router.get(
 );
 
 router.post(
-  '/:id/complete',
+  '/:id/end',
   authenticate,
-  requirePermission('route.manage'),
-  asyncHandler(tripsController.completeTrip.bind(tripsController))
+  requirePermission(['route.manage', 'route.end_own']),
+  asyncHandler(tripsController.endTrip.bind(tripsController))
 );
 
 router.post(
   '/:id/reconcile',
   authenticate,
-  requirePermission(['route.manage', 'inventory.vehicle.manage']),
+  requirePermission(['route.manage', 'inventory.vehicle.manage', 'inventory.plant.manage']),
   asyncHandler(tripsController.reconcileTrip.bind(tripsController))
 );
 

@@ -31,7 +31,7 @@ Welcome to the Entity-Relationship Diagram (ERD) directory for the MadayawGas ba
 | `container_type_enum` | `'CYLINDER'`, `'CANISTER'` | `products.container_type` |
 | `customer_type_enum` | `'RETAIL'`, `'COMMERCIAL'`, `'WHOLESALE'` | `customers.customer_type` |
 | `schedule_status` | `'SCHEDULED'`, `'DISPATCHED'`, `'CANCELLED'` | `truck_schedules.status` |
-| `trip_status` | `'PENDING'`, `'IN_PROGRESS'`, `'COMPLETED'`, `'CANCELLED'` | `trips.status` |
+| `trip_status` | `'PENDING'`, `'IN_PROGRESS'`, `'RETURNED'`, `'COMPLETED'`, `'CANCELLED'` | `trips.status` |
 | `transfer_type` | `'DISPATCH_LOAD'`, `'RETURN_UNLOAD'` | `trip_loads.transfer_type` |
 | `stock_condition` | `'FILLED'`, `'EMPTY_GOOD'`, `'DEFECTIVE'` | `trip_load_items.condition` |
 | `reconciliation_status` | `'AWAITING_SYNC'`, `'SETTLED'`, `'FLAGGED_VARIANCE'` | `trip_stock_reconciliations.status` |
@@ -49,3 +49,4 @@ Welcome to the Entity-Relationship Diagram (ERD) directory for the MadayawGas ba
 5. **Partial Indexes**:
    - `UQ_approval_requests_pending`: `ON approval_requests (work_order_id) WHERE is_approved IS NULL`.
    - `UQ_trips_schedule_id`: `ON trips (schedule_id) WHERE schedule_id IS NOT NULL`.
+   - `UQ_trips_active_truck`: `ON trips (truck_id) WHERE status IN ('PENDING', 'IN_PROGRESS', 'RETURNED')`.

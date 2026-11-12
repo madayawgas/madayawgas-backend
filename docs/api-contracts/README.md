@@ -234,8 +234,8 @@ docs/api-contracts/
 | `PATCH` | `/api/trips/:id/cancel` | Cancel active or pending trip | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
 | `POST` | `/api/trips/:id/loads` | Record multi-load transfer slip (reload/unload) | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#2-multi-load-inventory-transfer-post-apitripsidloads) |
 | `GET` | `/api/trips/:id/loads` | List all transfer slips and line items for trip | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
-| `POST` | `/api/trips/:id/complete` | Complete plant return check-in & odometer | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#3-plant-return-check-in-post-apitripsidcomplete) |
-| `POST` | `/api/trips/:id/reconcile` | Settle post-trip stock variance & discrepancies | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#4-post-trip-stock-reconciliation-post-apitripsidreconcile) |
+| `POST` | `/api/trips/:id/end` | Driver end trip with mandatory odometer reading | `route.end_own` / `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#3-driver-end-trip-post-apitripsidend) |
+| `POST` | `/api/trips/:id/reconcile` | Settle post-trip stock variance, return unloads & discrepancies | `route.manage` / `inventory.vehicle.manage` / `inventory.plant.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#4-post-trip-stock-reconciliation-post-apitripsidreconcile) |
 | `GET` | `/api/trips/:id/reconciliation` | View reconciliation discrepancy breakdown | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
 
 ---
@@ -315,7 +315,8 @@ Comprehensive WebSocket event schemas, handshake authentication requirements, mo
 | **`TRIP_DISPATCHED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/dispatch` | Driver mobile auto-hydrates active trip; invalidate `['active-trips']` |
 | **`TRIP_LOAD_RECORDED`** | Trips & Route | `room:trips`, `room:inventory`, `user:{driverUserId}` | `POST /api/trips/:id/loads` | Update cabin stock; invalidate transfers |
 | **`VEHICLE_STOCK_UPDATED`** | Cabin Inventory | `room:inventory`, `room:trips`, `user:{driverUserId}` | Load additions or trip return settlement | Invalidate `['vehicle-stock']`, `['trip-stock']` |
-| **`TRIP_COMPLETED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/complete` | Driver transitions to return summary; queue for variance audit |
+| **`TRIP_ENDED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/end` | Driver transitions to return state; trigger plant physical count; invalidate `['active-trips']` |
+| **`TRIP_COMPLETED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/reconcile` | Final settlement completed; vehicle released; invalidate `['active-trips']` |
 | **`TRIP_RECONCILED`** | Trips & Inventory | `room:trips`, `room:inventory`, `user:{driverUserId}` | `POST /api/trips/:id/reconcile` | Invalidate `['trip-reconciliation']`, `['active-trips']` |
 | **`TRIP_CANCELLED`** | Trips & Route | `room:trips`, `user:{driverUserId}` | `POST /api/trips/:id/cancel` | Reset driver active trip screen to standby |
 | **`SCHEDULE_CREATED`** | Daily Schedules | `room:schedules` | `POST /api/schedules` | Invalidate `['daily-schedules']` |
@@ -332,7 +333,6 @@ Comprehensive WebSocket event schemas, handshake authentication requirements, mo
 | **`SALES_BATCH_SYNCED`** | Commercial Sales | `room:sales` | `POST /api/sales/sync-batch` (`processedCount > 0`) | Invalidate `['sales-shift-summary']`, `['sales-transactions']` |
 | **`SALES_TRANSACTION_CANCELLED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/transactions/:id/cancel` | Invalidate `['sales-transactions']`, reverse customer debt |
 | **`SALES_INVOICE_VERIFIED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/invoices/:id/verify` | Invalidate `['sales-invoices']`, badge `VERIFIED` |
-| **`ATTENDANCE_DUTY_UPDATED`** | Operational Telemetry | `room:operations`, `user:{userId}` | Clock-in or clock-out | Update mobile duty switch & supervisor duty roster |
 | **`APPREHENSION_LOGGED`** | Operational Telemetry | `room:operations`, `user:{driverUserId}` | `POST /api/operations/apprehensions` | Invalidate `['operations-apprehensions']` |
 | **`APPREHENSION_STATUS_UPDATED`** | Operational Telemetry | `room:operations`, `user:{driverUserId}` | `PATCH /api/operations/apprehensions/:id/status` | Update citation resolution status |
 | **`FUEL_LOGGED`** | Operational Telemetry | `room:operations` | `POST /api/operations/fuel` | Invalidate `['operations-fuel']`, update truck odometer |

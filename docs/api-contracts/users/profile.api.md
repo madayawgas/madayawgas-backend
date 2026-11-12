@@ -50,6 +50,8 @@ Fetches profile details and permissions of the currently logged-in user.
       "isActive": true,
       "isBlocked": false,
       "mustChangePassword": false,
+      "avatarMediaKey": "users/avatars/b4e6a8c1f0d2394e.jpg",
+      "avatarUrl": "http://localhost:5000/media/users/avatars/b4e6a8c1f0d2394e.jpg",
       "permissions": [
         "dashboard.view",
         "fleet.view",
@@ -103,6 +105,7 @@ Updates personal profile information of the currently authenticated user (`first
 | `lastName` | String | No | User last name |
 | `phone` | String | No | Contact phone number (e.g. `+639171234567`) |
 | `birthdate` | String | No | ISO Date string (`YYYY-MM-DD`) |
+| `avatarMediaKey` | String \| null | No | Canonical storage key or full URL to set avatar; pass `null` to clear avatar |
 
 #### Response: `200 OK` (Success)
 
@@ -131,8 +134,97 @@ Updates personal profile information of the currently authenticated user (`first
       ],
       "isActive": true,
       "isBlocked": false,
-      "mustChangePassword": false
+      "mustChangePassword": false,
+      "avatarMediaKey": "users/avatars/b4e6a8c1f0d2394e.jpg",
+      "avatarUrl": "http://localhost:5000/media/users/avatars/b4e6a8c1f0d2394e.jpg"
     }
   }
 }
 ```
+
+---
+
+### 3. Upload / Replace Own Profile Picture (`/me/avatar`)
+
+Uploads a new avatar image for the currently authenticated user. Automatically deletes the previous avatar photo from active storage (local disk / Supabase bucket) to preserve space.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/users/me/avatar`
+- **Authentication**: Required (`mg_sid` cookie or Bearer token)
+- **Request Format**: `multipart/form-data`
+
+#### Form Fields
+| Field Name | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `avatar` (or `file`) | Binary File | **Yes** | Image binary stream (<= 5 MB; JPEG, PNG, WebP) |
+
+#### Response: `200 OK` (Success)
+```json
+{
+  "status": "success",
+  "data": {
+    "user": {
+      "id": "08df2719-0473-4a31-8b5c-dc977d6006c5",
+      "username": "superadmin",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "avatarMediaKey": "users/avatars/b4e6a8c1f0d2394e.jpg",
+      "avatarUrl": "http://localhost:5000/media/users/avatars/b4e6a8c1f0d2394e.jpg"
+    },
+    "avatarUrl": "http://localhost:5000/media/users/avatars/b4e6a8c1f0d2394e.jpg",
+    "avatarMediaKey": "users/avatars/b4e6a8c1f0d2394e.jpg"
+  }
+}
+```
+
+#### Error Responses
+- `400 Bad Request` (`FILE_REQUIRED`): No file uploaded.
+- `400 Bad Request` (`UNSUPPORTED_MEDIA_TYPE`): Non-image file uploaded (e.g. PDF or plain text).
+- `413 Payload Too Large` (`FILE_TOO_LARGE`): File size exceeds 5 MB.
+
+---
+
+### 4. Remove Own Profile Picture (`DELETE /me/avatar`)
+
+Removes the current user's profile picture, setting `avatar_media_key = NULL` and permanently unlinking the file asset from storage.
+
+- **HTTP Method**: `DELETE`
+- **URL**: `/api/users/me/avatar`
+- **Authentication**: Required (`mg_sid` cookie or Bearer token)
+
+#### Response: `200 OK` (Success)
+```json
+{
+  "status": "success",
+  "data": {
+    "user": {
+      "id": "08df2719-0473-4a31-8b5c-dc977d6006c5",
+      "username": "superadmin",
+      "avatarMediaKey": null,
+      "avatarUrl": null
+    }
+  }
+}
+```
+
+---
+
+### 5. Admin Upload / Replace Avatar (`POST /:id/avatar`)
+
+Uploads or replaces the avatar for any target user. Requires `users.manage` permission (or user uploading for themselves). Automatically deletes the previous avatar photo from active storage.
+
+- **HTTP Method**: `POST`
+- **URL**: `/api/users/:id/avatar`
+- **Authentication**: Required (`users.manage` permission)
+- **Request Format**: `multipart/form-data` (`avatar` or `file`)
+
+---
+
+### 6. Admin Remove Avatar (`DELETE /:id/avatar`)
+
+Removes the avatar for any target user and purges the file from active storage. Requires `users.manage` permission (or self).
+
+- **HTTP Method**: `DELETE`
+- **URL**: `/api/users/:id/avatar`
+- **Authentication**: Required (`users.manage` permission)
+

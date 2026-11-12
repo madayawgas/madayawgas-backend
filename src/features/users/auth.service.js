@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const permissionService = require('./permission.service');
+const mediaStorage = require('../media/media.storage');
 
 const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
 const ABSOLUTE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -94,6 +95,8 @@ class AuthService {
         isActive: sessionData.is_active,
         isBlocked: sessionData.is_blocked,
         mustChangePassword: sessionData.must_change_password,
+        avatarMediaKey: sessionData.avatar_media_key || null,
+        avatarUrl: sessionData.avatar_media_key ? mediaStorage.resolveMediaUrl(sessionData.avatar_media_key) : null,
         permissions,
       },
       session: {
@@ -143,6 +146,8 @@ class AuthService {
       isActive: user.is_active,
       isBlocked: user.is_blocked,
       mustChangePassword: user.must_change_password,
+      avatarMediaKey: user.avatar_media_key || null,
+      avatarUrl: user.avatar_media_key ? mediaStorage.resolveMediaUrl(user.avatar_media_key) : null,
       permissions,
     };
 

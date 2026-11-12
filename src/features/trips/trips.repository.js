@@ -76,6 +76,7 @@ class TripsRepository {
         t.sales_user_id,
         t.zone_id,
         t.dispatched_by,
+        t.ended_by,
         t.return_odometer_log_id,
         t.trip_number,
         t.status,
@@ -99,6 +100,9 @@ class TripsRepository {
         z.code AS zone_code,
         z.name AS zone_name,
         dp.username AS dispatched_by_username,
+        eu.username AS ended_by_username,
+        eu.first_name AS ended_by_first_name,
+        eu.last_name AS ended_by_last_name,
         ts.scheduled_date,
         vol.odometer_reading AS return_odometer_reading,
         tsr.status AS reconciliation_status
@@ -108,6 +112,7 @@ class TripsRepository {
       JOIN users su ON t.sales_user_id = su.id
       JOIN service_zones z ON t.zone_id = z.id
       LEFT JOIN users dp ON t.dispatched_by = dp.id
+      LEFT JOIN users eu ON t.ended_by = eu.id
       LEFT JOIN truck_schedules ts ON t.schedule_id = ts.id
       LEFT JOIN vehicle_odometer_logs vol ON t.return_odometer_log_id = vol.id
       LEFT JOIN trip_stock_reconciliations tsr ON t.id = tsr.trip_id
@@ -174,6 +179,7 @@ class TripsRepository {
         t.sales_user_id,
         t.zone_id,
         t.dispatched_by,
+        t.ended_by,
         t.return_odometer_log_id,
         t.trip_number,
         t.status,
@@ -197,6 +203,9 @@ class TripsRepository {
         z.code AS zone_code,
         z.name AS zone_name,
         dp.username AS dispatched_by_username,
+        eu.username AS ended_by_username,
+        eu.first_name AS ended_by_first_name,
+        eu.last_name AS ended_by_last_name,
         ts.scheduled_date,
         vol.odometer_reading AS return_odometer_reading,
         vol.logged_at AS return_odometer_logged_at,
@@ -213,6 +222,7 @@ class TripsRepository {
       JOIN users su ON t.sales_user_id = su.id
       JOIN service_zones z ON t.zone_id = z.id
       LEFT JOIN users dp ON t.dispatched_by = dp.id
+      LEFT JOIN users eu ON t.ended_by = eu.id
       LEFT JOIN truck_schedules ts ON t.schedule_id = ts.id
       LEFT JOIN vehicle_odometer_logs vol ON t.return_odometer_log_id = vol.id
       LEFT JOIN trip_stock_reconciliations tsr ON t.id = tsr.trip_id
@@ -225,14 +235,14 @@ class TripsRepository {
   }
 
   /**
-   * Checks if a vehicle has an ongoing active trip (IN_PROGRESS).
+   * Checks if a vehicle has an ongoing active or returned-unreconciled trip.
    * @param {string} truckId
    */
   async findActiveTripByTruckId(truckId) {
     const sql = `
       SELECT *
       FROM trips
-      WHERE truck_id = $1 AND status IN ('PENDING', 'IN_PROGRESS')
+      WHERE truck_id = $1 AND status IN ('PENDING', 'IN_PROGRESS', 'RETURNED')
       LIMIT 1
     `;
 
@@ -340,6 +350,11 @@ class TripsRepository {
     if (updateData.status !== undefined) {
       fields.push(`status = $${paramIndex++}`);
       params.push(updateData.status);
+    }
+
+    if (updateData.endedBy !== undefined) {
+      fields.push(`ended_by = $${paramIndex++}`);
+      params.push(updateData.endedBy);
     }
 
     if (updateData.returnTime !== undefined) {

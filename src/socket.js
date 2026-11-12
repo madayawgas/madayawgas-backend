@@ -140,16 +140,18 @@ function initializeSocket(httpServer, customOptions = {}) {
         socket.join('room:sales');
       }
 
-      // Route Dispatch & Daily Schedules Rooms (Supervisors / Dispatchers)
-      if (permissions.includes('route.view') || permissions.includes('route.manage')) {
+      // Route Dispatch & Daily Schedules Rooms (Supervisors / Dispatchers / Admins)
+      if (
+        permissions.includes('route.view') ||
+        permissions.includes('route.manage') ||
+        permissions.includes('users.manage')
+      ) {
         socket.join('room:trips');
         socket.join('room:schedules');
       }
 
-      // Operations (Duty Attendance, Apprehensions, Fuel Telemetry)
+      // Operations (Apprehensions, Fuel Telemetry, Emergency Alerts)
       if (
-        permissions.includes('attendance.view') ||
-        permissions.includes('attendance.manage') ||
         permissions.includes('apprehensions.view') ||
         permissions.includes('apprehensions.manage') ||
         permissions.includes('fuel.view') ||

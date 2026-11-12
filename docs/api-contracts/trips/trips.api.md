@@ -18,8 +18,9 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 | Permission | Description | Allowed Roles (Default) |
 | :--- | :--- | :--- |
 | `route.view` | View all delivery trips, load manifests, and reconciliation records | Super Admin, Admin, Logistics Supervisor |
-| `route.view_own` | View trips and load manifests assigned to the authenticated Sales Person | Sales Person |
-| `route.manage` | Dispatch trips, cancel trips, record reloads/unloads, complete plant return, and settle stock reconciliation | Super Admin, Admin, Logistics Supervisor |
+| `route.view_own` | View trips and load manifests assigned to the authenticated user | Sales Person, Driver |
+| `route.end_own` | End active delivery trip with mandatory odometer reading for own assigned trip | Driver, Logistics Supervisor, Admin, Super Admin |
+| `route.manage` | Dispatch trips, cancel trips, record reloads/unloads, end trips (supervisor override), and settle stock reconciliation | Super Admin, Admin, Logistics Supervisor |
 
 ---
 
@@ -35,9 +36,10 @@ This document specifies the HTTP endpoints, payload structures, headers, authent
 | `sales_user_id` | `UUID` | No | `REFERENCES users(id)` | Authenticated cabin Sales Person snapshot |
 | `zone_id` | `UUID` | No | `REFERENCES service_zones(id)` | Delivery route target zone |
 | `dispatched_by` | `UUID` | Yes | `REFERENCES users(id)` | User authorizing vehicle departure |
+| `ended_by` | `UUID` | Yes | `REFERENCES users(id)` | Driver or supervisor who ended the active run |
 | `return_odometer_log_id` | `UUID` | Yes | `REFERENCES vehicle_odometer_logs(id) UNIQUE` | Telemetry link to yard return check-in |
 | `trip_number` | `VARCHAR(50)` | No | `UNIQUE` | Unique human-readable trip identifier |
-| `status` | `trip_status` | No | `'PENDING'` \| `'IN_PROGRESS'` \| `'COMPLETED'` \| `'CANCELLED'` | Current operational state |
+| `status` | `trip_status` | No | `'PENDING'` \| `'IN_PROGRESS'` \| `'RETURNED'` \| `'COMPLETED'` \| `'CANCELLED'` | Current operational state |
 | `departure_time` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Yard departure timestamp |
 | `return_time` | `TIMESTAMPTZ` | Yes | Nullable | Yard return timestamp |
 | `notes` | `TEXT` | Yes | Nullable | Trip dispatch & supervisor notes |
@@ -117,18 +119,6 @@ Dispatches a delivery truck for a scheduled or ad-hoc run.
   "notes": "Emergency hospital supply run"
 }
 ```
-- **Driver Attendance Prerequisite**:
-  - The assigned Driver (from payload `driverId` or vehicle's assigned driver) **must be actively clocked in** (`status = 'ACTIVE'` and `clock_out_time IS NULL`) via `/api/operations/attendance/clock-in` prior to dispatch.
-  - Vehicles can be scheduled in advance without attendance; this condition is checked strictly at dispatch time.
-  - Once clocked in, the driver does not need to re-clock-in for subsequent trips (e.g., ad-hoc deliveries) on the same shift until they clock out.
-- **Error Response (Driver Off-Duty - 400 Bad Request)**:
-```json
-{
-  "status": "fail",
-  "message": "Cannot dispatch trip: Assigned driver 'jdoe' has not clocked in yet. Driver must be clocked in on active duty to be dispatched.",
-  "code": "DRIVER_NOT_CLOCKED_IN"
-}
-```
 
 ---
 
@@ -148,37 +138,69 @@ Records a midday stock reload or evening unload manifest slip.
 
 ---
 
-### 3. Plant Return Check-In (`POST /api/trips/:id/complete`)
-Completes a trip upon return to plant:
-- Verifies return odometer reading monotonically (`returnOdometerKm >= current_odometer`).
-- Automatically evaluates distance driven toward 5,000-km PM threshold.
-- Records physical return unload slip if `returnLoads` provided.
-- Initializes reconciliation record in `AWAITING_SYNC` status.
-- **Permission**: `route.manage`
+### 3. Driver End Trip (`POST /api/trips/:id/end`)
+Ends an active delivery run upon vehicle return to the plant yard.
+- **Trigger**: Serves as the strict condition and trigger for plant physical count reconciliation.
+- **Permissions**: `route.end_own` or `route.manage`.
+- **Actor Authorization**: Only the assigned Driver (or a supervisor holding `route.manage`) can end the trip. Frontline `Sales Person` accounts are rejected with `403 Forbidden`.
+- **Mandatory Telemetry**: Requires `currentOdometer` (positive integer, monotonically `>= truck.current_odometer`). Feeds into the maintenance engine to advance vehicle asset odometer and evaluate 5,000-km PM baseline.
+- **State Transition**: Transitions trip from `IN_PROGRESS` to `RETURNED`. Records `ended_by`, `return_time`, and `return_odometer_log_id`.
+- **Truck Lock Invariant**: Truck remains guarded by partial unique index `UQ_trips_active_truck` until final reconciliation marks the trip `COMPLETED`.
 - **Request Body**:
 ```json
 {
-  "returnOdometerKm": 45450,
-  "supervisorNotes": "Trip completed on schedule, vehicle clean",
-  "returnLoads": [
-    { "productId": "1a234567-8901-4bcd-ef12-345678901bcd", "condition": "FILLED", "quantityUnits": 20 },
-    { "productId": "1a234567-8901-4bcd-ef12-345678901bcd", "condition": "EMPTY_GOOD", "quantityUnits": 75 },
-    { "productId": "1a234567-8901-4bcd-ef12-345678901bcd", "condition": "DEFECTIVE", "quantityUnits": 5 }
-  ]
+  "currentOdometer": 45450,
+  "notes": "Arrived back at Bunawan plant yard, trip uneventful",
+  "returnTime": "2026-10-06T16:45:00.000Z"
+}
+```
+- **Response**: `200 OK`
+```json
+{
+  "status": "success",
+  "data": {
+    "trip": {
+      "id": "9e123456-7890-4abc-def1-234567890abc",
+      "tripNumber": "TRIP-20261006-A1B2",
+      "status": "RETURNED",
+      "truckId": "4a123456-7890-4abc-def1-234567890abc",
+      "driverId": "8f123456-7890-4abc-def1-234567890abc",
+      "salesUserId": "3c987654-3210-4cba-fed0-987654321cba",
+      "endedBy": "8f123456-7890-4abc-def1-234567890abc",
+      "returnTime": "2026-10-06T16:45:00.000Z",
+      "returnOdometerLogId": "6d123456-7890-4abc-def1-234567890abc",
+      "departureTime": "2026-10-06T08:00:00.000Z"
+    },
+    "odometerTelemetry": {
+      "logId": "6d123456-7890-4abc-def1-234567890abc",
+      "readingKm": 45450,
+      "distanceDriven": 120,
+      "requiresMaintenance": false
+    }
+  }
 }
 ```
 
 ---
 
 ### 4. Post-Trip Stock Reconciliation (`POST /api/trips/:id/reconcile`)
-Calculates inventory variance against synchronized offline sales and customer debt.
-- **Permission**: `route.manage`
+Executes plant physical count reconciliation and settles inventory variance.
+- **Permissions**: `route.manage`, `inventory.vehicle.manage`, or `inventory.plant.manage`.
+- **Prerequisite Condition**: Trip must be in `RETURNED` status (or re-reconciling a `COMPLETED` trip). Attempting reconciliation while `status === 'IN_PROGRESS'` is blocked with `400 Bad Request` (`Trip must be ended by the driver before stock reconciliation can occur`).
+- **Physical Unload Processing**: Optional `returnLoads` array records physical cylinders unloaded at plant, creates a `RETURN_UNLOAD` transfer slip, and directly increments Bunawan bulk plant stock.
+- **Variance Audit Math**: Evaluates full cylinder and empty canister discrepancies against mobile sales records and customer debt.
+- **Completion**: Marks reconciliation as `SETTLED` (if 0 discrepancy) or `FLAGGED_VARIANCE`, and transitions trip `status` to `COMPLETED`.
 - **Request Body**:
 ```json
 {
   "totalSoldFull": 80,
   "netCustomerDebtCreated": 5,
-  "supervisorNotes": "Balanced return verified against driver receipts"
+  "supervisorNotes": "Balanced return verified against driver receipts",
+  "returnLoads": [
+    { "productId": "1a234567-8901-4bcd-ef12-345678901bcd", "condition": "FILLED", "quantityUnits": 20 },
+    { "productId": "1a234567-8901-4bcd-ef12-345678901bcd", "condition": "EMPTY_GOOD", "quantityUnits": 75 },
+    { "productId": "1a234567-8901-4bcd-ef12-345678901bcd", "condition": "DEFECTIVE", "quantityUnits": 5 }
+  ]
 }
 ```
 - **Response**: `200 OK`
@@ -200,6 +222,12 @@ Calculates inventory variance against synchronized offline sales and customer de
       "emptyDiscrepancy": 0,
       "isSettled": true,
       "reconciledAt": "2026-10-06T17:30:00.000Z"
+    },
+    "trip": {
+      "id": "9e123456-7890-4abc-def1-234567890abc",
+      "tripNumber": "TRIP-20261006-A1B2",
+      "status": "COMPLETED",
+      "endedBy": "8f123456-7890-4abc-def1-234567890abc"
     }
   }
 }

@@ -8,6 +8,7 @@ const { generateBaseUsername, resolveUniqueUsername } = require('../../utils/use
 const { generateTemporaryPassword } = require('../../utils/passwordGenerator');
 const { parsePhoneNumber } = require('../../utils/phoneParser');
 const { calculateOffset, buildPaginationMeta } = require('../../utils/pagination');
+const mediaStorage = require('../media/media.storage');
 
 /**
  * Management Service
@@ -124,6 +125,8 @@ class ManagementService {
         isActive: createdUser.is_active,
         isBlocked: createdUser.is_blocked,
         mustChangePassword: createdUser.must_change_password,
+        avatarMediaKey: createdUser.avatar_media_key || null,
+        avatarUrl: createdUser.avatar_media_key ? mediaStorage.resolveMediaUrl(createdUser.avatar_media_key) : null,
         createdAt: createdUser.created_at,
       },
       temporaryPassword,
@@ -153,6 +156,8 @@ class ManagementService {
         isActive: u.is_active,
         isBlocked: u.is_blocked,
         mustChangePassword: u.must_change_password,
+        avatarMediaKey: u.avatar_media_key || null,
+        avatarUrl: u.avatar_media_key ? mediaStorage.resolveMediaUrl(u.avatar_media_key) : null,
         createdAt: u.created_at,
       }));
     }
@@ -176,6 +181,8 @@ class ManagementService {
       isActive: u.is_active,
       isBlocked: u.is_blocked,
       mustChangePassword: u.must_change_password,
+      avatarMediaKey: u.avatar_media_key || null,
+      avatarUrl: u.avatar_media_key ? mediaStorage.resolveMediaUrl(u.avatar_media_key) : null,
       createdAt: u.created_at,
     }));
 

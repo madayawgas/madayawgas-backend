@@ -109,7 +109,7 @@ class UsersController {
    * PATCH /api/users/me
    */
   async updateMe(req, res) {
-    const { firstName, lastName, phone, birthdate } = req.body || {};
+    const { firstName, lastName, phone, birthdate, avatarMediaKey } = req.body || {};
 
     try {
       const updatedUser = await profileService.updateProfile(req.user, req.user.id, {
@@ -117,6 +117,7 @@ class UsersController {
         lastName,
         phone,
         birthdate,
+        avatarMediaKey,
       });
 
       return res.status(200).json({
@@ -128,6 +129,60 @@ class UsersController {
     } catch (err) {
       return res.status(400).json({
         status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/users/me/avatar
+   */
+  async uploadMyAvatar(req, res) {
+    if (!req.file) {
+      return res.status(400).json({
+        status: 'fail',
+        code: 'FILE_REQUIRED',
+        message: 'No avatar image uploaded or file field missing',
+      });
+    }
+
+    try {
+      const updatedUser = await profileService.uploadAvatar(req.user, req.user.id, req.file, req);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          user: updatedUser,
+          avatarUrl: updatedUser.avatarUrl,
+          avatarMediaKey: updatedUser.avatarMediaKey,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        code: err.code || 'AVATAR_UPLOAD_ERROR',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/users/me/avatar
+   */
+  async deleteMyAvatar(req, res) {
+    try {
+      const updatedUser = await profileService.removeAvatar(req.user, req.user.id);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          user: updatedUser,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        code: err.code || 'AVATAR_DELETE_ERROR',
         message: err.message,
       });
     }
@@ -272,18 +327,25 @@ class UsersController {
    * PATCH /api/users/:id
    */
   async updateUserProfile(req, res) {
-    const { firstName, lastName, phone, birthdate, roleId, roleIds, primaryRoleId } = req.body || {};
+    const { firstName, lastName, phone, birthdate, roleId, roleIds, primaryRoleId, avatarMediaKey } = req.body || {};
 
     try {
       let updatedUser;
 
       // Handle personal info updates
-      if (firstName !== undefined || lastName !== undefined || phone !== undefined || birthdate !== undefined) {
+      if (
+        firstName !== undefined ||
+        lastName !== undefined ||
+        phone !== undefined ||
+        birthdate !== undefined ||
+        avatarMediaKey !== undefined
+      ) {
         updatedUser = await profileService.updateProfile(req.user, req.params.id, {
           firstName,
           lastName,
           phone,
           birthdate,
+          avatarMediaKey,
         });
       }
 
@@ -313,9 +375,63 @@ class UsersController {
         },
       });
     } catch (err) {
-      const statusCode = err.message.startsWith('Forbidden') ? 403 : 400;
+      const statusCode = err.statusCode || (err.message.startsWith('Forbidden') ? 403 : 400);
       return res.status(statusCode).json({
         status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/users/:id/avatar
+   */
+  async uploadUserAvatar(req, res) {
+    if (!req.file) {
+      return res.status(400).json({
+        status: 'fail',
+        code: 'FILE_REQUIRED',
+        message: 'No avatar image uploaded or file field missing',
+      });
+    }
+
+    try {
+      const updatedUser = await profileService.uploadAvatar(req.user, req.params.id, req.file, req);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          user: updatedUser,
+          avatarUrl: updatedUser.avatarUrl,
+          avatarMediaKey: updatedUser.avatarMediaKey,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        code: err.code || 'AVATAR_UPLOAD_ERROR',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/users/:id/avatar
+   */
+  async deleteUserAvatar(req, res) {
+    try {
+      const updatedUser = await profileService.removeAvatar(req.user, req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          user: updatedUser,
+        },
+      });
+    } catch (err) {
+      const statusCode = err.statusCode || 400;
+      return res.status(statusCode).json({
+        status: 'fail',
+        code: err.code || 'AVATAR_DELETE_ERROR',
         message: err.message,
       });
     }
