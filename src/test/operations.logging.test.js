@@ -70,11 +70,6 @@ test('Operational Logging Subsystems Integration Tests', async (t) => {
     `);
 
     await query(`
-      DELETE FROM duty_attendance
-      WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_ops_%')
-    `);
-
-    await query(`
       DELETE FROM trip_load_items
       WHERE load_id IN (
         SELECT id FROM trip_loads
@@ -301,115 +296,9 @@ test('Operational Logging Subsystems Integration Tests', async (t) => {
   });
 
   // ============================================================
-  // 2. Duty Attendance Subsystem
+  // 2. Driver Road Apprehensions Subsystem
   // ============================================================
-  await t.test('2. Duty Attendance (Clock-In, Active Check, Double-Clock-In Rejection, Clock-Out & Duration)', async () => {
-    // 2.1 Driver clocks in successfully via direct alias /api/attendance/clock-in
-    const clockInRes = await fetch(`${baseUrl}/api/attendance/clock-in`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${driver1Cookie}`,
-      },
-      body: JSON.stringify({ notes: 'Starting morning shift' }),
-    });
-    assert.equal(clockInRes.status, 201);
-    const clockInBody = await clockInRes.json();
-    assert.equal(clockInBody.status, 'success');
-    assert.equal(clockInBody.data.userId, driver1User.id);
-    assert.equal(clockInBody.data.status, 'ACTIVE');
-
-    // 2.2 Duty cycle integrity: Attempting to clock in again while an active cycle exists fails
-    const doubleClockInRes = await fetch(`${baseUrl}/api/operations/attendance/clock-in`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${driver1Cookie}`,
-      },
-      body: JSON.stringify({ notes: 'Trying double clock in' }),
-    });
-    assert.equal(doubleClockInRes.status, 400);
-    const doubleBody = await doubleClockInRes.json();
-    assert.equal(doubleBody.code, 'OPEN_DUTY_CYCLE_EXISTS');
-
-    // 2.3 Query active duty cycle
-    const activeDutyRes = await fetch(`${baseUrl}/api/attendance/active`, {
-      headers: { Cookie: `mg_sid=${driver1Cookie}` },
-    });
-    assert.equal(activeDutyRes.status, 200);
-    const activeDutyBody = await activeDutyRes.json();
-    assert.ok(activeDutyBody.data);
-    assert.equal(activeDutyBody.data.id, clockInBody.data.id);
-
-    // 2.4 Supervisor clocks in on behalf of driver 2
-    const supClockInRes = await fetch(`${baseUrl}/api/operations/attendance/clock-in`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${supervisorCookie}`,
-      },
-      body: JSON.stringify({ targetUserId: driver2User.id, notes: 'Dispatcher manual clock-in' }),
-    });
-    assert.equal(supClockInRes.status, 201);
-    const supClockInBody = await supClockInRes.json();
-    assert.equal(supClockInBody.data.userId, driver2User.id);
-
-    // 2.5 Driver 1 cannot clock in on behalf of another user (403 Forbidden)
-    const unauthorizedClockInRes = await fetch(`${baseUrl}/api/operations/attendance/clock-in`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${driver1Cookie}`,
-      },
-      body: JSON.stringify({ targetUserId: driverUnassignedUser.id }),
-    });
-    assert.equal(unauthorizedClockInRes.status, 403);
-
-    // 2.6 Driver 1 clocks out successfully
-    const clockOutRes = await fetch(`${baseUrl}/api/attendance/clock-out`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${driver1Cookie}`,
-      },
-      body: JSON.stringify({ notes: 'Shift completed successfully' }),
-    });
-    assert.equal(clockOutRes.status, 200);
-    const clockOutBody = await clockOutRes.json();
-    assert.equal(clockOutBody.status, 'success');
-    assert.equal(clockOutBody.data.status, 'COMPLETED');
-    assert.ok(clockOutBody.data.clockOutTime);
-    assert.ok(clockOutBody.data.durationFormatted);
-
-    // 2.7 Clocking out when no active cycle exists returns 400 Bad Request
-    const noCycleClockOutRes = await fetch(`${baseUrl}/api/attendance/clock-out`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${driver1Cookie}`,
-      },
-      body: JSON.stringify({ notes: 'Second clock out' }),
-    });
-    assert.equal(noCycleClockOutRes.status, 400);
-    const noCycleBody = await noCycleClockOutRes.json();
-    assert.equal(noCycleBody.code, 'NO_ACTIVE_DUTY_CYCLE');
-
-    // 2.8 Retrieve attendance logs with pagination & filtering
-    const listRes = await fetch(`${baseUrl}/api/operations/attendance?limit=10&page=1`, {
-      headers: { Cookie: `mg_sid=${supervisorCookie}` },
-    });
-    assert.equal(listRes.status, 200);
-    const listBody = await listRes.json();
-    const items = Array.isArray(listBody.data) ? listBody.data : listBody.data.items;
-    assert.ok(items);
-    assert.ok(items.length >= 2);
-    assert.ok(listBody.meta);
-  });
-
-  // ============================================================
-  // 3. Driver Road Apprehensions Subsystem
-  // ============================================================
-  await t.test('3. Driver Road Apprehensions (Mandatory Proof, Creation, Status Update & Scoping)', async () => {
+  await t.test('2. Driver Road Apprehensions (Mandatory Proof, Creation, Status Update & Scoping)', async () => {
     // 3.1 Reject recording apprehension without mandatory ticket media key (400 Bad Request)
     const noProofRes = await fetch(`${baseUrl}/api/operations/apprehensions`, {
       method: 'POST',
@@ -481,9 +370,9 @@ test('Operational Logging Subsystems Integration Tests', async (t) => {
   });
 
   // ============================================================
-  // 4. Vehicle Fuel Tracking Subsystem
+  // 3. Vehicle Fuel Tracking Subsystem
   // ============================================================
-  await t.test('4. Vehicle Fuel Tracking (Validation, Monotonic Odometer, Advancement & Summaries)', async () => {
+  await t.test('3. Vehicle Fuel Tracking (Validation, Monotonic Odometer, Advancement & Summaries)', async () => {
     // 4.1 Rejects zero or negative liters pumped (400 Bad Request)
     const invalidLitersRes = await fetch(`${baseUrl}/api/operations/fuel`, {
       method: 'POST',
@@ -592,9 +481,9 @@ test('Operational Logging Subsystems Integration Tests', async (t) => {
   });
 
   // ============================================================
-  // 5. Driver Emergency Alerts Subsystem
+  // 4. Driver Emergency Alerts Subsystem
   // ============================================================
-  await t.test('5. Driver Emergency Alerts (SOS, Auto-Context, Anti-Spam, Polling & Resolution)', async () => {
+  await t.test('4. Driver Emergency Alerts (SOS, Auto-Context, Anti-Spam, Polling & Resolution)', async () => {
     // 5.1 Driver 1 dispatches single-action SOS with geolocation
     const sosRes = await fetch(`${baseUrl}/api/operations/alerts`, {
       method: 'POST',

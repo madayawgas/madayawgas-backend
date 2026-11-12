@@ -126,7 +126,6 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
          OR target_user_id IN (SELECT id FROM users WHERE username LIKE 'test_sched_%')
     `);
 
-    await query(`DELETE FROM duty_attendance WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_sched_%')`);
     await query(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_sched_%')`);
     await query(`DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'test_sched_%')`);
     await query(`DELETE FROM users WHERE username LIKE 'test_sched_%'`);
@@ -183,12 +182,6 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       ['test_sched_driver2', passwordHash, 'Ramon', 'DriverTwo', '+639174000006', driverRoleId]
     );
     driverUser2 = drv2Res.rows[0];
-
-    // Seed active duty attendance for test drivers
-    await query(`
-      INSERT INTO duty_attendance (user_id, status)
-      VALUES ($1, 'ACTIVE'), ($2, 'ACTIVE')
-    `, [driverUser.id, driverUser2.id]);
 
     // 4. Create vehicles
     const truck1Res = await query(`
@@ -1573,10 +1566,10 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
   });
 
   // ------------------------------------------------------------
-  // Subtest 13: Driver Duty Attendance Dispatch Gatekeeper & Shift Invariants
+  // Subtest 13: Driver Dispatch & Multi-Trip Operations Without Attendance Prerequisites
   // ------------------------------------------------------------
-  await t.test('13. Driver Duty Attendance Dispatch Gatekeeper & Multi-Trip Shift Invariants', async () => {
-    // 13.1 Create a dedicated driver who is NOT clocked in
+  await t.test('13. Driver Dispatch & Multi-Trip Operations Without Attendance Prerequisites', async () => {
+    // 13.1 Create a dedicated driver
     const passwordHash = await bcrypt.hash('SchedPass123!', 10);
     const driverRoleId = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
     const drv3Res = await query(
@@ -1584,17 +1577,17 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE) RETURNING *`,
       ['test_sched_driver3', passwordHash, 'Emil', 'DriverThree', '+639174000007', driverRoleId]
     );
-    const unclockedDriver = drv3Res.rows[0];
+    const driver3 = drv3Res.rows[0];
 
-    // Create a vehicle assigned to this unclocked driver
+    // Create a vehicle assigned to this driver
     const truck4Res = await query(`
       INSERT INTO vehicles (plate_number, model, year_model, vehicle_type, current_odometer, last_pm_odometer, status, driver_id)
       VALUES ('TEST-SCHED-TRK4', 'Fuso Canter 4-Wheeler', 2023, 'DELIVERY_TRUCK', 12000, 12000, 'ACTIVE', $1)
       RETURNING *
-    `, [unclockedDriver.id]);
+    `, [driver3.id]);
     const testTruck4 = truck4Res.rows[0];
 
-    // 13.2 Advance route scheduling succeeds WITHOUT driver clock-in
+    // 13.2 Advance route scheduling succeeds
     const schedDate = '2026-10-28';
     const createSchedRes = await fetch(`${baseUrl}/api/schedules`, {
       method: 'POST',
@@ -1607,14 +1600,14 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
         truckId: testTruck4.id,
         salesUserId: salesRep1User.id,
         zoneId: testZone.id,
-        notes: 'Advance schedule for unclocked driver test',
+        notes: 'Advance schedule for driver test',
       }),
     });
-    assert.equal(createSchedRes.status, 201, 'Vehicle scheduling must succeed regardless of driver clock-in');
+    assert.equal(createSchedRes.status, 201, 'Vehicle scheduling must succeed');
     const advanceSched = (await createSchedRes.json()).data.schedule;
     assert.equal(advanceSched.status, 'SCHEDULED');
 
-    // 13.3 Scheduled dispatch fails with 400 Bad Request & DRIVER_NOT_CLOCKED_IN when driver is off-duty
+    // 13.3 Scheduled dispatch succeeds directly without attendance prerequisite
     const schedDispatchRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
       method: 'POST',
       headers: {
@@ -1623,16 +1616,16 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       },
       body: JSON.stringify({
         scheduleId: advanceSched.id,
+        notes: 'Dispatched directly without attendance requirement',
       }),
     });
-    assert.equal(schedDispatchRes.status, 400, 'Scheduled dispatch must be blocked when driver has not clocked in');
-    const schedDispatchBody = await schedDispatchRes.json();
-    assert.equal(schedDispatchBody.status, 'fail');
-    assert.equal(schedDispatchBody.code, 'DRIVER_NOT_CLOCKED_IN');
-    assert.match(schedDispatchBody.message, /has not clocked in yet/i);
+    assert.equal(schedDispatchRes.status, 201, 'Scheduled dispatch must succeed without driver clock-in');
+    const trip1 = (await schedDispatchRes.json()).data.trip;
+    assert.equal(trip1.status, 'IN_PROGRESS');
+    assert.equal(trip1.driver_id, driver3.id);
 
-    // 13.4 Ad-hoc dispatch also fails with 400 Bad Request & DRIVER_NOT_CLOCKED_IN when driver is off-duty
-    const adHocDispatchRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
+    // 13.4 Concurrent dispatch attempt while trip is in progress is blocked (409 Conflict)
+    const concurrentDispatchRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1641,51 +1634,14 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       body: JSON.stringify({
         truckId: testTruck4.id,
         salesUserId: salesRep2User.id,
-        driverId: unclockedDriver.id,
+        driverId: driver3.id,
         zoneId: testZone.id,
-        notes: 'Ad-hoc emergency dispatch attempt',
+        notes: 'Attempt concurrent dispatch for same driver',
       }),
     });
-    assert.equal(adHocDispatchRes.status, 400, 'Ad-hoc dispatch must be blocked when driver has not clocked in');
-    const adHocDispatchBody = await adHocDispatchRes.json();
-    assert.equal(adHocDispatchBody.status, 'fail');
-    assert.equal(adHocDispatchBody.code, 'DRIVER_NOT_CLOCKED_IN');
-    assert.match(adHocDispatchBody.message, /has not clocked in yet/i);
+    assert.equal(concurrentDispatchRes.status, 409, 'Concurrent dispatch for same driver must be blocked');
 
-    // 13.5 Driver clocks in (Supervisor logs attendance on behalf of personnel)
-    const clockInRes = await fetch(`${baseUrl}/api/operations/attendance/clock-in`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
-      },
-      body: JSON.stringify({
-        userId: unclockedDriver.id,
-        notes: 'Clock-in for scheduled delivery run',
-      }),
-    });
-    assert.equal(clockInRes.status, 201, 'Clock-in must succeed');
-    const clockInBody = await clockInRes.json();
-    assert.equal(clockInBody.data.status, 'ACTIVE');
-
-    // 13.6 Scheduled dispatch now succeeds once driver is clocked in
-    const schedSuccessRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
-      },
-      body: JSON.stringify({
-        scheduleId: advanceSched.id,
-        notes: 'Dispatched after driver clocked in',
-      }),
-    });
-    assert.equal(schedSuccessRes.status, 201, 'Dispatch must succeed when driver is clocked in');
-    const trip1 = (await schedSuccessRes.json()).data.trip;
-    assert.equal(trip1.status, 'IN_PROGRESS');
-    assert.equal(trip1.driver_id, unclockedDriver.id);
-
-    // 13.7 Complete trip 1 (Yard return check-in)
+    // 13.5 Complete trip 1 (Yard return check-in)
     const completeRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/complete`, {
       method: 'POST',
       headers: {
@@ -1701,16 +1657,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     const completedTrip1 = (await completeRes.json()).data.trip;
     assert.equal(completedTrip1.status, 'COMPLETED');
 
-    // Verify driver's duty attendance is STILL ACTIVE (no re-clock-in required)
-    const activeDutyRes = await fetch(`${baseUrl}/api/operations/attendance/active?userId=${unclockedDriver.id}`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
-    });
-    assert.equal(activeDutyRes.status, 200);
-    const activeDutyBody = await activeDutyRes.json();
-    assert.ok(activeDutyBody.data !== null, 'Driver attendance must remain active after trip completion');
-    assert.equal(activeDutyBody.data.status, 'ACTIVE');
-
-    // 13.8 Multi-Trip Shift Invariant: Dispatch a second (ad-hoc) trip on the SAME active shift
+    // 13.6 Consecutive Multi-Trip Dispatch: Dispatch a second (ad-hoc) trip for the same driver succeeds
     const trip2Res = await fetch(`${baseUrl}/api/trips/dispatch`, {
       method: 'POST',
       headers: {
@@ -1720,12 +1667,12 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       body: JSON.stringify({
         truckId: testTruck4.id,
         salesUserId: salesRep2User.id,
-        driverId: unclockedDriver.id,
+        driverId: driver3.id,
         zoneId: testZone.id,
-        notes: 'Afternoon ad-hoc delivery on same active shift',
+        notes: 'Afternoon ad-hoc delivery for same driver',
       }),
     });
-    assert.equal(trip2Res.status, 201, 'Second trip must dispatch without requiring driver to clock in again');
+    assert.equal(trip2Res.status, 201, 'Second trip must dispatch cleanly for same driver');
     const trip2 = (await trip2Res.json()).data.trip;
     assert.equal(trip2.status, 'IN_PROGRESS');
 
@@ -1743,40 +1690,14 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     assert.equal(completeTrip2Res.status, 200);
 
-    // 13.9 Driver clocks out at the end of the shift
-    const clockOutRes = await fetch(`${baseUrl}/api/operations/attendance/clock-out`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
-      },
-      body: JSON.stringify({
-        userId: unclockedDriver.id,
-        notes: 'End of shift clock-out',
-      }),
-    });
-    assert.equal(clockOutRes.status, 200, 'Clock-out must succeed');
-    const clockOutBody = await clockOutRes.json();
-    assert.equal(clockOutBody.data.status, 'COMPLETED');
-
-    // 13.10 Subsequent dispatch attempt is blocked because driver is now clocked out (off-duty)
-    const postClockOutDispatchRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
-      },
-      body: JSON.stringify({
-        truckId: testTruck4.id,
-        salesUserId: salesRep1User.id,
-        driverId: unclockedDriver.id,
-        zoneId: testZone.id,
-        notes: 'Attempt dispatch after driver clocked out',
-      }),
-    });
-    assert.equal(postClockOutDispatchRes.status, 400, 'Dispatch must be blocked after driver clocks out');
-    const postClockOutBody = await postClockOutDispatchRes.json();
-    assert.equal(postClockOutBody.status, 'fail');
-    assert.equal(postClockOutBody.code, 'DRIVER_NOT_CLOCKED_IN');
+    // Teardown Subtest 13 records to prevent cross-test contamination
+    await query(`DELETE FROM trip_loads WHERE trip_id IN ($1, $2)`, [trip1.id, trip2.id]);
+    await query(`DELETE FROM trips WHERE id IN ($1, $2)`, [trip1.id, trip2.id]);
+    await query(`DELETE FROM truck_schedules WHERE id = $1`, [advanceSched.id]);
+    await query(`DELETE FROM vehicle_odometer_logs WHERE vehicle_id = $1`, [testTruck4.id]);
+    await query(`DELETE FROM vehicles WHERE id = $1`, [testTruck4.id]);
+    await query(`DELETE FROM sessions WHERE user_id = $1`, [driver3.id]);
+    await query(`DELETE FROM user_roles WHERE user_id = $1`, [driver3.id]);
+    await query(`DELETE FROM users WHERE id = $1`, [driver3.id]);
   });
 });

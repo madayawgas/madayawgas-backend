@@ -75,8 +75,8 @@ Clients are **automatically joined** to authorized Socket.IO rooms upon successf
 | **`room:sales`** | `sales.view` OR `dashboard.view` | Super Admin, Admin, Sales Supervisor, Logistics Supervisor | Shift sales counters, offline batch ingestion notifications, transaction cancellations, and invoice verifications. |
 | **`room:trips`** | `route.manage` OR `route.view_all` OR `route.reconcile` | Super Admin, Admin, Logistics Supervisor, Plant Supervisor | Daily trip dispatches, midday reload manifests, return check-ins, variance reconciliations, and cancellations. |
 | **`room:schedules`** | `route.manage` OR `route.view_all` | Super Admin, Admin, Logistics Supervisor | Daily truck schedule creations, batch template generations, route modifications, and schedule cancellations. |
-| **`room:operations`** | `operations.attendance.view_all` OR `operations.attendance.manage` OR `operations.apprehensions.view_all` OR `operations.apprehensions.manage` OR `operations.fuel.view_all` OR `operations.fuel.manage` | Super Admin, Admin, Logistics Supervisor, Sales Supervisor | Operational frontline logging: Driver clock-in/out duty attendance, roadside traffic apprehensions, and vehicle refueling telemetry. |
-| **`user:{userId}`** | Authenticated User Identity | All Authenticated Users | Dedicated private channel for direct user notifications: assigned driver trip dispatches/reloads/completions, driver vehicle assignment alerts, driver apprehension logging, duty attendance updates, and immediate session revocation (`AUTH_SESSION_REVOKED`). |
+| **`room:operations`** | `operations.apprehensions.view_all` OR `operations.apprehensions.manage` OR `operations.fuel.view_all` OR `operations.fuel.manage` | Super Admin, Admin, Logistics Supervisor, Sales Supervisor | Operational frontline logging: Roadside traffic apprehensions and vehicle refueling telemetry. |
+| **`user:{userId}`** | Authenticated User Identity | All Authenticated Users | Dedicated private channel for direct user notifications: assigned driver trip dispatches/reloads/completions, driver vehicle assignment alerts, driver apprehension logging, and immediate session revocation (`AUTH_SESSION_REVOKED`). |
 
 > [!NOTE]
 > **Mobile Driver & Sales Rep Scoping**:
@@ -691,33 +691,6 @@ Emitted when a supervisor validates and confirms GCash payment proof for an invo
 ---
 
 ### 4.7. Frontline Operations Telemetry (`src/features/operations/`)
-
-#### Event: `ATTENDANCE_DUTY_UPDATED`
-Emitted when personnel clock in or clock out of duty.
-
-* **Trigger**: `POST /api/operations/attendance/clock-in` or `POST /api/operations/attendance/clock-out`.
-* **Target Rooms**: `room:operations`, `user:{userId}`
-* **Payload Structure (Clock Out example)**:
-```json
-{
-  "event": "ATTENDANCE_DUTY_UPDATED",
-  "data": {
-    "attendanceId": "dddddddd-4444-4444-4444-dddddddddddd",
-    "userId": "3c82fa11-4712-4eb2-a9b3-11985da38101",
-    "type": "CLOCK_OUT",
-    "clockOut": "2026-10-19T18:00:00.000Z",
-    "durationMinutes": 510,
-    "timestamp": "2026-10-19T18:00:00.000Z"
-  },
-  "meta": {
-    "timestamp": "2026-10-19T18:00:00.120Z",
-    "version": "1.0"
-  }
-}
-```
-* **Frontend Action**: Supervisor duty board marks employee on/off duty; mobile client switches duty toggle indicator without pull-to-refresh.
-
----
 
 #### Event: `APPREHENSION_LOGGED`
 Emitted when a driver logs a roadside traffic citation or ticket.

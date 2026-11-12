@@ -98,6 +98,24 @@ const EVENT_DEFINITIONS = {
         ? 'Updated personal profile details'
         : `Updated profile details for '${p.username}'`,
   },
+  USER_AVATAR_UPDATED: {
+    module: MODULES.USER_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'user',
+    template: (p) =>
+      p.isSelf
+        ? 'Updated personal profile photo'
+        : `Updated profile photo for '${p.username}'`,
+  },
+  USER_AVATAR_REMOVED: {
+    module: MODULES.USER_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'user',
+    template: (p) =>
+      p.isSelf
+        ? 'Removed personal profile photo'
+        : `Removed profile photo for '${p.username}'`,
+  },
   ROLE_CREATED: {
     module: MODULES.USER_MANAGEMENT,
     actionType: ACTION_TYPES.CREATED,
@@ -480,20 +498,6 @@ const EVENT_DEFINITIONS = {
   // ============================================================
   // 9. OPERATIONAL SUBSYSTEM EVENTS
   // ============================================================
-  ATTENDANCE_CLOCKED_IN: {
-    module: MODULES.OPERATIONS,
-    actionType: ACTION_TYPES.CREATED,
-    targetType: 'duty_attendance',
-    template: (p) =>
-      `Employee '${p.name || p.username}' clocked in for shift`,
-  },
-  ATTENDANCE_CLOCKED_OUT: {
-    module: MODULES.OPERATIONS,
-    actionType: ACTION_TYPES.UPDATED,
-    targetType: 'duty_attendance',
-    template: (p) =>
-      `Employee '${p.name || p.username}' clocked out of shift (Duration: ${p.duration || `${p.durationMinutes || 0}m`})`,
-  },
   APPREHENSION_LOGGED: {
     module: MODULES.OPERATIONS,
     actionType: ACTION_TYPES.CREATED,

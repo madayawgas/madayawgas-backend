@@ -9,7 +9,7 @@ class UsersRepository {
   async findUserByUsername(username) {
     const res = await query(
       `SELECT u.id, u.username, u.password_hash, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
+              u.is_active, u.is_blocked, u.must_change_password, u.avatar_media_key, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.username = $1`,
@@ -29,7 +29,7 @@ class UsersRepository {
   async findUserById(id) {
     const res = await query(
       `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
+              u.is_active, u.is_blocked, u.must_change_password, u.avatar_media_key, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
@@ -41,7 +41,7 @@ class UsersRepository {
   async findUserWithPasswordById(id) {
     const res = await query(
       `SELECT u.id, u.username, u.password_hash, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-              u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name
+              u.is_active, u.is_blocked, u.must_change_password, u.avatar_media_key, u.created_at, r.name as role_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        WHERE u.id = $1`,
@@ -88,7 +88,7 @@ class UsersRepository {
     if (!pagination) {
       const res = await query(
         `SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-                u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name,
+                u.is_active, u.is_blocked, u.must_change_password, u.avatar_media_key, u.created_at, r.name as role_name,
                 COALESCE(
                   JSON_AGG(
                     JSON_BUILD_OBJECT('id', r2.id, 'name', r2.name, 'isPrimary', ur.is_primary)
@@ -119,7 +119,7 @@ class UsersRepository {
 
     const dataSql = `
       SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id,
-             u.is_active, u.is_blocked, u.must_change_password, u.created_at, r.name as role_name,
+             u.is_active, u.is_blocked, u.must_change_password, u.avatar_media_key, u.created_at, r.name as role_name,
              COALESCE(
                JSON_AGG(
                  JSON_BUILD_OBJECT('id', r2.id, 'name', r2.name, 'isPrimary', ur.is_primary)
@@ -230,7 +230,7 @@ class UsersRepository {
     const res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE, $8)
-       RETURNING id, username, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password, created_at`,
+       RETURNING id, username, first_name, last_name, phone, birthdate, role_id, is_active, is_blocked, must_change_password, avatar_media_key, created_at`,
       [username, passwordHash, firstName, lastName, phone, birthdate, primaryId, mustChangePassword]
     );
     const createdUser = res.rows[0];
@@ -250,7 +250,7 @@ class UsersRepository {
     return createdUser;
   }
 
-  async updateUserProfile(id, { firstName, lastName, phone, birthdate, roleId }) {
+  async updateUserProfile(id, { firstName, lastName, phone, birthdate, roleId, avatarMediaKey }) {
     const updates = [];
     const values = [];
     let idx = 1;
@@ -274,6 +274,10 @@ class UsersRepository {
     if (roleId !== undefined) {
       updates.push(`role_id = $${idx++}`);
       values.push(roleId);
+    }
+    if (avatarMediaKey !== undefined) {
+      updates.push(`avatar_media_key = $${idx++}`);
+      values.push(avatarMediaKey);
     }
 
     if (updates.length === 0) {
@@ -535,7 +539,7 @@ class UsersRepository {
     const res = await query(
       `SELECT s.id as session_id, s.user_id, s.token_hash, s.created_at, s.expires_at, s.revoked_at,
               u.username, u.first_name, u.last_name, u.phone, u.birthdate, u.role_id, u.is_active, u.is_blocked,
-              u.must_change_password, r.name as role_name
+              u.must_change_password, u.avatar_media_key, r.name as role_name
        FROM sessions s
        JOIN users u ON s.user_id = u.id
        JOIN roles r ON u.role_id = r.id
@@ -594,6 +598,30 @@ class UsersRepository {
        WHERE id = $3`,
       [passwordHash, mustChangePassword, userId]
     );
+  }
+
+  /**
+   * Counts how many user records reference a given avatar storage key, optionally excluding a specific user ID.
+   * Ensures content-addressed assets are not physically deleted if referenced by another user.
+   *
+   * @param {string} storageKey
+   * @param {string} [excludeUserId]
+   * @returns {Promise<number>}
+   */
+  async countUsersWithAvatarKey(storageKey, excludeUserId = null) {
+    if (!storageKey || typeof storageKey !== 'string') return 0;
+    if (excludeUserId) {
+      const res = await query(
+        `SELECT COUNT(*)::int AS count FROM users WHERE avatar_media_key = $1 AND id != $2`,
+        [storageKey.trim(), excludeUserId]
+      );
+      return res.rows[0]?.count || 0;
+    }
+    const res = await query(
+      `SELECT COUNT(*)::int AS count FROM users WHERE avatar_media_key = $1`,
+      [storageKey.trim()]
+    );
+    return res.rows[0]?.count || 0;
   }
 }
 

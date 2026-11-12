@@ -146,10 +146,8 @@ function initializeSocket(httpServer, customOptions = {}) {
         socket.join('room:schedules');
       }
 
-      // Operations (Duty Attendance, Apprehensions, Fuel Telemetry)
+      // Operations (Apprehensions, Fuel Telemetry, Emergency Alerts)
       if (
-        permissions.includes('attendance.view') ||
-        permissions.includes('attendance.manage') ||
         permissions.includes('apprehensions.view') ||
         permissions.includes('apprehensions.manage') ||
         permissions.includes('fuel.view') ||

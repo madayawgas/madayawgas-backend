@@ -368,9 +368,6 @@ JOIN permissions p
         -- Route
         'route.view_own',
 
-        -- Attendance
-        'attendance.record',
-        'attendance.view_own',
 
         -- Apprehensions
         'apprehensions.create',

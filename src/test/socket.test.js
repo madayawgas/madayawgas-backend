@@ -661,7 +661,7 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
     assert.ok(supTripPayload, 'Logistics Supervisor should receive event from room:trips');
     assert.strictEqual(drvTripPayload, null, 'Driver lacking route.view must NOT receive event from room:trips');
     assert.ok(supOpsPayload, 'Logistics Supervisor should receive event from room:operations');
-    assert.strictEqual(drvOpsPayload, null, 'Driver lacking attendance.view must NOT receive event from room:operations');
+    assert.strictEqual(drvOpsPayload, null, 'Driver lacking operations permissions must NOT receive event from room:operations');
 
     supClient.disconnect();
     drvClient.disconnect();
@@ -774,55 +774,7 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
     drvClient.disconnect();
   });
 
-  test('22. Attendance duty update delivers ATTENDANCE_DUTY_UPDATED to room:operations and user private room', async () => {
-    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_att`, 'Logistics Supervisor');
-    const supervisorSession = await authService.createSession(supervisorUser.id);
-
-    const driverUser = await createTestUser(`${TEST_PREFIX}drv_att`, 'Driver');
-    const driverSession = await authService.createSession(driverUser.id);
-
-    server = http.createServer();
-    initializeSocket(server);
-
-    await new Promise((resolve) => {
-      server.listen(0, '127.0.0.1', () => {
-        port = server.address().port;
-        socketUrl = `http://127.0.0.1:${port}`;
-        resolve();
-      });
-    });
-
-    const supClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: supervisorSession.token } });
-    const drvClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: driverSession.token } });
-
-    await Promise.all([
-      new Promise((res) => supClient.on('connect', res)),
-      new Promise((res) => drvClient.on('connect', res)),
-    ]);
-
-    let supReceived = null;
-    let drvReceived = null;
-
-    supClient.on('ATTENDANCE_DUTY_UPDATED', (p) => { supReceived = p; });
-    drvClient.on('ATTENDANCE_DUTY_UPDATED', (p) => { drvReceived = p; });
-
-    safeEmitSocketEvent('ATTENDANCE_DUTY_UPDATED', {
-      userId: driverUser.id,
-      status: 'ON_DUTY',
-      clockInTime: new Date().toISOString(),
-    }, ['room:operations', `user:${driverUser.id}`]);
-
-    await new Promise((res) => setTimeout(res, 300));
-
-    assert.ok(supReceived, 'Supervisor should receive ATTENDANCE_DUTY_UPDATED via room:operations');
-    assert.ok(drvReceived, 'Driver should receive ATTENDANCE_DUTY_UPDATED via private user room');
-    assert.strictEqual(drvReceived.data.status, 'ON_DUTY');
-
-    supClient.disconnect();
-    drvClient.disconnect();
-  });
-
-  test('23. authService.revokeAllUserSessions delivers AUTH_SESSION_REVOKED to target user private room', async () => {
+  test('22. authService.revokeAllUserSessions delivers AUTH_SESSION_REVOKED to target user private room', async () => {
     const targetUser = await createTestUser(`${TEST_PREFIX}target_rev`, 'Driver');
     const targetSession = await authService.createSession(targetUser.id);
 

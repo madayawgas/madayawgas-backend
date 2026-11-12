@@ -10,7 +10,7 @@ const { schedulesRoutes } = require('../features/schedules');
 const { tripsRoutes } = require('../features/trips');
 
 const { mediaRoutes } = require('../features/media');
-const { operationsRoutes, attendanceRoutes } = require('../features/operations');
+const { operationsRoutes } = require('../features/operations');
 
 // Register API Module Routes
 
@@ -24,7 +24,6 @@ router.use('/schedules', schedulesRoutes);
 router.use('/trips', tripsRoutes);
 router.use('/media', mediaRoutes);
 router.use('/operations', operationsRoutes);
-router.use('/attendance', attendanceRoutes);
 
 module.exports = router;
 

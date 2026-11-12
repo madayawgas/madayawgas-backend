@@ -55,7 +55,9 @@ madayawgas-backend/
 │   │   ├── 012_normalize_work_order_receipts.sql # Normalized work order receipts media attachment ledger
 │   │   ├── 013_plant_and_vehicle_stock_permissions.sql # Plant vs vehicle stock permissions segregation schema
 │   │   ├── 014_hardening_schedules_trips_and_inventory.sql # Status-filtered partial unique indexes & active trip guards
-│   │   └── 015_sales_and_delivery_phase1.sql # Customer schema extension, sales transactions, items, invoices, canister ledger
+│   │   ├── 017_ensure_driver_route_permissions.sql # Ensure driver route permissions
+│   │   ├── 018_remove_driver_attendance.sql        # Remove driver attendance schema
+│   │   └── 019_user_profile_avatar.sql             # User profile avatar media key schema
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -152,7 +154,6 @@ madayawgas-backend/
 │   │   │   ├── media.routes.js              # Express media routes (/upload, /resolve)
 │   │   │   └── index.js                     # Media barrel export
 │   │   ├── operations/                      # Frontline Operational Logging Subsystems
-│   │   │   ├── attendance/                  # Duty Attendance (Clock-In/Out, Duration)
 │   │   │   ├── apprehensions/               # Road Traffic Apprehensions & Citations
 │   │   │   ├── fuel/                        # Vehicle Fuel Tracking & Odometer Advancement
 │   │   │   ├── alerts/                      # Driver Emergency SOS Dispatches & Triage
@@ -185,6 +186,7 @@ madayawgas-backend/
 │   │   ├── pagination.test.js               # Pagination tests (prefix: test_pagi_)
 │   │   ├── permission.test.js               # RBAC & permission tests (prefix: test_perm_)
 │   │   ├── phone.test.js                    # Phone normalizer unit tests
+│   │   ├── profile.avatar.test.js           # User profile avatar upload, storage & lifecycle tests (prefix: test_avatar_)
 │   │   ├── profile.test.js                  # Profile tests (prefix: test_prof_)
 │   │   ├── sales.customer.test.js           # Sales customer master data & receivables tests (prefix: test_sales_cust_)
 │   │   ├── sales.transactions.test.js       # Store-and-forward batch sync, invoices & shift tests (prefix: test_sales_tx_)
@@ -253,6 +255,7 @@ madayawgas-backend/
   - `inventory.test.js` uses prefix `test_inv_`
   - `management.test.js` uses prefix `test_mgmt_`
   - `permission.test.js` uses prefix `test_perm_`
+  - `profile.avatar.test.js` uses prefix `test_avatar_`
   - `profile.test.js` uses prefix `test_prof_`
   - `sales.customer.test.js` uses prefix `test_sales_cust_` and `TEST-SALES-`
   - `sales.transactions.test.js` uses prefix `test_sales_tx_` and `TEST-TXSYNC-`
@@ -288,7 +291,7 @@ madayawgas-backend/
   - `room:sales`: `sales.view` / `dashboard.view`
   - `room:trips`: `route.manage` / `route.view_all` / `route.reconcile`
   - `room:schedules`: `route.manage` / `route.view_all`
-  - `room:operations`: `operations.attendance.*` / `operations.apprehensions.*` / `operations.fuel.*`
+  - `room:operations`: `operations.apprehensions.*` / `operations.fuel.*`
   - `user:${userId}`: Dedicated private channel for all authenticated users (used for driver targeted dispatches, assignments, and session revocations).
 * **Standardized Event Envelope**:
   ```json
@@ -814,13 +817,8 @@ madayawgas-backend/
       - 100% test pass rate across all 17 test suites (151 out of 151 tests passing) with `npm test`.
 18. **Operational Logging Subsystems & Frontline Driver Empowerment (`016_operational_logging_subsystems.sql`)**:
     * **Frontline Driver Authentication & Scoped Authorization**:
-      - Granted `Driver` role login capabilities and assigned frontline operational permissions: `attendance.record`, `attendance.view_own`, `apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `route.view_own`, `fleet.view_own`.
+      - Granted `Driver` role login capabilities and assigned frontline operational permissions: `apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `route.view_own`, `fleet.view_own`.
       - Scoped access controls across Subsystems: Drivers can only access their assigned truck (`GET /api/fleet/my-vehicle`, `GET /api/fleet/vehicles/:id` when `driver_id === actorUser.id`), view maintenance odometer/inspections for their vehicle only, and view trips assigned to their driver account (`route.view_own`). Access to unassigned vehicles or other drivers' trips returns `403 Forbidden`.
-    * **Duty Attendance Subsystem (`src/features/operations/attendance/`)**:
-      - Duty cycle integrity: Partial unique index `UQ_duty_attendance_active_user` on `user_id WHERE clock_out_time IS NULL AND status = 'ACTIVE'` preventing double clock-ins (`OPEN_DUTY_CYCLE_EXISTS`).
-      - Clock-out automatically calculates and returns elapsed duration in minutes, hours, and formatted string (`e.g. 8h 15m`).
-      - Supervisors can clock in/out on behalf of personnel via `attendance.manage`.
-      - Direct alias router mounted on `/api/attendance` alongside `/api/operations/attendance`.
     * **Driver Road Apprehension Logging (`src/features/operations/apprehensions/`)**:
       - Roadside traffic citation recording with mandatory ticket proof (`ticket_media_key`), strictly rejecting submissions lacking proof (`MEDIA_KEY_REQUIRED`).
       - Automatically auto-associates active trip in progress (`trip_id`) and assigned vehicle.
@@ -837,10 +835,10 @@ madayawgas-backend/
     * **Media Storage Whitelisting (`src/features/media/media.service.js`)**:
       - Whitelisted `operations/apprehensions`, `operations/fuel`, `fleet/apprehensions`, `fleet/fuel`.
     * **Event History Definitions (`src/features/history/history.events.js`)**:
-      - Added `MODULES.OPERATIONS` and registered event templates for `ATTENDANCE_CLOCKED_IN`, `ATTENDANCE_CLOCKED_OUT`, `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`, `EMERGENCY_ALERT_TRIGGERED`, `EMERGENCY_ALERT_ACKNOWLEDGED`, `EMERGENCY_ALERT_RESOLVED`.
+      - Added `MODULES.OPERATIONS` and registered event templates for `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`, `EMERGENCY_ALERT_TRIGGERED`, `EMERGENCY_ALERT_ACKNOWLEDGED`, `EMERGENCY_ALERT_RESOLVED`.
     * **Comprehensive Integration Test Suite (`src/test/operations.logging.test.js`)**:
-      - 5 modular subtests verifying driver scoping, duty attendance cycles, road apprehensions, fuel tracking with odometer updates, and emergency SOS alerts.
-      - 100% test pass rate across all 18 test suites (157 out of 157 tests passing) with `npm test`.
+      - 4 modular subtests verifying driver scoping, road apprehensions, fuel tracking with odometer updates, and emergency SOS alerts.
+      - 100% test pass rate across all 18 test suites with `npm test`.
 22. **Socket.IO Foundation Integration (`src/socket.js`)**:
     * **Dependency & Server Binding**: Installed production dependency `socket.io` (v4.8.4) and devDependency `socket.io-client` (v4.8.4). Refactored `src/server.js` to create native `node:http.createServer(app)`, initialize Socket.IO before listening, implement graceful shutdown handlers (`SIGTERM`, `SIGINT`), and export `{ server, startServer }`.
     * **Centralized Configuration & Single Source of Truth**:
@@ -866,23 +864,12 @@ madayawgas-backend/
       - **Fleet (`vehicles.service.js`)**: `VEHICLE_DRIVER_ASSIGNED`, `VEHICLE_DRIVER_UNASSIGNED`, `VEHICLE_STATUS_UPDATED` (alongside existing `FLEET_VEHICLE_GROUNDED`, `FLEET_VEHICLE_RELEASED`).
       - **Inventory (`products.service.js`)**: `PRODUCT_CATALOG_UPDATED` on item creation, modification, and deactivation.
       - **Sales (`transactions.service.js`, `invoices.service.js`, `sync.service.js`)**: `SALES_TRANSACTION_CANCELLED`, `SALES_INVOICE_VERIFIED` (alongside existing `SALES_BATCH_SYNCED`).
-      - **Operations (`attendance.service.js`, `apprehensions.service.js`, `fuel.service.js`)**: `ATTENDANCE_DUTY_UPDATED`, `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`.
+      - **Operations (`apprehensions.service.js`, `fuel.service.js`)**: `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`.
       - **Authentication (`auth.service.js`)**: `AUTH_SESSION_REVOKED` emitted to `user:${userId}` on role changes, password resets, account deactivation, or password changes (with lazy require preventing circular dependency).
     * **Comprehensive Integration Test Suite (`src/test/socket.test.js`)**:
-      - Extended test suite with tests 18–23 verifying multi-room arrays, driver user room targeting, and uninitialized socket graceful fallbacks.
-      - 100% test pass rate across all 19 test suites (180 out of 180 tests passing) with `npm test`.
-26. **Driver Duty Attendance Dispatch Gatekeeper & Shift Invariants Enforcement (`src/features/trips/`)**:
-    * **Attendance Enforcement on Dispatch (`dispatchTrip`)**:
-      - Resolved Driver (either explicitly supplied via `driverId` or snapshotted from the assigned vehicle) is strictly validated against `duty_attendance` via `attendanceRepository.getActiveDutyCycle(driverUser.id)`.
-      - Dispatches (both scheduled and ad-hoc runs) are rejected with `400 Bad Request` and `code: 'DRIVER_NOT_CLOCKED_IN'` if the driver has not clocked in or has already clocked out.
-    * **Advance Scheduling Invariant Preserved (`createSchedule`, `generateWeeklySchedules`)**:
-      - Scheduling a vehicle remains unblocked and independent of driver clock-in status, enabling logistics supervisors to plan future routes days or weeks ahead.
-    * **Multi-Trip Shift Persistence**:
-      - Post-trip yard check-in (`POST /api/trips/:id/complete`) preserves the driver's active duty cycle. Drivers are not required to clock out and in again between deliveries; sequential trips (e.g. morning scheduled route followed by afternoon ad-hoc runs) dispatch seamlessly on the same active shift until evening clock-out.
-    * **Integration Test Coverage (`src/test/schedules.trips.test.js`)**:
-      - Added Subtest 13 verifying: advance scheduling without clock-in, scheduled dispatch blocked when driver is off-duty, ad-hoc dispatch blocked when driver is off-duty, clock-in unblocking dispatch, multi-trip persistence across sequential runs without re-clock-in, and clock-out re-blocking subsequent dispatches.
-      - Hardened `inventory.reconciliation.test.js` test teardown queries to isolate test vehicles/drivers and prevent foreign key conflicts during concurrent test runs.
-27. **Frontline Product Catalog Viewing Authorization Alignment (`src/features/inventory/inventory.routes.js`)**:
+      - Extended test suite with tests 18–22 verifying multi-room arrays, driver user room targeting, and uninitialized socket graceful fallbacks.
+      - 100% test pass rate across all 19 test suites with `npm test`.
+26. **Frontline Product Catalog Viewing Authorization Alignment (`src/features/inventory/inventory.routes.js`)**:
     * **Expanded Product Catalog Permissions**:
       - Updated `GET /api/inventory/products` and `GET /api/inventory/products/:id` route guards from strictly requiring `inventory.view` to accepting `['inventory.view', 'sales.view', 'sales.view_own', 'sales.create']`.
       - Empowers frontline mobile sales agents (`sales_user` holding `Sales Person` role) to query the authoritative product catalog during mobile order placement without receiving `403 Forbidden`.
@@ -901,12 +888,12 @@ The database seed provides permanent accounts for system testing (`must_change_p
 | :--- | :--- | :--- | :--- | :--- |
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access (`*`). Cannot be deactivated, blocked, or demoted. |
 | **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales, history, operations. |
-| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet, logistics & operations oversight (`dashboard.view`, `fleet.*`, `route.*`, `attendance.*`, `apprehensions.*`, `fuel.*`, `alerts.*`, `inventory.vehicle.manage`, `history.view`). |
-| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Field Driver with mobile login capabilities (`attendance.record`, `attendance.view_own`, `apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `fleet.view_own`, `route.view_own`). Scoped to assigned vehicle and own trips only. |
-| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & operations (`dashboard.view`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `attendance.*`, `alerts.view/manage`, `delivery.*`, `history.view`). |
-| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`, `attendance.record`, `attendance.view_own`, `apprehensions.create`, `alerts.trigger`). |
+| **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet, logistics & operations oversight (`dashboard.view`, `fleet.*`, `route.*`, `apprehensions.*`, `fuel.*`, `alerts.*`, `inventory.vehicle.manage`, `history.view`). |
+| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Field Driver with mobile login capabilities (`apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `fleet.view_own`, `route.view_own`). Scoped to assigned vehicle and own trips only. |
+| **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & operations (`dashboard.view`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `alerts.view/manage`, `delivery.*`, `history.view`). |
+| **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`, `apprehensions.create`, `alerts.trigger`). |
 | **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Master Bunawan yard stock & defect quarantines (`dashboard.view`, `inventory.view`, `inventory.plant.manage`). Route dispatches, vehicle stock manipulation, fleet, sales, and user admin are strictly blocked. |
-| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `delivery.*`, `attendance.*`, `alerts.*`, `history.view`). |
+| **`samantha_supervisor`** | `SamanthaPass123!` | **Sales Supervisor** *(Primary)* + **Logistics Supervisor** *(Multi-role)* | `+639170000008` | Multi-role Employee: Unions permissions across Sales Supervisor and Logistics Supervisor (`fleet.*`, `route.*`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `delivery.*`, `alerts.*`, `history.view`). |
 
 ---
 

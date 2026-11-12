@@ -13,7 +13,7 @@
 
 - [Architectural Overview \& Global Conventions](#architectural-overview--global-conventions)
 - [PostgreSQL Custom ENUM Catalog](#postgresql-custom-enum-catalog)
-- [Subsystem 1: User Management, RBAC \& Workforce Attendance](#subsystem-1-user-management-rbac--workforce-attendance) (9 Tables)
+- [Subsystem 1: User Management & RBAC](#1-user-management--rbac) (8 Tables)
 - [Subsystem 2: Fleet, Maintenance \& Frontline Operations](#subsystem-2-fleet-maintenance--frontline-operations) (13 Tables)
 - [Subsystem 3: Plant Inventory Subsystem](#subsystem-3-plant-inventory-subsystem) (3 Tables)
 - [Subsystem 4: Schedule \& Trip Subsystem](#subsystem-4-schedule--trip-subsystem) (7 Tables)
@@ -46,7 +46,6 @@ The MadayawGas backend data architecture is implemented on PostgreSQL 18. All ta
    - `UQ_approval_requests_pending`: Enforces at most one pending approval request per work order (`WHERE is_approved IS NULL`), allowing subsequent requests upon rejection.
    - `UQ_trips_schedule_id`: Enforces a 1:1 execution for scheduled dispatch runs while allowing unscheduled ad-hoc trips (`WHERE schedule_id IS NOT NULL`).
    - `UQ_trips_active_truck`: Guarantees a truck cannot be dispatched simultaneously on multiple active runs (`WHERE status IN ('PENDING', 'IN_PROGRESS')`).
-   - `UQ_duty_attendance_active_user`: Guarantees a worker cannot open concurrent duty shifts (`WHERE clock_out_time IS NULL AND status = 'ACTIVE'`).
    - `UQ_truck_schedules_active_date`: Guarantees a vehicle is scheduled at most once per calendar date (`WHERE status != 'CANCELLED'`).
 
 ---
@@ -70,10 +69,10 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 
 ---
 
-## 1. User Management, RBAC & Workforce Attendance
+## 1. User Management & RBAC
 
-> **Scope**: Manages enterprise identity, authentication sessions, cryptographic credential lifecycles, role-based authorization matrices, immutable administrative audit logging, centralized system event history, and frontline duty shift attendance.  
-> **Tables in Subsystem**: 9 tables
+> **Scope**: Manages enterprise identity, authentication sessions, cryptographic credential lifecycles, role-based authorization matrices, immutable administrative audit logging, and centralized system event history.  
+> **Tables in Subsystem**: 8 tables
 
 ### Table: `users`
 
@@ -289,7 +288,7 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
       <td>
         <ol>
           <li><code>permissions.id</code> is the primary key (UUID, auto-generated via <code>gen_random_uuid()</code>).</li>
-          <li><code>permissions.name</code> is unique and follows the hierarchical <code>module.action</code> convention (e.g., <code>fleet.view_own</code>, <code>attendance.record</code>, <code>trips.dispatch</code>).</li>
+          <li><code>permissions.name</code> is unique and follows the hierarchical <code>module.action</code> convention (e.g., <code>fleet.view_own</code>, <code>fuel.create</code>, <code>trips.dispatch</code>).</li>
           <li>Permissions are mapped to roles via <code>role_permissions</code> and evaluated at runtime by the <code>requirePermission</code> middleware.</li>
         </ol>
       </td>
@@ -665,110 +664,6 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 </table>
 
 ---
-
-### Table: `duty_attendance`
-
-<table>
-  <thead>
-    <tr>
-      <th width="20%">Field</th>
-      <th width="80%">Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>Table Name</strong></td>
-      <td><code>duty_attendance</code></td>
-    </tr>
-    <tr>
-      <td><strong>Purpose</strong></td>
-      <td>Frontline operational duty attendance ledger recording personnel shift clock-in, clock-out, shift duration, and supervisory oversight.</td>
-    </tr>
-    <tr>
-      <td><strong>Structure</strong></td>
-      <td>
-        <table>
-          <thead>
-            <tr>
-              <th>Column</th>
-              <th>Datatype</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>id</code></td>
-              <td>UUID (Primary key, Default: <code>gen_random_uuid()</code>)</td>
-            </tr>
-            <tr>
-              <td><code>user_id</code></td>
-              <td>UUID (Foreign key &rarr; <code>users.id</code>, NOT NULL)</td>
-            </tr>
-            <tr>
-              <td><code>clock_in_time</code></td>
-              <td>TIMESTAMPTZ (NOT NULL, Default: <code>CURRENT_TIMESTAMP</code>)</td>
-            </tr>
-            <tr>
-              <td><code>clock_out_time</code></td>
-              <td>TIMESTAMPTZ (NULL)</td>
-            </tr>
-            <tr>
-              <td><code>clock_in_recorded_by</code></td>
-              <td>UUID (Foreign key &rarr; <code>users.id</code>, NULL)</td>
-            </tr>
-            <tr>
-              <td><code>clock_out_recorded_by</code></td>
-              <td>UUID (Foreign key &rarr; <code>users.id</code>, NULL)</td>
-            </tr>
-            <tr>
-              <td><code>clock_in_notes</code></td>
-              <td>TEXT (NULL)</td>
-            </tr>
-            <tr>
-              <td><code>clock_out_notes</code></td>
-              <td>TEXT (NULL)</td>
-            </tr>
-            <tr>
-              <td><code>duration_minutes</code></td>
-              <td>INTEGER (NULL)</td>
-            </tr>
-            <tr>
-              <td><code>status</code></td>
-              <td>VARCHAR(20) (NOT NULL, Default: <code>'ACTIVE'</code>)</td>
-            </tr>
-            <tr>
-              <td><code>created_at</code></td>
-              <td>TIMESTAMPTZ (NOT NULL, Default: <code>CURRENT_TIMESTAMP</code>)</td>
-            </tr>
-            <tr>
-              <td><code>updated_at</code></td>
-              <td>TIMESTAMPTZ (NOT NULL, Default: <code>CURRENT_TIMESTAMP</code>)</td>
-            </tr>
-          </tbody>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td><strong>Notes</strong></td>
-      <td>
-        <ol>
-          <li><code>duty_attendance.id</code> is the primary key (UUID, auto-generated via <code>gen_random_uuid()</code>).</li>
-          <li><code>duty_attendance.user_id</code> references <code>users.id</code> with <code>ON DELETE CASCADE</code>.</li>
-          <li>Enforces partial unique index <code>UQ_duty_attendance_active_user</code> on <code>(user_id) WHERE clock_out_time IS NULL AND status = 'ACTIVE'</code>, guaranteeing that a worker cannot initiate concurrent active shifts.</li>
-          <li><code>clock_in_recorded_by</code> and <code>clock_out_recorded_by</code> reference <code>users.id</code> with <code>ON DELETE SET NULL</code> for supervisory override attribution.</li>
-          <li>Maintains an automated <code>updated_at</code> trigger.</li>
-        </ol>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
----
-
-
-## 2. Fleet, Maintenance & Frontline Operations
-
-> **Scope**: Manages delivery trucks and fleet assets, telemetry odometer readings, vehicle safety inspections, accident and breakdown incidents, work orders, managerial cost approvals, maintenance completion logs, receipt media attachments, fuel consumption logging, road traffic apprehensions, and driver emergency SOS alerts.  
-> **Tables in Subsystem**: 13 tables
 
 ### Table: `vehicles`
 
@@ -3440,7 +3335,7 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 ### 2. Breakdown by Subsystem
 | # | Subsystem Name | Table Count | Tables Included |
 | :---: | :--- | :---: | :--- |
-| 1 | **User Management, RBAC & Workforce Attendance** | **9** | `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `audit_logs`, `history_logs`, `duty_attendance` |
+| 1 | **User Management & RBAC** | **8** | `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `audit_logs`, `history_logs` |
 | 2 | **Fleet, Maintenance & Frontline Operations** | **13** | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts`, `vehicle_fuel_logs`, `driver_apprehensions`, `emergency_alerts` |
 | 3 | **Plant Inventory Subsystem** | **3** | `products`, `plant_inventory`, `plant_stock_adjustments` |
 | 4 | **Schedule & Trip Subsystem** | **7** | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` |
@@ -3455,7 +3350,6 @@ The table below details all reconciliations between the initial proposed archite
 | :--- | :--- | :--- | :--- |
 | **`User Presence`** | ❌ Not in Database | Replaced with `role_permissions` | `user_presence` was proposed as an estimate, but real-time presence is handled via in-memory Socket.IO rooms. The actual RBAC database junction table is `role_permissions`. |
 | **`role_permissions`** | ✅ Exists in Database | Documented in Subsystem 1 | Junction table mapping `roles` to `permissions` (Migration `001`). |
-| **`duty_attendance`** | ✅ Exists in Database | Documented in Subsystem 1 | Workforce shift attendance logging (Migration `016`). |
 | **`driver_apprehensions`** | ✅ Exists in Database | Documented in Subsystem 2 | Road traffic citations and violations with ticket proof (Migration `016`). |
 | **`vehicle_fuel_logs`** | ✅ Exists in Database | Documented in Subsystem 2 | Vehicle fuel telemetry and odometer advancement tracking (Migration `016`). |
 | **`emergency_alerts`** | ✅ Exists in Database | Documented in Subsystem 2 | In-transit driver emergency SOS dispatch and triage (Migration `016`). |

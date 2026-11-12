@@ -9,7 +9,6 @@ const zonesRepository = require('../schedules/zones/zones.repository');
 const vehiclesRepository = require('../fleet/vehicles/vehicles.repository');
 const productsRepository = require('../inventory/products/products.repository');
 const inventoryRepository = require('../inventory/inventory.repository');
-const attendanceRepository = require('../operations/attendance/attendance.repository');
 const { maintenanceService } = require('../fleet/maintenance');
 const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
@@ -313,17 +312,6 @@ class TripsService {
         `Driver '${driverUser.username}' already has an ongoing trip (#${activeDriverTrip.trip_number}) currently in progress`
       );
       err.statusCode = 409;
-      throw err;
-    }
-
-    // 4.1 Attendance Verification: Driver must be clocked in on active duty
-    const activeDriverDuty = await attendanceRepository.getActiveDutyCycle(driverUser.id);
-    if (!activeDriverDuty) {
-      const err = new Error(
-        `Cannot dispatch trip: Assigned driver '${driverUser.username}' has not clocked in yet. Driver must be clocked in on active duty to be dispatched.`
-      );
-      err.statusCode = 400;
-      err.code = 'DRIVER_NOT_CLOCKED_IN';
       throw err;
     }
 

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const usersController = require('./users.controller');
 const { authenticate, requirePermission, requirePasswordConfirmation } = require('../../middleware/auth.middleware');
+const { uploadAvatarMedia } = require('../media/media.middleware');
 const asyncHandler = require('../../utils/asyncHandler');
 
 // ==========================================
@@ -17,6 +18,17 @@ router.post('/logout', asyncHandler(usersController.logout.bind(usersController)
 
 router.get('/me', authenticate, asyncHandler(usersController.getMe.bind(usersController)));
 router.patch('/me', authenticate, asyncHandler(usersController.updateMe.bind(usersController)));
+router.post(
+  '/me/avatar',
+  authenticate,
+  uploadAvatarMedia('avatar'),
+  asyncHandler(usersController.uploadMyAvatar.bind(usersController))
+);
+router.delete(
+  '/me/avatar',
+  authenticate,
+  asyncHandler(usersController.deleteMyAvatar.bind(usersController))
+);
 router.post('/change-password', authenticate, asyncHandler(usersController.changePassword.bind(usersController)));
 
 // ==========================================
@@ -97,6 +109,19 @@ router.patch(
   '/:id',
   authenticate,
   asyncHandler(usersController.updateUserProfile.bind(usersController))
+);
+
+router.post(
+  '/:id/avatar',
+  authenticate,
+  uploadAvatarMedia('avatar'),
+  asyncHandler(usersController.uploadUserAvatar.bind(usersController))
+);
+
+router.delete(
+  '/:id/avatar',
+  authenticate,
+  asyncHandler(usersController.deleteUserAvatar.bind(usersController))
 );
 
 router.patch(
