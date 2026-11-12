@@ -135,6 +135,26 @@ class InventoryController {
   }
 
   /**
+   * POST /api/inventory/plant/adjust
+   * Comprehensive plant stock adjustment (Physical Count Audit, Quantity Correction, Scrap Write-Off).
+   */
+  async adjustPlantStock(req, res) {
+    try {
+      const result = await inventoryService.adjustPlantStockDirectly(req.user, req.body || {});
+      return res.status(200).json({
+        status: 'success',
+        message: 'Plant stock adjusted successfully',
+        data: result,
+      });
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
    * GET /api/inventory/plant/adjustments
    * Audit log of plant inventory adjustments.
    */

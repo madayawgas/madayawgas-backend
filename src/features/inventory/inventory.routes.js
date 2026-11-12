@@ -71,6 +71,18 @@ router.post(
   asyncHandler(inventoryController.quarantineDefects.bind(inventoryController))
 );
 
+/**
+ * POST /api/inventory/plant/adjust
+ * Comprehensive stock adjustment (Physical Count Audit, Quantity Correction, Scrap Write-Off).
+ * Restricted to plant supervisors and administrators.
+ */
+router.post(
+  '/plant/adjust',
+  authenticate,
+  requirePermission(['inventory.plant.manage', 'inventory.manage']),
+  asyncHandler(inventoryController.adjustPlantStock.bind(inventoryController))
+);
+
 
 // ============================================================
 // 2. Global Cross-Fleet Inventory Transfers Ledger (/transfers)

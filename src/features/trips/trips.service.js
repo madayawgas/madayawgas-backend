@@ -713,17 +713,17 @@ class TripsService {
       throw err;
     }
 
+    let numOdometer;
     if (returnOdometerKm === undefined || returnOdometerKm === null || returnOdometerKm === '') {
-      const err = new Error('returnOdometerKm is required upon plant check-in');
-      err.statusCode = 400;
-      throw err;
-    }
-
-    const numOdometer = Number(returnOdometerKm);
-    if (isNaN(numOdometer) || !Number.isInteger(numOdometer) || numOdometer < 0) {
-      const err = new Error('returnOdometerKm must be a non-negative integer');
-      err.statusCode = 400;
-      throw err;
+      // Driver records odometer separately; fallback gracefully to truck's current/departure odometer
+      numOdometer = Number(trip.truck_current_odometer ?? trip.departure_odometer ?? 0);
+    } else {
+      numOdometer = Number(returnOdometerKm);
+      if (isNaN(numOdometer) || !Number.isInteger(numOdometer) || numOdometer < 0) {
+        const err = new Error('returnOdometerKm must be a non-negative integer');
+        err.statusCode = 400;
+        throw err;
+      }
     }
 
     let resolvedReturnTime = new Date();

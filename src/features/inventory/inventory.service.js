@@ -384,6 +384,177 @@ class InventoryService {
   }
 
   /**
+   * Comprehensive plant inventory adjustment (Physical Count Audit, Quantity Correction, Scrap Write-Off).
+   * Supports setting absolute count or positive/negative delta across FILLED, EMPTY_GOOD, DEFECTIVE.
+   *
+   * @param {Object} actorUser
+   * @param {Object} payload - { productId, adjustmentType, targetCondition, deltaQuantity, newQuantity, sourceCondition, supplierInvoiceNumber, reason }
+   */
+  async adjustPlantStockDirectly(actorUser, payload = {}) {
+    const {
+      productId,
+      adjustmentType = 'PHYSICAL_COUNT',
+      targetCondition = 'FILLED',
+      deltaQuantity,
+      newQuantity,
+      sourceCondition = null,
+      supplierInvoiceNumber = null,
+      reason,
+    } = payload;
+
+    if (!productId || typeof productId !== 'string') {
+      const err = new Error('productId is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const product = await productsRepository.getProductById(productId.trim());
+    if (!product) {
+      const err = new Error(`Product with ID '${productId}' not found`);
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const validConditions = ['FILLED', 'EMPTY_GOOD', 'DEFECTIVE'];
+    const targetCond = (targetCondition || 'FILLED').toUpperCase().trim();
+    if (!validConditions.includes(targetCond)) {
+      const err = new Error(`targetCondition must be one of ${validConditions.join(', ')}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const validAdjustmentTypes = ['PHYSICAL_COUNT', 'SUPPLIER_PURCHASE', 'DEFECT_ADJUSTMENT'];
+    const adjType = (adjustmentType || 'PHYSICAL_COUNT').toUpperCase().trim();
+    if (!validAdjustmentTypes.includes(adjType)) {
+      const err = new Error(`adjustmentType must be one of ${validAdjustmentTypes.join(', ')}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const client = await pool.connect();
+    let updatedStock;
+    let adjustmentRecord;
+
+    try {
+      await client.query('BEGIN');
+
+      const currentStock = await inventoryRepository.getPlantStockByProductId(product.id, client, true);
+      if (!currentStock) {
+        await inventoryRepository.adjustPlantStock(
+          { productId: product.id, deltaFilled: 0, deltaEmptyGood: 0, deltaDefective: 0 },
+          client
+        );
+      }
+
+      const refreshedStock = await inventoryRepository.getPlantStockByProductId(product.id, client, true);
+      const currentFilled = Number(refreshedStock?.quantity_filled || 0);
+      const currentEmpty = Number(refreshedStock?.quantity_empty_good || 0);
+      const currentDefective = Number(refreshedStock?.quantity_defective || 0);
+
+      let delta = 0;
+      if (newQuantity !== undefined && newQuantity !== null && newQuantity !== '') {
+        const numNew = parseInt(newQuantity, 10);
+        if (isNaN(numNew) || numNew < 0) {
+          const err = new Error('newQuantity must be a non-negative integer');
+          err.statusCode = 400;
+          throw err;
+        }
+        if (targetCond === 'FILLED') delta = numNew - currentFilled;
+        else if (targetCond === 'EMPTY_GOOD') delta = numNew - currentEmpty;
+        else if (targetCond === 'DEFECTIVE') delta = numNew - currentDefective;
+      } else if (deltaQuantity !== undefined && deltaQuantity !== null && deltaQuantity !== '') {
+        delta = parseInt(deltaQuantity, 10);
+        if (isNaN(delta)) {
+          const err = new Error('deltaQuantity must be an integer');
+          err.statusCode = 400;
+          throw err;
+        }
+      } else {
+        const err = new Error('Either deltaQuantity or newQuantity must be provided');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (targetCond === 'FILLED' && currentFilled + delta < 0) {
+        const err = new Error(`Adjustment would result in negative filled stock (${currentFilled + delta})`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (targetCond === 'EMPTY_GOOD' && currentEmpty + delta < 0) {
+        const err = new Error(`Adjustment would result in negative empty stock (${currentEmpty + delta})`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (targetCond === 'DEFECTIVE' && currentDefective + delta < 0) {
+        const err = new Error(`Adjustment would result in negative defective stock (${currentDefective + delta})`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      let srcDelta = 0;
+      if (sourceCondition && sourceCondition !== targetCond) {
+        const srcCond = sourceCondition.toUpperCase().trim();
+        if (delta > 0) {
+          srcDelta = -delta;
+          if (srcCond === 'FILLED' && currentFilled - delta < 0) {
+            const err = new Error(`Insufficient filled stock (${currentFilled}) to transfer ${delta} units`);
+            err.statusCode = 400;
+            throw err;
+          }
+          if (srcCond === 'EMPTY_GOOD' && currentEmpty - delta < 0) {
+            const err = new Error(`Insufficient empty stock (${currentEmpty}) to transfer ${delta} units`);
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+      }
+
+      const deltaFilled = (targetCond === 'FILLED' ? delta : 0) + (sourceCondition === 'FILLED' ? srcDelta : 0);
+      const deltaEmptyGood = (targetCond === 'EMPTY_GOOD' ? delta : 0) + (sourceCondition === 'EMPTY_GOOD' ? srcDelta : 0);
+      const deltaDefective = (targetCond === 'DEFECTIVE' ? delta : 0) + (sourceCondition === 'DEFECTIVE' ? srcDelta : 0);
+
+      updatedStock = await inventoryRepository.adjustPlantStock(
+        { productId: product.id, deltaFilled, deltaEmptyGood, deltaDefective },
+        client
+      );
+
+      adjustmentRecord = await inventoryRepository.recordStockAdjustment(
+        {
+          productId: product.id,
+          recordedBy: actorUser?.id || null,
+          adjustmentType: adjType,
+          targetCondition: targetCond,
+          deltaQuantity: delta,
+          sourceCondition: sourceCondition || null,
+          supplierInvoiceNumber: supplierInvoiceNumber ? String(supplierInvoiceNumber).trim() : null,
+          reason: reason ? String(reason).trim() : 'Plant yard physical inventory adjustment',
+        },
+        client
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+      operation: 'STOCK_ADJUSTMENT',
+      tripId: null,
+      slipNumber: null,
+      affectedProductIds: [product.id],
+      updatedAt: new Date().toISOString(),
+    }, 'room:inventory');
+
+    return {
+      stock: updatedStock,
+      adjustment: adjustmentRecord,
+    };
+  }
+
+  /**
    * Computes suggested equal loading split per active truck with supervisor override baseline.
    * Formula: floor(plant_inventory.quantity_filled / activeTruckCount)
    *
