@@ -57,7 +57,9 @@ madayawgas-backend/
 │   │   ├── 014_hardening_schedules_trips_and_inventory.sql # Status-filtered partial unique indexes & active trip guards
 │   │   ├── 017_ensure_driver_route_permissions.sql # Ensure driver route permissions
 │   │   ├── 018_remove_driver_attendance.sql        # Remove driver attendance schema
-│   │   └── 019_user_profile_avatar.sql             # User profile avatar media key schema
+│   │   ├── 019_user_profile_avatar.sql             # User profile avatar media key schema
+│   │   ├── 020_add_returned_to_trip_status.sql     # Safe enum alteration adding RETURNED to trip_status
+│   │   └── 021_trip_handling_and_reconciliation_flow.sql # Ended_by column, active truck index, route.end_own permission
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -877,6 +879,28 @@ madayawgas-backend/
     * **Test Suite & API Contracts Synchronization**:
       - Updated Subtest 1 in `src/test/inventory.test.js` verifying that `Sales Person` can view the product catalog (`200 OK`) while remaining forbidden from registering or modifying products (`403 Forbidden`), and that unauthorized roles (e.g. `Fleet Manager`) receive `403 Forbidden`.
       - Synchronized `docs/api-contracts/inventory/products.api.md` and `docs/permissions.md`.
+27. **Sequential Trip Handling & Plant Reconciliation Architecture (`src/features/trips/`, `src/features/inventory/`)**:
+    * **Sequential 4-Stage Trip Flow Enforcement**:
+      - Replaced ambiguous return mechanics with a strict 4-stage lifecycle: `Dispatch (Supervisor)` ➔ `Active Trip (IN_PROGRESS)` ➔ `End Trip (Driver only, mandatory odometer)` ➔ `Reconciliation (Plant physical count & settlement)`.
+    * **Database Migrations (`020`, `021`)**:
+      - `020_add_returned_to_trip_status.sql`: Safely added `'RETURNED'` to `trip_status` PostgreSQL enum in an isolated transaction to prevent enum unsafe-use transaction conflicts.
+      - `021_trip_handling_and_reconciliation_flow.sql`:
+        - Added `ended_by UUID REFERENCES users(id) ON DELETE SET NULL` and index `IX_trips_ended_by`.
+        - Updated partial unique index `UQ_trips_active_truck` to cover `status IN ('PENDING', 'IN_PROGRESS', 'RETURNED')`, ensuring vehicle remains locked to the trip until physical plant reconciliation is settled.
+        - Registered new RBAC permission `route.end_own` in `permissions` and mapped it to `Driver`, `Logistics Supervisor`, `Admin`, and `Super Admin`.
+    * **Driver End Trip Engine (`POST /api/trips/:id/end`)**:
+      - Restricted to assigned Driver (or supervisor with `route.manage`). Frontline `Sales Person` accounts are rejected (`403 Forbidden`).
+      - Mandates monotonic `currentOdometer` (`>= truck.current_odometer`) which invokes `maintenanceService.logOdometerReading` to advance vehicle asset odometer and evaluate 5,000-km PM baseline.
+      - Transitions trip `status: IN_PROGRESS` ➔ `RETURNED`, records `ended_by`, `return_time`, and `return_odometer_log_id`.
+      - Emits `TRIP_ENDED` via WebSocket to `room:trips` and `user:${trip.driver_id}`, and logs `TRIP_ENDED` audit event.
+    * **Plant Physical Count & Reconciliation (`POST /api/trips/:id/reconcile`)**:
+      - Enforces strict prerequisite: trip must be in `RETURNED` status (or re-reconciling a `COMPLETED` trip); attempts to reconcile `IN_PROGRESS` trips return `400 Bad Request`.
+      - Supports physical return unload manifests (`returnLoads`), automatically creating `RETURN_UNLOAD` transfer slips and replenishing Bunawan bulk plant stock.
+      - Calculates full cylinder and empty canister discrepancy formulas against synced cabin sales and customer debt, marking reconciliation `SETTLED` or `FLAGGED_VARIANCE`.
+      - Transitions trip `status` to `COMPLETED`, releasing vehicle asset from `UQ_trips_active_truck`.
+      - Emits `TRIP_RECONCILED` and `TRIP_COMPLETED` WebSockets.
+    * **Legacy Monolith Cleanup**:
+      - Completely removed legacy check-in endpoint `POST /api/trips/:id/complete` across route, controller, service, repository, and test suites.
 
 ---
 
@@ -889,7 +913,7 @@ The database seed provides permanent accounts for system testing (`must_change_p
 | **`superadmin`** | `Superadmin123!` | **Super Admin** | `+639170000001` | Full unrestricted access (`*`). Cannot be deactivated, blocked, or demoted. |
 | **`admin_user`** | `AdminPass123!` | **Admin** | `+639170000002` | Administrator access (`*`): user management, role CRUD, fleet, inventory, sales, history, operations. |
 | **`logistics_supervisor`** | `LogisticsPass123!` | **Logistics Supervisor** | `+639170000003` | Fleet, logistics & operations oversight (`dashboard.view`, `fleet.*`, `route.*`, `apprehensions.*`, `fuel.*`, `alerts.*`, `inventory.vehicle.manage`, `history.view`). |
-| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Field Driver with mobile login capabilities (`apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `fleet.view_own`, `route.view_own`). Scoped to assigned vehicle and own trips only. |
+| **`driver_user`** | `DriverPass123!` | **Driver** | `+639170000005` | Field Driver with mobile login capabilities (`apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `fleet.view_own`, `route.view_own`, `route.end_own`). Scoped to assigned vehicle and own trips only. |
 | **`sales_supervisor`** | `SalesSupPass123!` | **Sales Supervisor** | `+639170000006` | Sales oversight & operations (`dashboard.view`, `inventory.view`, `inventory.vehicle.manage`, `sales.view/update/delete`, `alerts.view/manage`, `delivery.*`, `history.view`). |
 | **`sales_user`** | `SalesPass123!` | **Sales Person** | `+639170000004` | Frontline sales rep (`sales.view_own`, `sales.create`, `sales.update`, `delivery.view_own`, `delivery.update_own`, `route.view_own`, `apprehensions.create`, `alerts.trigger`). |
 | **`plant_supervisor`** | `PlantPass123!` | **Plant Supervisor** | `+639170000007` | Plant Operations: Master Bunawan yard stock & defect quarantines (`dashboard.view`, `inventory.view`, `inventory.plant.manage`). Route dispatches, vehicle stock manipulation, fleet, sales, and user admin are strictly blocked. |

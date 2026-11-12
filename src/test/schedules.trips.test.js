@@ -36,6 +36,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
   let logisticsCookie;
   let salesRep1Cookie;
   let salesRep2Cookie;
+  let driverCookie;
 
   let adminUser;
   let logisticsUser;
@@ -261,6 +262,13 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       body: JSON.stringify({ username: 'test_sched_sales2', password: 'SchedPass123!' }),
     });
     salesRep2Cookie = parseCookieHeader(sp2Login);
+
+    const drvLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_sched_driver', password: 'SchedPass123!' }),
+    });
+    driverCookie = parseCookieHeader(drvLogin);
   });
 
   // ------------------------------------------------------------
@@ -627,64 +635,122 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     const trip = (await dispatchRes.json()).data.trip;
 
-    // 6.2 Plant check-in with invalid non-monotonic odometer (< 10000 km) is rejected (400)
-    const invalidOdo = await fetch(`${baseUrl}/api/trips/${trip.id}/complete`, {
+    // 6.2 Missing currentOdometer is rejected (400)
+    const missingOdo = await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${driverCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 9500, // Current is 10000
+        notes: 'Trying without odometer',
+      }),
+    });
+    assert.equal(missingOdo.status, 400);
+    const missingBody = await missingOdo.json();
+    assert.match(missingBody.message, /currentOdometer is required/i);
+
+    // 6.3 Sales Person attempting to end trip is forbidden (403 via route permission guard)
+    const salesEndRes = await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesRep1Cookie}`,
+      },
+      body: JSON.stringify({
+        currentOdometer: 10250,
+      }),
+    });
+    assert.equal(salesEndRes.status, 403);
+    const salesEndBody = await salesEndRes.json();
+    assert.match(salesEndBody.message, /Forbidden/i);
+
+    // 6.4 Plant check-in with invalid non-monotonic odometer (< 10000 km) is rejected (400)
+    const invalidOdo = await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${driverCookie}`,
+      },
+      body: JSON.stringify({
+        currentOdometer: 9500, // Current is 10000
       }),
     });
     assert.equal(invalidOdo.status, 400);
     const invalidBody = await invalidOdo.json();
     assert.match(invalidBody.message, /cannot be less than the current odometer/i);
 
-    // 6.3 Plant check-in with valid return odometer (10250 km, +250 km driven) and return unload
-    const completeRes = await fetch(`${baseUrl}/api/trips/${trip.id}/complete`, {
+    // 6.5 Assigned Driver successfully ends trip with mandatory currentOdometer
+    const endRes = await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${driverCookie}`,
+      },
+      body: JSON.stringify({
+        currentOdometer: 10250,
+        notes: 'Driver finished delivery route and returned to plant yard',
+      }),
+    });
+    assert.equal(endRes.status, 200);
+    const endBody = await endRes.json();
+
+    // Verify trip status transitioned to RETURNED
+    assert.equal(endBody.data.trip.status, 'RETURNED');
+    assert.equal(endBody.data.trip.ended_by, driverUser.id);
+    assert.ok(endBody.data.trip.return_time);
+    assert.ok(endBody.data.trip.return_odometer_log_id);
+
+    // Verify Fleet Maintenance odometer telemetry integration
+    const telemetry = endBody.data.odometerTelemetry;
+    assert.equal(telemetry.currentOdometer, 10250);
+    assert.equal(telemetry.distanceDrivenThisTrip, 250);
+    assert.equal(telemetry.distanceSinceLastPm, 250);
+    assert.equal(telemetry.isPmDue, false);
+
+    // Verify vehicle record updated in DB
+    const updatedVehicle = await query(`SELECT current_odometer FROM vehicles WHERE id = $1`, [activeTruck.id]);
+    assert.equal(updatedVehicle.rows[0].current_odometer, 10250);
+
+    // 6.6 Premature re-dispatch of RETURNED truck is blocked (409 Conflict)
+    const redispatchRes = await fetch(`${baseUrl}/api/trips/dispatch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 10250,
-        supervisorNotes: 'Routine post-trip plant check-in',
+        truckId: activeTruck.id,
+        salesUserId: salesRep2User.id,
+        driverId: driverUser2.id,
+        zoneId: testZone.id,
+      }),
+    });
+    assert.equal(redispatchRes.status, 409);
+
+    // 6.7 Plant Reconciliation with physical return count settles stock and completes trip
+    const reconcileRes = await fetch(`${baseUrl}/api/trips/${trip.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
         returnLoads: [
           { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 20 },
           { productId: butaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 75 },
           { productId: butaneProduct.id, condition: 'DEFECTIVE', quantityUnits: 5 },
         ],
+        totalSoldFull: 75,
+        netCustomerDebtCreated: 0,
+        supervisorNotes: 'Physical count verified at plant gate',
       }),
     });
-    assert.equal(completeRes.status, 200);
-    const completeBody = await completeRes.json();
-
-    // Verify trip status
-    assert.equal(completeBody.data.trip.status, 'COMPLETED');
-    assert.ok(completeBody.data.trip.return_time);
-    assert.ok(completeBody.data.trip.return_odometer_log_id);
-
-    // Verify Fleet Maintenance odometer telemetry integration
-    const telemetry = completeBody.data.odometerTelemetry;
-    assert.equal(telemetry.currentOdometer, 10250);
-    assert.equal(telemetry.distanceDrivenThisTrip, 250);
-    assert.equal(telemetry.distanceSinceLastPm, 250);
-    assert.equal(telemetry.isPmDue, false);
-
-    // Verify reconciliation record initialized in AWAITING_SYNC status
-    const rec = completeBody.data.reconciliation;
-    assert.equal(rec.status, 'AWAITING_SYNC');
-    assert.equal(rec.total_loaded_full, 100);
-    assert.equal(rec.total_returned_full, 20);
-    assert.equal(rec.total_returned_empty_good, 75);
-    assert.equal(rec.total_returned_defective, 5);
-
-    // Verify vehicle record updated in DB
-    const updatedVehicle = await query(`SELECT current_odometer FROM vehicles WHERE id = $1`, [activeTruck.id]);
-    assert.equal(updatedVehicle.rows[0].current_odometer, 10250);
+    assert.equal(reconcileRes.status, 200);
+    const reconcileBody = await reconcileRes.json();
+    assert.equal(reconcileBody.data.reconciliation.status, 'SETTLED');
+    assert.equal(reconcileBody.data.reconciliation.fullDiscrepancy, 0);
+    assert.equal(reconcileBody.data.trip.status, 'COMPLETED');
   });
 
   // ------------------------------------------------------------
@@ -710,21 +776,18 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     const trip = (await dispatchRes.json()).data.trip;
 
-    // Return with: 20 Full returned, 75 Empty good returned
-    await fetch(`${baseUrl}/api/trips/${trip.id}/complete`, {
+    // Driver ends trip
+    const endRes = await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${driverCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 10500,
-        returnLoads: [
-          { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 20 },
-          { productId: butaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 75 },
-        ],
+        currentOdometer: 10500,
       }),
     });
+    assert.equal(endRes.status, 200);
 
     // 7.2 Balanced Sync:
     // Loaded Full = 100
@@ -742,6 +805,10 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
+        returnLoads: [
+          { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 20 },
+          { productId: butaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 75 },
+        ],
         totalSoldFull: 80,
         netCustomerDebtCreated: 5,
         supervisorNotes: 'All counts verified against driver physical manifest',
@@ -831,20 +898,20 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     const trip = (await dispatchRes.json()).data.trip;
 
-    // 8.4 Complete trip -> triggers TRIP_COMPLETED
-    await fetch(`${baseUrl}/api/trips/${trip.id}/complete`, {
+    // 8.4 Driver ends trip -> triggers TRIP_ENDED
+    await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${driverCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 10800,
-        supervisorNotes: 'Audit completion',
+        currentOdometer: 10800,
+        notes: 'Audit completion',
       }),
     });
 
-    // 8.5 Reconcile trip -> triggers TRIP_RECONCILED
+    // 8.5 Reconcile trip -> triggers TRIP_RECONCILED and TRIP_COMPLETED
     await fetch(`${baseUrl}/api/trips/${trip.id}/reconcile`, {
       method: 'POST',
       headers: {
@@ -867,6 +934,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
         'SCHEDULE_CANCELLED',
         'TRIP_DISPATCHED',
         'TRIP_STOCK_LOADED',
+        'TRIP_ENDED',
         'TRIP_COMPLETED',
         'TRIP_RECONCILED'
       )
@@ -878,6 +946,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     assert.ok(actions.includes('SCHEDULE_CANCELLED'), 'SCHEDULE_CANCELLED should be logged');
     assert.ok(actions.includes('TRIP_DISPATCHED'), 'TRIP_DISPATCHED should be logged');
     assert.ok(actions.includes('TRIP_STOCK_LOADED'), 'TRIP_STOCK_LOADED should be logged');
+    assert.ok(actions.includes('TRIP_ENDED'), 'TRIP_ENDED should be logged');
     assert.ok(actions.includes('TRIP_COMPLETED'), 'TRIP_COMPLETED should be logged');
     assert.ok(actions.includes('TRIP_RECONCILED'), 'TRIP_RECONCILED should be logged');
   });
@@ -1101,22 +1170,35 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     assert.match(day2BlockedBody.message, /unclosed trip/i);
     assert.match(day2BlockedBody.message, /Complete yesterday's check-in/i);
 
-    // 10.5 Graceful retroactive clock-out with returnTime unblocks Day 2 dispatch
+    // 10.5 Graceful retroactive clock-out with returnTime and plant reconciliation unblocks Day 2 dispatch
     const retroactiveTime = new Date(Date.now() - 3600000).toISOString();
-    const completeRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/complete`, {
+    const endRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${driverCookie}`,
+      },
+      body: JSON.stringify({
+        currentOdometer: 10450,
+        returnTime: retroactiveTime,
+        notes: 'Retroactive evening clock-out for Day 1',
+      }),
+    });
+    assert.equal(endRes.status, 200);
+
+    const recRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/reconcile`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 10450,
-        returnTime: retroactiveTime,
-        supervisorNotes: 'Retroactive evening clock-out for Day 1',
+        totalSoldFull: 0,
+        netCustomerDebtCreated: 0,
       }),
     });
-    assert.equal(completeRes.status, 200);
-    const completedTrip = (await completeRes.json()).data.trip;
+    assert.equal(recRes.status, 200);
+    const completedTrip = (await recRes.json()).data.trip;
     assert.equal(completedTrip.status, 'COMPLETED');
     assert.ok(completedTrip.return_time);
 
@@ -1244,21 +1326,36 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     const prematureRecBody = await prematureRecRes.json();
     assert.match(prematureRecBody.message, /Cannot reconcile a trip that has not completed plant return check-in/i);
 
-    // 11.5 Plant return check-in with returnLoads replenishes plant buckets
-    const returnCheckinRes = await fetch(`${baseUrl}/api/trips/${trip.id}/complete`, {
+    // 11.5 Driver ends trip with mandatory odometer
+    const endTripRes = await fetch(`${baseUrl}/api/trips/${trip.id}/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${driverCookie}`,
+      },
+      body: JSON.stringify({
+        currentOdometer: 10600,
+        notes: 'End of shift check-in',
+      }),
+    });
+    assert.equal(endTripRes.status, 200);
+
+    // 11.6 Plant reconciliation with returnLoads replenishes plant buckets
+    const returnCheckinRes = await fetch(`${baseUrl}/api/trips/${trip.id}/reconcile`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 10600,
-        supervisorNotes: 'End of shift check-in',
         returnLoads: [
           { productId: butaneProduct.id, condition: 'FILLED', quantityUnits: 10 },
           { productId: butaneProduct.id, condition: 'EMPTY_GOOD', quantityUnits: 25 },
           { productId: butaneProduct.id, condition: 'DEFECTIVE', quantityUnits: 2 },
         ],
+        totalSoldFull: 30,
+        netCustomerDebtCreated: 0,
+        supervisorNotes: 'End of shift check-in',
       }),
     });
     assert.equal(returnCheckinRes.status, 200);
@@ -1641,20 +1738,32 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     assert.equal(concurrentDispatchRes.status, 409, 'Concurrent dispatch for same driver must be blocked');
 
-    // 13.5 Complete trip 1 (Yard return check-in)
-    const completeRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/complete`, {
+    // 13.5 End and reconcile trip 1 (Yard return check-in & settlement)
+    const endRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/end`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 12100,
-        supervisorNotes: 'Completed morning scheduled delivery',
+        currentOdometer: 12100,
+        notes: 'Completed morning scheduled delivery',
       }),
     });
-    assert.equal(completeRes.status, 200);
-    const completedTrip1 = (await completeRes.json()).data.trip;
+    assert.equal(endRes.status, 200);
+
+    const recRes = await fetch(`${baseUrl}/api/trips/${trip1.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        totalSoldFull: 0,
+      }),
+    });
+    assert.equal(recRes.status, 200);
+    const completedTrip1 = (await recRes.json()).data.trip;
     assert.equal(completedTrip1.status, 'COMPLETED');
 
     // 13.6 Consecutive Multi-Trip Dispatch: Dispatch a second (ad-hoc) trip for the same driver succeeds
@@ -1676,19 +1785,31 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     const trip2 = (await trip2Res.json()).data.trip;
     assert.equal(trip2.status, 'IN_PROGRESS');
 
-    // Complete trip 2
-    const completeTrip2Res = await fetch(`${baseUrl}/api/trips/${trip2.id}/complete`, {
+    // End and reconcile trip 2
+    const endTrip2Res = await fetch(`${baseUrl}/api/trips/${trip2.id}/end`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        returnOdometerKm: 12150,
-        supervisorNotes: 'Completed afternoon ad-hoc delivery',
+        currentOdometer: 12150,
+        notes: 'Completed afternoon ad-hoc delivery',
       }),
     });
-    assert.equal(completeTrip2Res.status, 200);
+    assert.equal(endTrip2Res.status, 200);
+
+    const recTrip2Res = await fetch(`${baseUrl}/api/trips/${trip2.id}/reconcile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        totalSoldFull: 0,
+      }),
+    });
+    assert.equal(recTrip2Res.status, 200);
 
     // Teardown Subtest 13 records to prevent cross-test contamination
     await query(`DELETE FROM trip_loads WHERE trip_id IN ($1, $2)`, [trip1.id, trip2.id]);

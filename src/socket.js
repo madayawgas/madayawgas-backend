@@ -140,8 +140,12 @@ function initializeSocket(httpServer, customOptions = {}) {
         socket.join('room:sales');
       }
 
-      // Route Dispatch & Daily Schedules Rooms (Supervisors / Dispatchers)
-      if (permissions.includes('route.view') || permissions.includes('route.manage')) {
+      // Route Dispatch & Daily Schedules Rooms (Supervisors / Dispatchers / Admins)
+      if (
+        permissions.includes('route.view') ||
+        permissions.includes('route.manage') ||
+        permissions.includes('users.manage')
+      ) {
         socket.join('room:trips');
         socket.join('room:schedules');
       }

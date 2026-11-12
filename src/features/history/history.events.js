@@ -480,6 +480,13 @@ const EVENT_DEFINITIONS = {
     template: (p) =>
       `Recorded stock transfer slip #${p.slipNumber} (${p.transferType}) for trip #${p.tripNumber}`,
   },
+  TRIP_ENDED: {
+    module: MODULES.TRIP,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'trip',
+    template: (p) =>
+      `Driver ended delivery trip #${p.tripNumber} with return odometer reading of ${p.odometerKm || p.returnOdometerKm || p.currentOdometer} km`,
+  },
   TRIP_COMPLETED: {
     module: MODULES.TRIP,
     actionType: ACTION_TYPES.UPDATED,

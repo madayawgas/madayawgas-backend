@@ -93,6 +93,10 @@ VALUES
         'View routes assigned to the current user.'
     ),
     (
+        'route.end_own',
+        'End an active delivery trip and record final vehicle return odometer reading (Driver).'
+    ),
+    (
         'route.manage',
         'Create, update, assign, and manage routes.'
     ),
@@ -266,6 +270,7 @@ JOIN permissions p
 
         -- Route Dispatch
         'route.view',
+        'route.end_own',
         'route.manage',
 
         -- Inventory Transfers
@@ -367,6 +372,7 @@ JOIN permissions p
 
         -- Route
         'route.view_own',
+        'route.end_own',
 
 
         -- Apprehensions

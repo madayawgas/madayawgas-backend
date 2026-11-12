@@ -39,6 +39,44 @@ class ReconciliationRepository {
   }
 
   /**
+   * Retrieves reconciliation records for multiple trips in batch.
+   * @param {string[]} tripIds
+   */
+  async getByTripIds(tripIds) {
+    if (!Array.isArray(tripIds) || tripIds.length === 0) return {};
+    const sql = `
+      SELECT 
+        tsr.id,
+        tsr.trip_id,
+        tsr.verified_by,
+        tsr.total_loaded_full,
+        tsr.total_sold_full,
+        tsr.total_returned_full,
+        tsr.total_returned_empty_good,
+        tsr.total_returned_defective,
+        tsr.net_customer_debt_created,
+        tsr.status,
+        tsr.supervisor_notes,
+        tsr.reconciled_at,
+        tsr.created_at,
+        tsr.updated_at,
+        u.username AS verified_by_username,
+        u.first_name AS verified_by_first_name,
+        u.last_name AS verified_by_last_name
+      FROM trip_stock_reconciliations tsr
+      LEFT JOIN users u ON tsr.verified_by = u.id
+      WHERE tsr.trip_id = ANY($1::uuid[])
+    `;
+
+    const res = await query(sql, [tripIds]);
+    const map = {};
+    for (const row of res.rows) {
+      map[row.trip_id] = row;
+    }
+    return map;
+  }
+
+  /**
    * Upserts reconciliation record for a trip.
    * @param {Object} data
    * @param {Object} [client]

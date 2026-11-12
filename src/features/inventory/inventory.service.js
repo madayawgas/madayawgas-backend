@@ -753,7 +753,7 @@ class InventoryService {
       throw err;
     }
 
-    if (!['IN_PROGRESS', 'COMPLETED'].includes(trip.status)) {
+    if (!['IN_PROGRESS', 'RETURNED', 'COMPLETED'].includes(trip.status)) {
       const err = new Error(`Cannot record return unload for trip in '${trip.status}' status`);
       err.statusCode = 400;
       throw err;
@@ -969,7 +969,7 @@ class InventoryService {
       (it) => it.returned_full > 0 || it.returned_empty_good > 0 || it.returned_defective > 0
     );
 
-    if (trip.status !== 'COMPLETED' && !hasReturnTransfers) {
+    if (trip.status === 'IN_PROGRESS' && !hasReturnTransfers) {
       const err = new Error(
         `Cannot reconcile a trip that has not completed plant return check-in (current status: '${trip.status}')`
       );
@@ -1076,6 +1076,10 @@ class InventoryService {
       supervisorNotes: supervisorNotes ? supervisorNotes.trim() : null,
       reconciledAt,
     });
+
+    if (status !== 'AWAITING_SYNC') {
+      await pool.query(`UPDATE trips SET status = 'COMPLETED' WHERE id = $1`, [trip.id]);
+    }
 
     // Real-Time WebSocket Reconciliation Broadcast
     safeEmitSocketEvent('TRIP_RECONCILIATION_UPDATED', {

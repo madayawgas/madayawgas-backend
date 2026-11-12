@@ -251,10 +251,36 @@ Emitted whenever the physical inventory carried by a delivery truck changes (aft
 
 ---
 
-#### Event: `TRIP_COMPLETED`
-Emitted when a driver checks in at the yard and completes the field route.
+#### Event: `TRIP_ENDED`
+Emitted when an assigned driver (or supervisor) marks an active delivery trip as returned to the plant yard and enters the return odometer reading.
 
-* **Trigger**: `POST /api/trips/:id/complete`
+* **Trigger**: `POST /api/trips/:id/end`
+* **Target Rooms**: `room:trips`, `user:{driverUserId}`
+* **Payload Structure**:
+```json
+{
+  "event": "TRIP_ENDED",
+  "data": {
+    "tripId": "90d1525a-4ba4-4113-a442-fcaeeeb08df5",
+    "tripNumber": "TRIP-20261019-001",
+    "status": "RETURNED",
+    "endedBy": "e829bf42-9988-4db8-8314-8782a62ffb52",
+    "returnTime": "2026-10-19T17:15:00.000Z"
+  },
+  "meta": {
+    "timestamp": "2026-10-19T17:15:00.200Z",
+    "version": "1.0"
+  }
+}
+```
+* **Client Action**: Driver mobile transitions from active route navigation to "Trip Returned / Awaiting Plant Physical Count & Stock Reconciliation" screen; plant/logistics supervisor dashboard queues trip for physical count and reconciliation.
+
+---
+
+#### Event: `TRIP_COMPLETED`
+Emitted when plant stock reconciliation is finalized and settled, completing the trip lifecycle and releasing the truck.
+
+* **Trigger**: `POST /api/trips/:id/reconcile`
 * **Target Rooms**: `room:trips`, `user:{driverUserId}`
 * **Payload Structure**:
 ```json
@@ -272,7 +298,7 @@ Emitted when a driver checks in at the yard and completes the field route.
   }
 }
 ```
-* **Client Action**: Driver mobile transitions to "Trip Completed / Awaiting Reconciliation" summary screen; office supervisor dashboard queues trip for stock variance audit.
+* **Client Action**: Driver mobile clears returned trip standby; office supervisor dashboard marks trip fully closed and reconciliations settled.
 
 ---
 
@@ -824,6 +850,11 @@ export function useRealtimeDashboardSync() {
       queryClient.invalidateQueries({ queryKey: ['daily-schedules'] });
     });
 
+    socket.on('TRIP_ENDED', (envelope) => {
+      queryClient.invalidateQueries({ queryKey: ['active-trips'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-reconciliations'] });
+    });
+
     socket.on('TRIP_COMPLETED', (envelope) => {
       queryClient.invalidateQueries({ queryKey: ['active-trips'] });
       queryClient.invalidateQueries({ queryKey: ['trip-reconciliations'] });
@@ -917,7 +948,13 @@ export function useDriverActiveTrip(sessionToken: string) {
       fetchMyActiveTrip().then((trip) => setActiveTrip(trip));
     });
 
-    // Trip Completion
+    // Trip Ended: Transition to returned summary / waiting for physical count
+    socket.on('TRIP_ENDED', (envelope) => {
+      console.log('Trip ended, awaiting reconciliation:', envelope.data.tripNumber);
+      fetchMyActiveTrip().then((trip) => setActiveTrip(trip));
+    });
+
+    // Trip Completion: Final settlement complete, release active trip
     socket.on('TRIP_COMPLETED', () => {
       setActiveTrip(null);
     });

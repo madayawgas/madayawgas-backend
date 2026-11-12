@@ -388,6 +388,7 @@ erDiagram
         uuid sales_user_id FK "Snapshot"
         uuid zone_id FK
         uuid dispatched_by FK
+        uuid ended_by FK "Nullable"
         uuid return_odometer_log_id FK "UK"
         string trip_number UK
         enum status "trip_status"
@@ -483,6 +484,7 @@ erDiagram
     USERS ||--o{ TRIPS : "driver_snapshot"
     USERS ||--o{ TRIPS : "sales_rep_snapshot"
     USERS ||--o{ TRIPS : "dispatched_by"
+    USERS ||--o{ TRIPS : "ended_by"
     USERS ||--o{ TRIP_LOADS : "recorded_by"
     USERS ||--o{ TRIP_STOCK_RECONCILIATIONS : "verified_by"
 

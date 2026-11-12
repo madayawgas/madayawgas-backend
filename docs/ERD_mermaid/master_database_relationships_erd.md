@@ -106,6 +106,7 @@ erDiagram
     USERS ||--o{ TRIPS : "driver_snapshot"
     USERS ||--o{ TRIPS : "sales_rep_snapshot"
     USERS ||--o{ TRIPS : "dispatched_by"
+    USERS ||--o{ TRIPS : "ended_by"
     USERS ||--o{ TRIP_LOADS : "recorded_by"
     USERS ||--o{ TRIP_STOCK_RECONCILIATIONS : "verified_by"
 

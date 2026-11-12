@@ -10,6 +10,7 @@
 | **`fleet.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Register vehicles, update info, set condition, assign drivers, deactivate |
 | **`route.view`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | View all route dispatch schedules and trip logs |
 | **`route.view_own`** | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | View routes and trip schedules assigned to current user |
+| **`route.end_own`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | End active delivery trip with mandatory odometer reading |
 | **`route.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Create, update, assign, and dispatch delivery routes |
 | **`inventory.view`** | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | View inventory product catalog and stock levels |
 | **`inventory.manage`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Register, update, and deactivate product catalog items |
@@ -43,7 +44,7 @@
 > [!NOTE]
 > * **Plant Supervisor**: Oversees Bunawan refilling yard bulk physical inventory, supplier purchases, defect quarantining, and yard return receiving. Has total control of master plant stock, but no direct control on vehicle fleet stock.
 > * **Sales Supervisor**: Oversees frontline sales, customers, transactions, delivery fulfillment, vehicle stock, and post-trip reconciliation. Has full control of vehicle fleet stock, but limited control to plant stock (strictly moving between plant and vehicles via dispatch loads and return unloads).
-> * **Driver Role**: Drivers possess authenticated login capabilities for the mobile application with frontline permissions (`apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `route.view_own`, and `fleet.view_own`). Access to vehicle telemetry, maintenance, and trips is strictly scoped to the driver's assigned vehicle and trips.
+> * **Driver Role**: Drivers possess authenticated login capabilities for the mobile application with frontline permissions (`apprehensions.create`, `apprehensions.view_own`, `fuel.create`, `fuel.view_own`, `alerts.trigger`, `alerts.view_own`, `route.view_own`, `route.end_own`, and `fleet.view_own`). Access to vehicle telemetry, maintenance, and trips is strictly scoped to the driver's assigned vehicle and trips.
 > * **Product Catalog Visibility**: To empower mobile and in-field sales operations without exposing sensitive plant storage ledgers, `GET /api/inventory/products` and `GET /api/inventory/products/:id` permit users holding `inventory.view`, `sales.view`, `sales.view_own`, or `sales.create`. Frontline `Sales Person` accounts can freely read available products and specifications while plant physical stock (`/plant`) and cross-fleet transfers (`/transfers`) remain strictly guarded by `inventory.view`.
 > * **Multi-Role Employees**: Users assigned multiple roles (such as an employee holding both `Sales Supervisor` and `Logistics Supervisor`) automatically receive the union of all permissions across their assigned roles.
 > * **Legacy Role Aliases**: `Fleet Manager` maps to `Logistics Supervisor`; `Sales Manager` maps to `Sales Supervisor`.
@@ -60,6 +61,7 @@
 | `fleet.manage` | Fleet & Maintenance | Register vehicles, update odometer/details, set status, and assign drivers. |
 | `route.view` | Schedule & Trip | View all organizational route dispatch schedules. |
 | `route.view_own` | Schedule & Trip | View routes and trip schedules assigned to the current user. |
+| `route.end_own` | Schedule & Trip | End active delivery trip with mandatory odometer reading for own assigned trip. |
 | `route.manage` | Schedule & Trip | Create, update, assign, and manage route dispatches. |
 | `inventory.view` | Inventory Management | View inventory products catalog and stock levels. |
 | `inventory.manage` | Inventory Management | Register, modify, and deactivate inventory items. |

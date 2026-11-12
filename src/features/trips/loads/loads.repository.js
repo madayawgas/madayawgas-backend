@@ -147,6 +147,73 @@ class LoadsRepository {
   }
 
   /**
+   * Retrieves all load slips and line items for multiple trips in batch.
+   * @param {string[]} tripIds - Array of Trip UUIDs
+   */
+  async getLoadsByTripIds(tripIds) {
+    if (!Array.isArray(tripIds) || tripIds.length === 0) return {};
+    const loadsSql = `
+      SELECT 
+        tl.id,
+        tl.trip_id,
+        tl.transfer_type,
+        tl.slip_number,
+        tl.recorded_by,
+        tl.recorded_at,
+        tl.remarks,
+        u.username AS recorded_by_username
+      FROM trip_loads tl
+      LEFT JOIN users u ON tl.recorded_by = u.id
+      WHERE tl.trip_id = ANY($1::uuid[])
+      ORDER BY tl.recorded_at ASC, tl.id ASC
+    `;
+
+    const loadsRes = await query(loadsSql, [tripIds]);
+    const loads = loadsRes.rows;
+    if (loads.length === 0) return {};
+
+    const loadIds = loads.map((l) => l.id);
+    const itemsSql = `
+      SELECT 
+        tli.id,
+        tli.load_id,
+        tli.product_id,
+        tli.condition,
+        tli.quantity_units,
+        p.name AS product_name,
+        p.category AS product_category,
+        p.container_type,
+        p.net_weight_kg
+      FROM trip_load_items tli
+      JOIN products p ON tli.product_id = p.id
+      WHERE tli.load_id = ANY($1::uuid[])
+      ORDER BY p.name ASC, tli.condition ASC
+    `;
+
+    const itemsRes = await query(itemsSql, [loadIds]);
+    const itemsByLoad = {};
+    for (const item of itemsRes.rows) {
+      if (!itemsByLoad[item.load_id]) {
+        itemsByLoad[item.load_id] = [];
+      }
+      itemsByLoad[item.load_id].push(item);
+    }
+
+    const loadsByTrip = {};
+    for (const load of loads) {
+      if (!loadsByTrip[load.trip_id]) {
+        loadsByTrip[load.trip_id] = [];
+      }
+      loadsByTrip[load.trip_id].push({
+        ...load,
+        items: itemsByLoad[load.id] || [],
+      });
+    }
+
+    return loadsByTrip;
+  }
+
+  /**
    * Computes aggregated stock counts across all loads for a trip.
    * @param {string} tripId - Trip UUID
    */
