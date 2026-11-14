@@ -502,6 +502,21 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(driverRole.permissions.includes('fuel.create'));
     assert.ok(driverRole.permissions.includes('fleet.view_own'));
 
+    // Dashboard access is restricted exclusively to Super Admin and Admin
+    const superAdminRole = roles.find((r) => r.name === 'Super Admin');
+    const adminRole = roles.find((r) => r.name === 'Admin');
+    const plantSupervisorRole = roles.find((r) => r.name === 'Plant Supervisor');
+    const logisticsSupervisorRole = roles.find((r) => r.name === 'Logistics Supervisor');
+    const salesPersonRole = roles.find((r) => r.name === 'Sales Person');
+
+    assert.ok(superAdminRole.permissions.includes('dashboard.view'));
+    assert.ok(adminRole.permissions.includes('dashboard.view'));
+    assert.ok(!plantSupervisorRole.permissions.includes('dashboard.view'));
+    assert.ok(!logisticsSupervisorRole.permissions.includes('dashboard.view'));
+    assert.ok(!salesSupervisor.permissions.includes('dashboard.view'));
+    assert.ok(!salesPersonRole.permissions.includes('dashboard.view'));
+    assert.ok(!driverRole.permissions.includes('dashboard.view'));
+
     // 3. Create a new custom role (POST /api/users/roles)
     const createRoleRes = await fetch(`${baseUrl}/api/users/roles`, {
       method: 'POST',
@@ -721,7 +736,7 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(Array.isArray(plantProfile.data.user.permissions));
     assert.deepEqual(
       [...plantProfile.data.user.permissions].sort(),
-      ['dashboard.view', 'history.view', 'inventory.manage', 'inventory.plant.manage', 'inventory.view', 'route.view'].sort()
+      ['history.view', 'inventory.manage', 'inventory.plant.manage', 'inventory.view', 'route.view'].sort()
     );
 
 
