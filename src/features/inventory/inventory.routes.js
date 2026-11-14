@@ -150,7 +150,7 @@ router.get(
 router.get(
   '/trips/:tripId/stock',
   authenticate,
-  requirePermission(['inventory.view', 'inventory.view_own', 'route.view', 'route.view_own', 'inventory.vehicle.manage']),
+  requirePermission(['inventory.view', 'route.view', 'route.view_own', 'inventory.vehicle.manage']),
   asyncHandler(inventoryController.getVehicleActiveStock.bind(inventoryController))
 );
 

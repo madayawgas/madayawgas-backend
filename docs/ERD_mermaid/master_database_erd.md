@@ -1,9 +1,9 @@
 # Master Database Architecture — Unified Entity Relationship Diagram (ERD)
 
 > **Database Engine**: PostgreSQL 18.x  
-> **Schema Migrations**: 001 through 015 (`database/migrations/`)  
-> **Total Tables**: 33 application domain tables (+1 internal `schema_migrations`, +2 compatibility views)  
-> **Purpose**: Global enterprise data model showing all 6 core subsystems and all cross-domain foreign key relationships.
+> **Schema Migrations**: 001 through 021 (`database/migrations/`)  
+> **Total Tables**: 36 application domain tables (+1 internal `schema_migrations`, +2 compatibility views)  
+> **Purpose**: Global enterprise data model showing all 7 core subsystems and all cross-domain foreign key relationships.
 
 ---
 
@@ -48,6 +48,7 @@ erDiagram
         string last_name
         string phone
         date birthdate
+        string avatar_media_key
         uuid role_id FK
         boolean is_active
         boolean is_blocked
@@ -439,6 +440,70 @@ erDiagram
 
 
     %% ========================================================
+    %% 7. FRONTLINE OPERATIONS SUBSYSTEM (3 Tables)
+    %% ========================================================
+
+    DRIVER_APPREHENSIONS {
+        uuid id PK
+        uuid vehicle_id FK
+        uuid driver_id FK
+        uuid trip_id FK "Nullable"
+        uuid recorded_by FK
+        string citation_ticket_no "Nullable"
+        string violation_type
+        string apprehending_agency
+        timestamptz incident_time
+        string location "Nullable"
+        numeric penalty_amount
+        string ticket_media_key
+        string notes "Nullable"
+        string status "RECORDED, SETTLED, DISPUTED, CANCELLED"
+        timestamptz settled_at "Nullable"
+        uuid settled_by FK "Nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    VEHICLE_FUEL_LOGS {
+        uuid id PK
+        uuid vehicle_id FK
+        uuid driver_id FK "Nullable"
+        uuid trip_id FK "Nullable"
+        uuid recorded_by FK
+        numeric liters_pumped
+        numeric total_cost
+        numeric price_per_liter
+        string fuel_station "Nullable"
+        string fuel_type "DIESEL, GASOLINE, AUTO_LPG, OTHER"
+        int odometer_reading "Nullable"
+        string receipt_media_key "Nullable"
+        timestamptz fueled_at
+        string notes "Nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    EMERGENCY_ALERTS {
+        uuid id PK
+        uuid driver_id FK
+        uuid vehicle_id FK "Nullable"
+        uuid trip_id FK "Nullable"
+        numeric latitude "Nullable"
+        numeric longitude "Nullable"
+        string emergency_type "GENERAL, ACCIDENT, VEHICLE_BREAKDOWN, MEDICAL, SECURITY, OTHER"
+        string description "Nullable"
+        string status "ACTIVE, ACKNOWLEDGED, RESOLVED, FALSE_ALARM"
+        uuid acknowledged_by FK "Nullable"
+        timestamptz acknowledged_at "Nullable"
+        uuid resolved_by FK "Nullable"
+        timestamptz resolved_at "Nullable"
+        string resolution_notes "Nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+
+    %% ========================================================
     %% CROSS-SUBSYSTEM RELATIONSHIPS
     %% ========================================================
 
@@ -532,6 +597,24 @@ erDiagram
     PRODUCTS ||--o{ CANISTER_LEDGER : "sku"
     TRIPS ||--o{ CANISTER_LEDGER : "trip_attribution"
     SALES_TRANSACTIONS ||--o{ CANISTER_LEDGER : "generates"
+
+    %% Frontline Operations Subsystem
+    VEHICLES ||--o{ DRIVER_APPREHENSIONS : "cited_in"
+    USERS ||--o{ DRIVER_APPREHENSIONS : "driver"
+    USERS ||--o{ DRIVER_APPREHENSIONS : "recorded_by"
+    USERS ||--o{ DRIVER_APPREHENSIONS : "settled_by"
+    TRIPS ||--o{ DRIVER_APPREHENSIONS : "occurred_during"
+
+    VEHICLES ||--o{ VEHICLE_FUEL_LOGS : "fueled_in"
+    USERS ||--o{ VEHICLE_FUEL_LOGS : "driver"
+    USERS ||--o{ VEHICLE_FUEL_LOGS : "recorded_by"
+    TRIPS ||--o{ VEHICLE_FUEL_LOGS : "fueled_during"
+
+    USERS ||--o{ EMERGENCY_ALERTS : "triggered_by"
+    USERS ||--o{ EMERGENCY_ALERTS : "acknowledged_by"
+    USERS ||--o{ EMERGENCY_ALERTS : "resolved_by"
+    VEHICLES ||--o{ EMERGENCY_ALERTS : "involved_in"
+    TRIPS ||--o{ EMERGENCY_ALERTS : "occurred_during"
 ```
 
 ---
@@ -546,6 +629,7 @@ erDiagram
 | **Inventory** | 3 | `products`, `plant_inventory`, `plant_stock_adjustments` | [`inventory_erd.md`](./inventory_erd.md) |
 | **Sales & Delivery** | 5 | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` | [`sales_and_delivery_erd.md`](./sales_and_delivery_erd.md) |
 | **Schedule & Trips** | 7 | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [`schedule_and_trip_erd.md`](./schedule_and_trip_erd.md) |
+| **Frontline Operations** | 3 | `driver_apprehensions`, `vehicle_fuel_logs`, `emergency_alerts` | [`operations_erd.md`](./operations_erd.md) |
 
 ---
 

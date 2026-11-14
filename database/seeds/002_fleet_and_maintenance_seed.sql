@@ -116,6 +116,10 @@ ON CONFLICT (plate_number) DO UPDATE SET
 -- 4. ODOMETER LOGS (POST-DISPATCH RETURN TRACKING)
 -- ============================================================
 
+DELETE FROM vehicle_odometer_logs
+WHERE vehicle_id IN (SELECT id FROM vehicles WHERE plate_number = 'ABC-1001')
+  AND odometer_reading <> 45200;
+
 INSERT INTO vehicle_odometer_logs (vehicle_id, odometer_reading, logged_by, source, notes, logged_at)
 SELECT
     v.id,

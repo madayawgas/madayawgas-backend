@@ -48,7 +48,7 @@ test('Fleet & Maintenance Subsystem Tests', async (t) => {
 
     // 2. Fetch role IDs
     const superAdminRole = (await query(`SELECT id FROM roles WHERE name = 'Super Admin'`)).rows[0].id;
-    const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`)).rows[0].id;
+    const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
     const salesPersonRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
     const driverRole = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 

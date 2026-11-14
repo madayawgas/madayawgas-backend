@@ -135,7 +135,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
 
     // 2. Fetch role IDs
     const adminRoleId = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
-    const logisticsRoleId = (await query(`SELECT id FROM roles WHERE name IN ('Logistics Supervisor', 'Fleet Manager') LIMIT 1`)).rows[0].id;
+    const logisticsRoleId = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
     const salesPersonRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
     const driverRoleId = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 
@@ -1500,11 +1500,17 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       });
       assert.equal(supSalesPersonsRes.status, 200);
 
-      // Sales supervisor without fleet/route permissions is blocked from drivers (403 Forbidden)
+      // Sales supervisor holds route.view (can read /api/fleet/drivers),
+      // while fleet.view endpoints like /api/fleet/overview remain 403 Forbidden.
       const supDriversRes = await fetch(`${baseUrl}/api/fleet/drivers`, {
         headers: { Cookie: `mg_sid=${supCookie}` },
       });
-      assert.equal(supDriversRes.status, 403);
+      assert.equal(supDriversRes.status, 200);
+
+      const supFleetOverviewRes = await fetch(`${baseUrl}/api/fleet/overview`, {
+        headers: { Cookie: `mg_sid=${supCookie}` },
+      });
+      assert.equal(supFleetOverviewRes.status, 403);
     }
 
     // 12.2c Unprivileged user with only sales.view_own is blocked from sales-persons and drivers (403 Forbidden)

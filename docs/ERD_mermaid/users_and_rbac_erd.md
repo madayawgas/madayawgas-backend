@@ -51,6 +51,7 @@ erDiagram
         string last_name
         string phone "Nullable"
         date birthdate "Nullable"
+        string avatar_media_key "Nullable"
         uuid role_id FK "Primary role pointer"
         boolean is_active "Default TRUE"
         boolean is_blocked "Default FALSE"
@@ -154,6 +155,7 @@ Core user account profiles for enterprise authentication.
 | `last_name` | `VARCHAR(100)` | No | Non-empty | Last name |
 | `phone` | `VARCHAR(20)` | Yes | `NULL` | Mobile contact number |
 | `birthdate` | `DATE` | Yes | `NULL` | Birthdate |
+| `avatar_media_key` | `VARCHAR(255)` | Yes | `NULL` | Canonical relative storage key for user profile avatar |
 | `role_id` | `UUID` | No | `FK -> roles(id)` | Primary role foreign key |
 | `is_active` | `BOOLEAN` | No | `DEFAULT TRUE` | Account active state |
 | `is_blocked` | `BOOLEAN` | No | `DEFAULT FALSE` | Security block indicator |

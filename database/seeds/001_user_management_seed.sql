@@ -20,33 +20,62 @@ VALUES
     ),
     (
         'Plant Supervisor',
-        'Oversees plant operations, cylinder refilling, and plant inventory. Permissions pending plant subsystem implementation.'
+        'Oversees plant operations, product catalog, cylinder refilling, and master plant inventory.'
     ),
     (
         'Logistics Supervisor',
-        'Manages logistics, fleet, route dispatch, and operational truck activities.'
+        'Manages logistics, fleet, route dispatch, vehicle inventory transfers, and operational truck activities.'
     ),
     (
         'Sales Supervisor',
-        'Oversees sales, customers, transactions, and delivery fulfillment.'
-    ),
-    (
-        'Fleet Manager',
-        'Legacy alias for Logistics Supervisor. Manages fleet, route dispatch, and operational activities.'
-    ),
-    (
-        'Sales Manager',
-        'Legacy alias for Sales Supervisor. Oversees sales, customers, transactions, inventory products, and delivery fulfillment.'
+        'Oversees sales, customers, transactions, vehicle stock reconciliation, and delivery fulfillment.'
     ),
     (
         'Sales Person',
-        'Handles sales and deliveries assigned to the user.'
+        'Handles frontline customer accounts, sales transactions, and deliveries assigned to the user.'
     ),
     (
         'Driver',
-        'Vehicle driver assigned to fleet trucks. Does not have login/system permissions.'
+        'Vehicle driver assigned to fleet trucks with mobile access for trips, fuel logs, apprehensions, and SOS alerts.'
     )
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description;
+
+-- Clean up legacy alias roles if present
+UPDATE users
+SET role_id = (SELECT id FROM roles WHERE name = 'Logistics Supervisor')
+WHERE role_id IN (SELECT id FROM roles WHERE name = 'Fleet Manager');
+
+UPDATE users
+SET role_id = (SELECT id FROM roles WHERE name = 'Sales Supervisor')
+WHERE role_id IN (SELECT id FROM roles WHERE name = 'Sales Manager');
+
+INSERT INTO user_roles (user_id, role_id, is_primary, assigned_at)
+SELECT ur.user_id, target_r.id, ur.is_primary, ur.assigned_at
+FROM user_roles ur
+JOIN roles old_r ON ur.role_id = old_r.id
+JOIN roles target_r ON target_r.name = 'Logistics Supervisor'
+WHERE old_r.name = 'Fleet Manager'
+ON CONFLICT (user_id, role_id) DO UPDATE SET
+    is_primary = (user_roles.is_primary OR EXCLUDED.is_primary);
+
+INSERT INTO user_roles (user_id, role_id, is_primary, assigned_at)
+SELECT ur.user_id, target_r.id, ur.is_primary, ur.assigned_at
+FROM user_roles ur
+JOIN roles old_r ON ur.role_id = old_r.id
+JOIN roles target_r ON target_r.name = 'Sales Supervisor'
+WHERE old_r.name = 'Sales Manager'
+ON CONFLICT (user_id, role_id) DO UPDATE SET
+    is_primary = (user_roles.is_primary OR EXCLUDED.is_primary);
+
+DELETE FROM user_roles
+WHERE role_id IN (SELECT id FROM roles WHERE name IN ('Fleet Manager', 'Sales Manager'));
+
+DELETE FROM role_permissions
+WHERE role_id IN (SELECT id FROM roles WHERE name IN ('Fleet Manager', 'Sales Manager'));
+
+DELETE FROM roles
+WHERE name IN ('Fleet Manager', 'Sales Manager');
 
 
 -- ============================================================
@@ -62,7 +91,7 @@ VALUES
 
     (
         'dashboard.view',
-        'View the dashboard.'
+        'View the main operational dashboard.'
     ),
 
 
@@ -72,11 +101,15 @@ VALUES
 
     (
         'fleet.view',
-        'View fleet and maintenance information.'
+        'View fleet and maintenance overview and vehicle profiles.'
+    ),
+    (
+        'fleet.view_own',
+        'View details and maintenance records for own assigned vehicle.'
     ),
     (
         'fleet.manage',
-        'Create, update, and manage fleet and maintenance records.'
+        'Register vehicles, update info, set condition, assign drivers, and manage maintenance.'
     ),
 
 
@@ -86,19 +119,19 @@ VALUES
 
     (
         'route.view',
-        'View route dispatch information.'
+        'View all route dispatch schedules and trip logs.'
     ),
     (
         'route.view_own',
-        'View routes assigned to the current user.'
+        'View routes and trip schedules assigned to the current user.'
     ),
     (
         'route.end_own',
-        'End an active delivery trip and record final vehicle return odometer reading (Driver).'
+        'End an active delivery trip and record final vehicle return odometer reading.'
     ),
     (
         'route.manage',
-        'Create, update, assign, and manage routes.'
+        'Create, update, assign, and dispatch delivery routes.'
     ),
 
 
@@ -108,11 +141,11 @@ VALUES
 
     (
         'inventory.view',
-        'View inventory information.'
+        'View inventory product catalog and stock levels.'
     ),
     (
         'inventory.manage',
-        'Create, update, and manage inventory.'
+        'Register, update, and deactivate product catalog items.'
     ),
     (
         'inventory.plant.manage',
@@ -130,40 +163,96 @@ VALUES
 
     (
         'sales.view',
-        'View sales records.'
+        'View all sales and customer profiles across the organization.'
     ),
     (
         'sales.view_own',
-        'View sales created by the current user.'
+        'View customer profiles and sales created by the current user.'
     ),
     (
         'sales.create',
-        'Create sales records.'
+        'Register new sales customers and create frontline sales orders.'
     ),
     (
         'sales.update',
-        'Update sales records.'
+        'Update sales customer profiles and sales orders.'
     ),
     (
         'sales.delete',
-        'Delete or cancel sales records.'
+        'Delete, cancel, or void sales records.'
     ),
 
     (
         'delivery.view',
-        'View delivery records.'
+        'View all delivery fulfillment transactions.'
     ),
     (
         'delivery.view_own',
-        'View deliveries assigned to the current user.'
+        'View delivery fulfillment assigned to the current user.'
     ),
     (
         'delivery.update',
-        'Update delivery status and information.'
+        'Update delivery statuses and completion records.'
     ),
     (
         'delivery.update_own',
-        'Update delivery information assigned to the current user.'
+        'Update delivery progress assigned to the current user.'
+    ),
+
+
+    -- --------------------------------------------------------
+    -- Operational Logging (Apprehensions, Fuel, Emergency Alerts)
+    -- --------------------------------------------------------
+
+    (
+        'apprehensions.view',
+        'View all roadside traffic apprehension records.'
+    ),
+    (
+        'apprehensions.view_own',
+        'View roadside apprehensions involving own vehicle or trip.'
+    ),
+    (
+        'apprehensions.create',
+        'Record road traffic apprehension with mandatory ticket proof.'
+    ),
+    (
+        'apprehensions.manage',
+        'Update, settle, or dispute road apprehension tickets.'
+    ),
+
+    (
+        'fuel.view',
+        'View all vehicle fuel intake records and consumption summaries.'
+    ),
+    (
+        'fuel.view_own',
+        'View fuel intake logs for assigned vehicle only.'
+    ),
+    (
+        'fuel.create',
+        'Record vehicle fuel intake, cost, and odometer reading.'
+    ),
+    (
+        'fuel.manage',
+        'Edit or delete vehicle fuel log records.'
+    ),
+
+    (
+        'alerts.view',
+        'View organizational driver emergency alerts feed.'
+    ),
+    (
+        'alerts.view_own',
+        'View own submitted driver emergency alerts.'
+    ),
+    (
+        'alerts.trigger',
+        'Single-action mobile emergency alert SOS dispatch.'
+    ),
+    (
+        'alerts.manage',
+        'Acknowledge and resolve driver emergency alerts.'
     ),
 
 
@@ -173,11 +262,11 @@ VALUES
 
     (
         'users.view',
-        'View user accounts.'
+        'View employee profiles and user lists.'
     ),
     (
         'users.manage',
-        'Create, update, deactivate, block, and manage user accounts.'
+        'Create accounts, reset credentials, deactivate, and manage roles & permissions.'
     ),
 
 
@@ -187,11 +276,27 @@ VALUES
 
     (
         'history.view',
-        'View system event history logs.'
+        'View system event historical audit logs.'
     )
 
 
 ON CONFLICT (name) DO NOTHING;
+
+
+-- Reset existing role_permissions for the 7 canonical roles
+DELETE FROM role_permissions
+WHERE role_id IN (
+    SELECT id FROM roles
+    WHERE name IN (
+        'Super Admin',
+        'Admin',
+        'Plant Supervisor',
+        'Logistics Supervisor',
+        'Sales Supervisor',
+        'Sales Person',
+        'Driver'
+    )
+);
 
 
 -- ============================================================
@@ -227,8 +332,8 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 -- 5. PLANT SUPERVISOR
 -- ============================================================
--- Plant Supervisor oversees plant operations, cylinder refilling,
--- and master plant inventory.
+-- Plant Supervisor oversees plant operations, product catalog,
+-- cylinder refilling, and master plant inventory.
 
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT
@@ -240,17 +345,23 @@ JOIN permissions p
         -- Dashboard
         'dashboard.view',
 
-        -- Inventory
+        -- Inventory & Product Catalog
         'inventory.view',
-        'inventory.plant.manage'
+        'inventory.manage',
+        'inventory.plant.manage',
+
+        -- Routes (view returning trips for yard return-unloads)
+        'route.view',
+
+        -- History Logs
+        'history.view'
     )
 WHERE r.name = 'Plant Supervisor'
 ON CONFLICT DO NOTHING;
 
 
-
 -- ============================================================
--- 6. LOGISTICS SUPERVISOR (and legacy Fleet Manager)
+-- 6. LOGISTICS SUPERVISOR
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -266,6 +377,7 @@ JOIN permissions p
 
         -- Fleet & Maintenance
         'fleet.view',
+        'fleet.view_own',
         'fleet.manage',
 
         -- Route Dispatch
@@ -273,23 +385,42 @@ JOIN permissions p
         'route.end_own',
         'route.manage',
 
-        -- Inventory Transfers
+        -- Inventory Transfers & Catalog Visibility
+        'inventory.view',
         'inventory.vehicle.manage',
 
         -- Deliveries
         'delivery.view',
         'delivery.update',
 
+        -- Road Apprehensions
+        'apprehensions.view',
+        'apprehensions.view_own',
+        'apprehensions.create',
+        'apprehensions.manage',
+
+        -- Vehicle Fuel
+        'fuel.view',
+        'fuel.view_own',
+        'fuel.create',
+        'fuel.manage',
+
+        -- Emergency Alerts
+        'alerts.view',
+        'alerts.view_own',
+        'alerts.trigger',
+        'alerts.manage',
+
         -- History Logs
         'history.view'
 
     )
-WHERE r.name IN ('Logistics Supervisor', 'Fleet Manager')
+WHERE r.name = 'Logistics Supervisor'
 ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 7. SALES SUPERVISOR (and legacy Sales Manager)
+-- 7. SALES SUPERVISOR
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -303,12 +434,16 @@ JOIN permissions p
         -- Dashboard
         'dashboard.view',
 
-        -- Inventory
+        -- Route Dispatch Visibility
+        'route.view',
+
+        -- Inventory & Vehicle Stock Reconciliation
         'inventory.view',
         'inventory.vehicle.manage',
 
         -- Sales
         'sales.view',
+        'sales.create',
         'sales.update',
         'sales.delete',
 
@@ -320,12 +455,12 @@ JOIN permissions p
         'history.view'
 
     )
-WHERE r.name IN ('Sales Supervisor', 'Sales Manager')
+WHERE r.name = 'Sales Supervisor'
 ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 7. SALES PERSON
+-- 8. SALES PERSON
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -357,7 +492,7 @@ ON CONFLICT DO NOTHING;
 
 
 -- ============================================================
--- 8. DRIVER
+-- 9. DRIVER
 -- ============================================================
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -373,7 +508,6 @@ JOIN permissions p
         -- Route
         'route.view_own',
         'route.end_own',
-
 
         -- Apprehensions
         'apprehensions.create',

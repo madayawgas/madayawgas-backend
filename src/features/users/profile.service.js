@@ -12,6 +12,19 @@ const { extractStorageKey } = require('../media/media.service');
  */
 class ProfileService {
   /**
+   * Checks whether a target user account holds the Super Admin role
+   * (by username, primary role, or secondary user_roles assignment).
+   */
+  async _isSuperAdminUser(targetUser) {
+    if (!targetUser) return false;
+    if (targetUser.username === 'superadmin' || targetUser.role_name === 'Super Admin') {
+      return true;
+    }
+    const userRoles = await usersRepository.getUserRoles(targetUser.id);
+    return userRoles.some((r) => r.name === 'Super Admin');
+  }
+
+  /**
    * Retrieves profile information and permissions for a user ID.
    */
   async getProfile(userId) {
@@ -68,6 +81,12 @@ class ProfileService {
 
     if (!isSelf && !canManage) {
       throw new Error('Forbidden: You do not have permission to update this profile');
+    }
+
+    if (!isSelf && (await this._isSuperAdminUser(target))) {
+      const err = new Error('Forbidden: Super Admin profile can only be modified by the Super Admin account itself');
+      err.statusCode = 403;
+      throw err;
     }
 
     const updatePayload = {};
@@ -201,6 +220,12 @@ class ProfileService {
       throw err;
     }
 
+    if (!isSelf && (await this._isSuperAdminUser(target))) {
+      const err = new Error('Forbidden: Super Admin profile picture can only be modified by the Super Admin account itself');
+      err.statusCode = 403;
+      throw err;
+    }
+
     if (!file || !file.buffer) {
       const err = new Error('No avatar image uploaded or file buffer is empty');
       err.statusCode = 400;
@@ -276,6 +301,12 @@ class ProfileService {
 
     if (!isSelf && !canManage) {
       const err = new Error('Forbidden: You do not have permission to remove this profile picture');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    if (!isSelf && (await this._isSuperAdminUser(target))) {
+      const err = new Error('Forbidden: Super Admin profile picture can only be modified by the Super Admin account itself');
       err.statusCode = 403;
       throw err;
     }

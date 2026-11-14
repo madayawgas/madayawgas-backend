@@ -59,7 +59,8 @@ madayawgas-backend/
 │   │   ├── 018_remove_driver_attendance.sql        # Remove driver attendance schema
 │   │   ├── 019_user_profile_avatar.sql             # User profile avatar media key schema
 │   │   ├── 020_add_returned_to_trip_status.sql     # Safe enum alteration adding RETURNED to trip_status
-│   │   └── 021_trip_handling_and_reconciliation_flow.sql # Ended_by column, active truck index, route.end_own permission
+│   │   ├── 021_trip_handling_and_reconciliation_flow.sql # Ended_by column, active truck index, route.end_own permission
+│   │   └── 022_finalize_roles_and_permissions.sql  # Canonical 7 roles & finalized RBAC permissions matrix
 │   ├── scripts/
 │   │   ├── setup.js                         # DB initialization script
 │   │   ├── migrate.js                       # Migration runner
@@ -162,8 +163,7 @@ madayawgas-backend/
 │   │   │   ├── operations.routes.js         # Master operations router (/api/operations)
 │   │   │   └── index.js                     # Operations barrel export
 │   │   └── sales/                           # Sales & Delivery Subsystem
-│   │       ├── customer/                    # Legacy Customer CRUD (Repository, Service, Controller)
-│   │       ├── customers/                   # Customer subdomain barrel export
+│   │       ├── customers/                   # Customer 3-layer subdomain (Repository, Service, Controller, Routes)
 │   │       ├── transactions/                # Sales transactions and line items (Scaffolded)
 │   │       ├── invoices/                    # Sales invoices and payment verification (Scaffolded)
 │   │       ├── sync/                        # Offline mobile store-and-forward batch sync (Scaffolded)
@@ -243,7 +243,7 @@ madayawgas-backend/
 * **Standardized Rejection Codes**:
   - Missing password: `401 Unauthorized` with `code: 'PASSWORD_CONFIRMATION_REQUIRED'`.
   - Wrong password: `401 Unauthorized` with `code: 'INVALID_CONFIRMATION_PASSWORD'`.
-* **Super Admin Protection**: The primary Super Admin account cannot be deactivated, blocked, or have its role changed (`400 Bad Request`).
+* **Super Admin Protection**: Super Admin accounts cannot be deactivated, blocked, or have their role changed (`400 Bad Request`). In addition, non-self `Admin` users cannot modify a Super Admin's credentials (`400 Bad Request`) or personal profile/avatar (`403 Forbidden`); only the Super Admin account itself can edit its own credentials and profile.
 
 ### E. Test Concurrency & Isolation
 * Node.js test runner (`node --test src/test/*.test.js`) runs test files in parallel worker processes.
@@ -354,7 +354,7 @@ madayawgas-backend/
    * Enforced RBAC route protections (`inventory.view` for listing/detail viewing, `inventory.manage` for creation, updates, and soft-deactivation).
    * Implemented comprehensive test suite in `src/test/inventory.test.js` covering all 4 user stories, validations, container type enforcement (`CYLINDER`, `CANISTER`), weight validation, and soft-deactivation filtering.
    * Created formal API contract `docs/API Contract/inventory-products.api.md`.
-10. **Sales & Delivery Subsystem: Customer Profile CRUD (`src/features/sales/customer/`)**:
+10. **Sales & Delivery Subsystem: Customer Profile CRUD (`src/features/sales/customers/`)**:
     * Implemented 3-Layer Architecture for Customer Profile management (`customer.repository.js`, `customer.service.js`, `customer.controller.js`, `sales.routes.js`).
     * Created migration `004_customers.sql` (`id`, `name`, `address`, `contact_number`, `customer_type_enum`, `is_active`, timestamps) with `BEFORE UPDATE` trigger and performance indexes.
     * Enforced RBAC route protections (`sales.view` / `sales.view_own` for overview/detail viewing, `sales.create` for registration, `sales.update` for profile updates and soft-deactivation).

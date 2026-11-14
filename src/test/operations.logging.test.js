@@ -143,7 +143,7 @@ test('Operational Logging Subsystems Integration Tests', async (t) => {
 
     // 2. Fetch role IDs
     const adminRoleId = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
-    const supervisorRoleId = (await query(`SELECT id FROM roles WHERE name IN ('Logistics Supervisor', 'Fleet Manager') LIMIT 1`)).rows[0].id;
+    const supervisorRoleId = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
     const driverRoleId = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
     const salesRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
 
