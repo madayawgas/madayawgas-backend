@@ -1,10 +1,13 @@
 const salesRoutes = require('./sales.routes');
 
-// Customer profile management (Legacy & new aliases)
-const customerRepository = require('./customer/customer.repository');
-const customerService = require('./customer/customer.service');
-const customerController = require('./customer/customer.controller');
+// Customer profile management
 const customers = require('./customers');
+const {
+  customerRepository,
+  customerService,
+  customerController,
+  customerRoutes,
+} = customers;
 
 // Frontline sales and delivery sub-modules
 const transactions = require('./transactions');
@@ -32,6 +35,7 @@ module.exports = {
   customerRepository,
   customerService,
   customerController,
+  customerRoutes,
   customers,
   transactions,
   transactionsRepository,

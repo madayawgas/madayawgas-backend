@@ -36,6 +36,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
   let adminCookie;
   let salesManagerCookie;
   let fleetManagerCookie;
+  let plantSupervisorCookie;
   let salesPersonCookie;
 
   beforeEach(async () => {
@@ -49,8 +50,9 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     // 2. Fetch role IDs
     const superAdminRole = (await query(`SELECT id FROM roles WHERE name = 'Super Admin'`)).rows[0].id;
     const adminRole = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
-    const salesManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Manager'`)).rows[0].id;
-    const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`)).rows[0].id;
+    const salesManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`)).rows[0].id;
+    const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
+    const plantSupervisorRole = (await query(`SELECT id FROM roles WHERE name = 'Plant Supervisor'`)).rows[0].id;
     const salesPersonRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
 
     // 3. Create test users
@@ -71,13 +73,19 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
-      ['test_inv_sales_mgr', passwordHash, 'Sales', 'Manager', '+639172000003', salesManagerRole]
+      ['test_inv_sales_mgr', passwordHash, 'Sales', 'Supervisor', '+639172000003', salesManagerRole]
     );
 
     await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
-      ['test_inv_fleet', passwordHash, 'Fleet', 'Manager', '+639172000004', fleetManagerRole]
+      ['test_inv_fleet', passwordHash, 'Logistics', 'Supervisor', '+639172000004', fleetManagerRole]
+    );
+
+    await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_inv_plant', passwordHash, 'Plant', 'Supervisor', '+639172000006', plantSupervisorRole]
     );
 
     await query(
@@ -115,6 +123,13 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     fleetManagerCookie = parseCookieHeader(fmLogin);
 
+    const psLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_inv_plant', password: 'InvPass123!' }),
+    });
+    plantSupervisorCookie = parseCookieHeader(psLogin);
+
     const salesLogin = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,13 +162,26 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(salesGet.status, 200);
 
+    // Logistics Supervisor (has inventory.view & inventory.vehicle.manage, lacks inventory.manage) -> GET 200, POST 403
     const fmGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
-    assert.equal(fmGet.status, 403);
-    const fmGetJson = await fmGet.json();
-    assert.equal(fmGetJson.status, 'fail');
-    assert.equal(fmGetJson.message, 'Forbidden');
+    assert.equal(fmGet.status, 200);
+
+    const fmPost = await fetch(`${baseUrl}/api/inventory/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-PROD- 11kg LS Create',
+        category: 'LPG',
+        containerType: 'CYLINDER',
+        netWeightKg: 11.0,
+      }),
+    });
+    assert.equal(fmPost.status, 403);
 
     const salesPost = await fetch(`${baseUrl}/api/inventory/products`, {
       method: 'POST',
@@ -170,7 +198,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(salesPost.status, 403);
 
-    // C. Sales Manager (has inventory.view & inventory.vehicle.manage, but lacks inventory.manage) -> GET 200, POST 403
+    // C. Sales Supervisor (has inventory.view & inventory.vehicle.manage, but lacks inventory.manage) -> GET 200, POST 403
     const smGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
@@ -191,7 +219,28 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(smPost.status, 403);
 
-    // D. Admin (has inventory.manage) -> POST 201
+    // D. Plant Supervisor (has inventory.view, inventory.manage, inventory.plant.manage) -> GET 200, POST 201
+    const psGet = await fetch(`${baseUrl}/api/inventory/products`, {
+      headers: { Cookie: `mg_sid=${plantSupervisorCookie}` },
+    });
+    assert.equal(psGet.status, 200);
+
+    const psPost = await fetch(`${baseUrl}/api/inventory/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${plantSupervisorCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-PROD- Plant Supervisor Item',
+        category: 'LPG Cylinder',
+        containerType: 'CYLINDER',
+        netWeightKg: 11.0,
+      }),
+    });
+    assert.equal(psPost.status, 201);
+
+    // E. Admin (has inventory.manage) -> POST 201
     const adminPost = await fetch(`${baseUrl}/api/inventory/products`, {
       method: 'POST',
       headers: {

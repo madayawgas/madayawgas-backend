@@ -66,7 +66,7 @@ router.post(
 router.post(
   '/:id/reconcile',
   authenticate,
-  requirePermission(['route.manage', 'inventory.vehicle.manage', 'inventory.plant.manage']),
+  requirePermission(['route.manage', 'inventory.vehicle.manage']),
   asyncHandler(tripsController.reconcileTrip.bind(tripsController))
 );
 

@@ -365,16 +365,27 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     });
     assert.equal(plantTransfersRes.status, 200);
 
-    // Plant Supervisor scope isolation: Non-plant domains return 403 Forbidden
+    // Plant Supervisor now holds route.view (read-only access to routes/trips),
+    // while route write operations remain 403 Forbidden.
     const plantRoutesRes = await fetch(`${baseUrl}/api/schedules/zones`, {
       headers: { Cookie: `mg_sid=${plantCookie}` },
     });
-    assert.equal(plantRoutesRes.status, 403);
+    assert.equal(plantRoutesRes.status, 200);
 
     const plantTripsRes = await fetch(`${baseUrl}/api/trips`, {
       headers: { Cookie: `mg_sid=${plantCookie}` },
     });
-    assert.equal(plantTripsRes.status, 403);
+    assert.equal(plantTripsRes.status, 200);
+
+    const plantWriteRouteRes = await fetch(`${baseUrl}/api/schedules/zones`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${plantCookie}`,
+      },
+      body: JSON.stringify({ name: 'TEST-PLANT-BLOCKED-ZONE' }),
+    });
+    assert.equal(plantWriteRouteRes.status, 403);
 
     const plantFleetRes = await fetch(`${baseUrl}/api/fleet/overview`, {
       headers: { Cookie: `mg_sid=${plantCookie}` },

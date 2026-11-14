@@ -50,7 +50,7 @@ test('User Profile Operations Tests', async (t) => {
     const salesRoleRes = await query(`SELECT id FROM roles WHERE name = 'Sales Person'`);
     salesPersonRoleId = salesRoleRes.rows[0].id;
 
-    const fleetRoleRes = await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`);
+    const fleetRoleRes = await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`);
     fleetManagerRoleId = fleetRoleRes.rows[0].id;
 
     const passwordHash = await bcrypt.hash('TestPass123!', 10);
@@ -161,7 +161,7 @@ test('User Profile Operations Tests', async (t) => {
     });
     assert.equal(adminRoleUpdate.status, 200);
     const updatedUser = await adminRoleUpdate.json();
-    assert.equal(updatedUser.data.user.role, 'Fleet Manager');
+    assert.equal(updatedUser.data.user.role, 'Logistics Supervisor');
 
     // Target user's active session is invalidated due to role change
     const checkInvalidSession = await fetch(`${baseUrl}/api/users/me`, {

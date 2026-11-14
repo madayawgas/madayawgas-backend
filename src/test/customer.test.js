@@ -51,8 +51,8 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     // 2. Fetch role IDs
     const superAdminRole = (await query(`SELECT id FROM roles WHERE name = 'Super Admin'`)).rows[0].id;
     const adminRole = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
-    const salesManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Manager'`)).rows[0].id;
-    const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`)).rows[0].id;
+    const salesManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`)).rows[0].id;
+    const fleetManagerRole = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
     const salesPersonRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
 
     // 3. Create test users
@@ -143,7 +143,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(unauthPost.status, 401);
 
-    // B. Fleet Manager (no sales permissions) -> GET 403 Forbidden
+    // B. Logistics Supervisor (no sales permissions) -> GET 403 Forbidden, POST 403 Forbidden
     const fmGet = await fetch(`${baseUrl}/api/sales/customers`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
@@ -152,7 +152,22 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
     assert.equal(fmGetJson.status, 'fail');
     assert.equal(fmGetJson.message, 'Forbidden');
 
-    // C. Sales Manager has sales.view -> GET 200 OK, but lacks sales.create -> POST 403 Forbidden
+    const fmPost = await fetch(`${baseUrl}/api/sales/customers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${fleetManagerCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-CUST- FM Customer',
+        address: '123 Test St',
+        contactNumber: '09170000000',
+        customerType: 'RETAIL',
+      }),
+    });
+    assert.equal(fmPost.status, 403);
+
+    // C. Sales Supervisor has sales.view and sales.create -> GET 200 OK, POST 201 Created
     const smGet = await fetch(`${baseUrl}/api/sales/customers`, {
       headers: { Cookie: `mg_sid=${salesManagerCookie}` },
     });
@@ -171,10 +186,7 @@ test('Sales Customer Profile CRUD Subsystem Tests', async (t) => {
         customerType: 'RETAIL',
       }),
     });
-    assert.equal(smPost.status, 403);
-    const smPostJson = await smPost.json();
-    assert.equal(smPostJson.status, 'fail');
-    assert.equal(smPostJson.message, 'Forbidden');
+    assert.equal(smPost.status, 201);
 
     // D. Sales Person has sales.view_own and sales.create -> GET 200, POST 201
     const salesGet = await fetch(`${baseUrl}/api/sales/customers`, {

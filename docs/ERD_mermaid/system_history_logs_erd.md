@@ -36,8 +36,8 @@ erDiagram
         uuid user_id FK "Nullable (ON DELETE SET NULL)"
         string user_name "Denormalized actor name"
         string user_role "Denormalized actor role"
-        string action_type "Created, Updated, Deactivated, Assigned"
-        string module "USER, FLEET, INVENTORY, CUSTOMER, SCHEDULE, TRIP"
+        string action_type "Created, Updated, Deactivated, Assigned, Status Changed, Deleted"
+        string module "User Management, Fleet Management, Inventory Management, Sales & Delivery, Route Dispatch, SCHEDULE, TRIP, Operations"
         string action "Standardized event slug"
         string details "Resolved message template"
         string target_id "Nullable target entity identifier"
@@ -67,8 +67,8 @@ Chronological event ledger recording operational, financial, route, and administ
 | `user_id` | `UUID` | Yes | `FK -> users(id) ON DELETE SET NULL` | Performing authenticated user (system events use NULL) |
 | `user_name` | `VARCHAR(150)` | No | Non-empty | Snapshot of actor's full name at log time |
 | `user_role` | `VARCHAR(100)` | No | Non-empty | Snapshot of actor's active role at log time |
-| `action_type` | `VARCHAR(50)` | No | Non-empty | High-level action category: `Created`, `Updated`, `Deactivated`, `Assigned` |
-| `module` | `VARCHAR(100)` | No | Non-empty | Domain subsystem: `USER`, `FLEET`, `INVENTORY`, `CUSTOMER`, `SCHEDULE`, `TRIP` |
+| `action_type` | `VARCHAR(50)` | No | Non-empty | High-level action category: `Created`, `Updated`, `Deactivated`, `Assigned`, `Status Changed`, `Deleted` |
+| `module` | `VARCHAR(100)` | No | Non-empty | Domain subsystem: `User Management`, `Fleet Management`, `Inventory Management`, `Sales & Delivery`, `Route Dispatch`, `SCHEDULE`, `TRIP`, `Operations` |
 | `action` | `VARCHAR(100)` | No | Non-empty | Standard event key (e.g. `TRIP_DISPATCHED`, `PRODUCT_CREATED`) |
 | `details` | `TEXT` | No | Non-empty | Resolved descriptive message |
 | `target_id` | `VARCHAR(255)` | Yes | `NULL` | ID of the affected entity |

@@ -152,6 +152,9 @@ erDiagram
         int total_returned_empty_good "CHECK >= 0"
         int total_returned_defective "CHECK >= 0"
         int net_customer_debt_created "Signed Integer"
+        int full_discrepancy "Computed Variance"
+        int empty_discrepancy "Computed Variance"
+        jsonb reconciliation_data "Per-Product Breakdown"
         enum status "reconciliation_status: AWAITING_SYNC, SETTLED, FLAGGED_VARIANCE"
         string supervisor_notes "Nullable"
         timestamptz reconciled_at "Nullable"
@@ -330,6 +333,9 @@ Tracks post-trip financial and inventory reconciliation between loaded stock, mo
 | `total_returned_empty_good` | `INT` | No | `DEFAULT 0, CHECK >= 0` | Aggregated good empty units received back |
 | `total_returned_defective` | `INT` | No | `DEFAULT 0, CHECK >= 0` | Aggregated defective empty units received back |
 | `net_customer_debt_created` | `INT` | No | `DEFAULT 0` | Net customer canister debt ledger movement |
+| `full_discrepancy` | `INT` | No | `DEFAULT 0` | Computed variance for full units |
+| `empty_discrepancy` | `INT` | No | `DEFAULT 0` | Computed variance for empty units |
+| `reconciliation_data` | `JSONB` | Yes | `DEFAULT '{}'::jsonb` | Per-product reconciliation breakdown |
 | `status` | `reconciliation_status` | No | `DEFAULT 'AWAITING_SYNC'` | Status: `'AWAITING_SYNC'`, `'SETTLED'`, `'FLAGGED_VARIANCE'` |
 | `supervisor_notes` | `TEXT` | Yes | `NULL` | Variance explanations or supervisory notes |
 | `reconciled_at` | `TIMESTAMPTZ` | Yes | `NULL` | Settlement verification timestamp |

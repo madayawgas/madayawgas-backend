@@ -142,7 +142,7 @@ test('Fleet Maintenance Subsystem: Odometer Engine & PM Tracking Tests', async (
     await cleanupTestData();
 
     // 1. Fetch roles
-    const supervisorRole = (await query(`SELECT id FROM roles WHERE name IN ('Logistics Supervisor', 'Fleet Manager') ORDER BY name LIMIT 1`)).rows[0].id;
+    const supervisorRole = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
     const adminRole = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
     const salesRole = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
     const driverRole = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;

@@ -362,7 +362,7 @@ test('User Administration & Management Tests', async (t) => {
     });
     const adminCookie = parseCookieHeader(adminLogin);
 
-    const fleetRoleRes = await query(`SELECT id FROM roles WHERE name = 'Fleet Manager'`);
+    const fleetRoleRes = await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`);
     const fleetRoleId = fleetRoleRes.rows[0].id;
 
     // 1) Create a user with Sales Person role
@@ -412,7 +412,7 @@ test('User Administration & Management Tests', async (t) => {
     const wrongPassJson = await wrongPassRoleChange.json();
     assert.equal(wrongPassJson.code, 'INVALID_CONFIRMATION_PASSWORD');
 
-    // 5) Admin successfully changes user's role to Fleet Manager with valid confirmation password
+    // 5) Admin successfully changes user's role to Logistics Supervisor with valid confirmation password
     const adminRoleChange = await fetch(`${baseUrl}/api/users/${targetUserId}/role`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
@@ -421,7 +421,7 @@ test('User Administration & Management Tests', async (t) => {
     assert.equal(adminRoleChange.status, 200);
     const roleChangeBody = await adminRoleChange.json();
     assert.equal(roleChangeBody.status, 'success');
-    assert.equal(roleChangeBody.data.user.role, 'Fleet Manager');
+    assert.equal(roleChangeBody.data.user.role, 'Logistics Supervisor');
     assert.ok(Array.isArray(roleChangeBody.data.user.permissions));
     assert.ok(roleChangeBody.data.user.permissions.includes('fleet.view'));
 
@@ -471,7 +471,7 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(permsBody.data.permissions.some((p) => p.name === 'fleet.view'));
     assert.ok(permsBody.data.permissions.some((p) => p.name === 'sales.view'));
 
-    // 2. List all roles (GET /api/users/roles) - checks presence of all 6 standard roles
+    // 2. List all roles (GET /api/users/roles) - checks presence of all 7 canonical roles and absence of legacy aliases
     const rolesRes = await fetch(`${baseUrl}/api/users/roles`, {
       headers: { Cookie: `mg_sid=${adminCookie}` },
     });
@@ -483,14 +483,19 @@ test('User Administration & Management Tests', async (t) => {
     const roleNames = roles.map((r) => r.name);
     assert.ok(roleNames.includes('Super Admin'));
     assert.ok(roleNames.includes('Admin'));
-    assert.ok(roleNames.includes('Fleet Manager'));
-    assert.ok(roleNames.includes('Sales Manager'));
+    assert.ok(roleNames.includes('Plant Supervisor'));
+    assert.ok(roleNames.includes('Logistics Supervisor'));
+    assert.ok(roleNames.includes('Sales Supervisor'));
     assert.ok(roleNames.includes('Sales Person'));
     assert.ok(roleNames.includes('Driver'));
+    assert.ok(!roleNames.includes('Fleet Manager'));
+    assert.ok(!roleNames.includes('Sales Manager'));
 
-    const salesManager = roles.find((r) => r.name === 'Sales Manager');
-    assert.ok(salesManager.permissions.includes('inventory.view'));
-    assert.ok(salesManager.permissions.includes('sales.view'));
+    const salesSupervisor = roles.find((r) => r.name === 'Sales Supervisor');
+    assert.ok(salesSupervisor.permissions.includes('inventory.view'));
+    assert.ok(salesSupervisor.permissions.includes('sales.view'));
+    assert.ok(salesSupervisor.permissions.includes('sales.create'));
+    assert.ok(salesSupervisor.permissions.includes('route.view'));
 
     const driverRole = roles.find((r) => r.name === 'Driver');
     assert.ok(driverRole.permissions.includes('alerts.trigger'));
@@ -689,7 +694,7 @@ test('User Administration & Management Tests', async (t) => {
     });
     assert.equal(adminAccess.status, 403);
 
-    // 4. Plant Supervisor role verification (empty permissions as per requirements)
+    // 4. Plant Supervisor role verification (6 finalized permissions)
     const createPlantRes = await fetch(`${baseUrl}/api/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
@@ -714,8 +719,10 @@ test('User Administration & Management Tests', async (t) => {
     assert.equal(plantLogin.status, 200);
     const plantProfile = await plantLogin.json();
     assert.ok(Array.isArray(plantProfile.data.user.permissions));
-    assert.ok(plantProfile.data.user.permissions.includes('inventory.view'));
-    assert.ok(plantProfile.data.user.permissions.includes('inventory.plant.manage'));
+    assert.deepEqual(
+      [...plantProfile.data.user.permissions].sort(),
+      ['dashboard.view', 'history.view', 'inventory.manage', 'inventory.plant.manage', 'inventory.view', 'route.view'].sort()
+    );
 
 
     // 5. Admin updates a user to multi-role via PATCH /api/users/:id/role
@@ -745,5 +752,102 @@ test('User Administration & Management Tests', async (t) => {
       const delJson = await delRes.json();
       assert.ok(delJson.message.includes('Cannot delete system default role'));
     }
+  });
+
+  await t.test('8. Super Admin Self-Only Account Protection Against Other Admins', async () => {
+    const adminRoleRes = await query(`SELECT id FROM roles WHERE name = 'Admin'`);
+    const adminRoleId = adminRoleRes.rows[0].id;
+
+    const passHash = await bcrypt.hash('AdminActorPass123!', 10);
+    await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE)`,
+      ['test_mgmt_admin_actor', passHash, 'Other', 'Admin', '+639170000099', adminRoleId]
+    );
+
+    const otherAdminLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_mgmt_admin_actor', password: 'AdminActorPass123!' }),
+    });
+    assert.equal(otherAdminLogin.status, 200);
+    const otherAdminCookie = parseCookieHeader(otherAdminLogin);
+
+    // 1) Non-self Admin cannot reset Super Admin's password or change username -> 400
+    const credResetRes = await fetch(`${baseUrl}/api/users/${testUserId}/credentials`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${otherAdminCookie}` },
+      body: JSON.stringify({
+        resetPassword: true,
+        adminPassword: 'AdminActorPass123!',
+      }),
+    });
+    assert.equal(credResetRes.status, 400);
+    const credResetBody = await credResetRes.json();
+    assert.equal(credResetBody.message, 'Super Admin credentials can only be modified by the Super Admin account itself');
+
+    const usernameChangeRes = await fetch(`${baseUrl}/api/users/${testUserId}/credentials`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${otherAdminCookie}` },
+      body: JSON.stringify({
+        username: 'hijacked_superadmin',
+        adminPassword: 'AdminActorPass123!',
+      }),
+    });
+    assert.equal(usernameChangeRes.status, 400);
+
+    // 2) Non-self Admin cannot edit Super Admin's profile -> 403
+    const profilePatchRes = await fetch(`${baseUrl}/api/users/${testUserId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${otherAdminCookie}` },
+      body: JSON.stringify({ firstName: 'Tampered' }),
+    });
+    assert.equal(profilePatchRes.status, 403);
+
+    // 3) Non-self Admin cannot upload or delete Super Admin's avatar -> 403
+    const avatarForm = new FormData();
+    avatarForm.append('avatar', new Blob([Buffer.from('TEST_AVATAR_BYTES')], { type: 'image/jpeg' }), 'sa.jpg');
+    const avatarPostRes = await fetch(`${baseUrl}/api/users/${testUserId}/avatar`, {
+      method: 'POST',
+      headers: { Cookie: `mg_sid=${otherAdminCookie}` },
+      body: avatarForm,
+    });
+    assert.equal(avatarPostRes.status, 403);
+
+    const avatarDelRes = await fetch(`${baseUrl}/api/users/${testUserId}/avatar`, {
+      method: 'DELETE',
+      headers: { Cookie: `mg_sid=${otherAdminCookie}` },
+    });
+    assert.equal(avatarDelRes.status, 403);
+
+    // 4) Super Admin CAN update their own profile and credentials
+    const saLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_mgmt_superadmin', password: 'TestPass123!' }),
+    });
+    assert.equal(saLogin.status, 200);
+    const saCookie = parseCookieHeader(saLogin);
+
+    const selfProfileRes = await fetch(`${baseUrl}/api/users/${testUserId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${saCookie}` },
+      body: JSON.stringify({ firstName: 'UpdatedSuper' }),
+    });
+    assert.equal(selfProfileRes.status, 200);
+    const selfProfileBody = await selfProfileRes.json();
+    assert.equal(selfProfileBody.data.user.firstName, 'UpdatedSuper');
+
+    const selfCredRes = await fetch(`${baseUrl}/api/users/${testUserId}/credentials`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${saCookie}` },
+      body: JSON.stringify({
+        resetPassword: true,
+        adminPassword: 'TestPass123!',
+      }),
+    });
+    assert.equal(selfCredRes.status, 200);
+    const selfCredBody = await selfCredRes.json();
+    assert.ok(selfCredBody.data.temporaryPassword);
   });
 });

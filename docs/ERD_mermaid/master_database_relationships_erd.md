@@ -61,6 +61,13 @@ erDiagram
     TRIP_STOCK_RECONCILIATIONS { }
 
     %% ========================================================
+    %% 7. FRONTLINE OPERATIONS SUBSYSTEM (3 Tables)
+    %% ========================================================
+    DRIVER_APPREHENSIONS { }
+    VEHICLE_FUEL_LOGS { }
+    EMERGENCY_ALERTS { }
+
+    %% ========================================================
     %% CROSS-SUBSYSTEM RELATIONSHIPS
     %% ========================================================
 
@@ -154,4 +161,22 @@ erDiagram
     PRODUCTS ||--o{ CANISTER_LEDGER : "sku"
     TRIPS ||--o{ CANISTER_LEDGER : "trip_attribution"
     SALES_TRANSACTIONS ||--o{ CANISTER_LEDGER : "generates"
+
+    %% Frontline Operations Subsystem
+    VEHICLES ||--o{ DRIVER_APPREHENSIONS : "cited_in"
+    USERS ||--o{ DRIVER_APPREHENSIONS : "driver"
+    USERS ||--o{ DRIVER_APPREHENSIONS : "recorded_by"
+    USERS ||--o{ DRIVER_APPREHENSIONS : "settled_by"
+    TRIPS ||--o{ DRIVER_APPREHENSIONS : "occurred_during"
+
+    VEHICLES ||--o{ VEHICLE_FUEL_LOGS : "fueled_in"
+    USERS ||--o{ VEHICLE_FUEL_LOGS : "driver"
+    USERS ||--o{ VEHICLE_FUEL_LOGS : "recorded_by"
+    TRIPS ||--o{ VEHICLE_FUEL_LOGS : "fueled_during"
+
+    USERS ||--o{ EMERGENCY_ALERTS : "triggered_by"
+    USERS ||--o{ EMERGENCY_ALERTS : "acknowledged_by"
+    USERS ||--o{ EMERGENCY_ALERTS : "resolved_by"
+    VEHICLES ||--o{ EMERGENCY_ALERTS : "involved_in"
+    TRIPS ||--o{ EMERGENCY_ALERTS : "occurred_during"
 ```

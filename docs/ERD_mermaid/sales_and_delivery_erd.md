@@ -45,12 +45,14 @@ erDiagram
 
     CUSTOMERS {
         uuid id PK
+        varchar name "Auto-synced"
         varchar customer_type "COMMERCIAL, RETAIL, RETAILER, WHOLESALE, HOUSEHOLD"
         varchar business_name "Nullable"
         varchar contact_person "NOT NULL"
         varchar contact_number "NOT NULL"
         varchar alternate_contact_number "Nullable"
         varchar tin "Nullable"
+        text address "Auto-synced"
         text delivery_address "NOT NULL"
         uuid zone_id FK "service_zones(id)"
         boolean is_active "DEFAULT TRUE"

@@ -17,6 +17,19 @@ const mediaStorage = require('../media/media.storage');
  */
 class ManagementService {
   /**
+   * Checks whether a target user account holds the Super Admin role
+   * (by username, primary role, or secondary user_roles assignment).
+   */
+  async _isSuperAdminUser(targetUser) {
+    if (!targetUser) return false;
+    if (targetUser.username === 'superadmin' || targetUser.role_name === 'Super Admin') {
+      return true;
+    }
+    const userRoles = await usersRepository.getUserRoles(targetUser.id);
+    return userRoles.some((r) => r.name === 'Super Admin');
+  }
+
+  /**
    * Helper to verify the acting admin's password before performing dangerous actions.
    */
   async verifyAdminPassword(actorUserId, adminPassword) {
@@ -243,7 +256,8 @@ class ManagementService {
     }
 
     const hasSuperAdmin = validatedRoles.some((r) => r.name === 'Super Admin');
-    if ((target.username === 'superadmin' || target.role_name === 'Super Admin') && !hasSuperAdmin) {
+    const isTargetSuperAdmin = await this._isSuperAdminUser(target);
+    if (isTargetSuperAdmin && (!hasSuperAdmin || actorUser.id !== target.id)) {
       throw new Error('Cannot change the role of a Super Admin account');
     }
 
@@ -311,6 +325,10 @@ class ManagementService {
     const target = await usersRepository.findUserById(targetUserId);
     if (!target) {
       throw new Error('User not found');
+    }
+
+    if ((await this._isSuperAdminUser(target)) && actorUser.id !== target.id) {
+      throw new Error('Super Admin credentials can only be modified by the Super Admin account itself');
     }
 
     const updatePayload = {};
@@ -399,7 +417,7 @@ class ManagementService {
     }
 
     // Protect Super Admin accounts from deactivation or blocking
-    if (target.role_name === 'Super Admin') {
+    if (await this._isSuperAdminUser(target)) {
       if (isActive === false || isBlocked === true) {
         throw new Error('Super Admin account cannot be deactivated or blocked');
       }
@@ -650,8 +668,6 @@ class ManagementService {
       'Plant Supervisor',
       'Logistics Supervisor',
       'Sales Supervisor',
-      'Fleet Manager',
-      'Sales Manager',
       'Sales Person',
       'Driver',
     ];

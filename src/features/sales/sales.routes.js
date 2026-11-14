@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const customerRoutes = require('./customers/customer.routes');
+const { customerRoutes } = require('./customers');
 const { syncRoutes } = require('./sync');
 const { transactionsRoutes, transactionsController } = require('./transactions');
 const { invoicesRoutes } = require('./invoices');
