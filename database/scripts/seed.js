@@ -5,6 +5,30 @@ const { pool } = require('../connection');
 require('dotenv').config();
 
 const SEEDS_DIR = path.join(__dirname, '..', 'seeds');
+const SOURCE_SEED_MEDIA_DIR = path.resolve(__dirname, '..', '..', 'docs', 'temp', 'temp_seed_receipts');
+
+function syncSeedMedia() {
+  if (!fs.existsSync(SOURCE_SEED_MEDIA_DIR)) {
+    return;
+  }
+
+  const localRoot = path.resolve(process.env.LOCAL_MEDIA_PATH || './uploads');
+  const targetDir = path.join(localRoot, 'seed');
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  const files = fs
+    .readdirSync(SOURCE_SEED_MEDIA_DIR)
+    .filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
+
+  for (const file of files) {
+    fs.copyFileSync(
+      path.join(SOURCE_SEED_MEDIA_DIR, file),
+      path.join(targetDir, file)
+    );
+  }
+
+  console.log(`\n✓ Synced ${files.length} seed media file(s) to ${targetDir}`);
+}
 
 async function seed() {
   const client = await pool.connect();
@@ -25,6 +49,7 @@ async function seed() {
       console.log(`✓ Seed applied: ${filename}`);
     }
 
+    syncSeedMedia();
     console.log('\n✓ Database seeding completed successfully.');
   } finally {
     client.release();

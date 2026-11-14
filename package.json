@@ -16,6 +16,7 @@
     "db:migrate": "node database/scripts/migrate.js",
     "db:seed": "node database/scripts/seed.js",
     "db:export": "node database/scripts/export-schema.js",
+    "media:seed-upload": "node scripts/upload-seed-media.js",
     "prepare": "husky"
   },
   "keywords": [

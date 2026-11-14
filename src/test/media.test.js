@@ -15,16 +15,19 @@ const {
 } = require('../features/media');
 
 const PREFIX = 'test_media_';
+const TEST_UPLOAD_DIR = path.resolve('./uploads-test-media');
 let server;
 let baseUrl;
 let adminCookie;
 const createdStorageKeys = new Set();
 const originalProduction = process.env.PRODUCTION;
 const originalNodeEnv = process.env.NODE_ENV;
+const originalLocalMediaPath = process.env.LOCAL_MEDIA_PATH;
 
 before(async () => {
   process.env.PRODUCTION = 'false';
   process.env.NODE_ENV = 'test';
+  process.env.LOCAL_MEDIA_PATH = TEST_UPLOAD_DIR;
 
   await new Promise((resolve) => {
     server = app.listen(0, () => {
@@ -49,11 +52,10 @@ after(async () => {
     }
   }
 
-  // Clean test uploads directory if empty
+  // Clean isolated test uploads directory
   try {
-    const uploadDir = path.resolve('./uploads');
-    if (fs.existsSync(uploadDir)) {
-      fs.rmSync(uploadDir, { recursive: true, force: true });
+    if (fs.existsSync(TEST_UPLOAD_DIR)) {
+      fs.rmSync(TEST_UPLOAD_DIR, { recursive: true, force: true });
     }
   } catch {
     // Ignore cleanup error
@@ -61,6 +63,11 @@ after(async () => {
 
   process.env.PRODUCTION = originalProduction;
   process.env.NODE_ENV = originalNodeEnv;
+  if (originalLocalMediaPath === undefined) {
+    delete process.env.LOCAL_MEDIA_PATH;
+  } else {
+    process.env.LOCAL_MEDIA_PATH = originalLocalMediaPath;
+  }
 
   // Clean test users & sessions
   try {
@@ -271,8 +278,8 @@ test('Media Subsystem Integration Tests', async (t) => {
       createdStorageKeys.add(storageKey);
 
       // Verify file exists on local filesystem
-      const localFilePath = path.resolve('./uploads', storageKey);
-      assert.ok(fs.existsSync(localFilePath), 'Uploaded file must exist in ./uploads directory');
+      const localFilePath = path.resolve(TEST_UPLOAD_DIR, storageKey);
+      assert.ok(fs.existsSync(localFilePath), 'Uploaded file must exist in isolated test uploads directory');
       const fileData = fs.readFileSync(localFilePath);
       assert.equal(fileData.toString(), testBuffer.toString());
 
@@ -391,7 +398,7 @@ test('Media Subsystem Integration Tests', async (t) => {
     assert.equal(res.status, 201);
     const body = await res.json();
     const key = body.data.storageKey;
-    const localPath = path.resolve('./uploads', key);
+    const localPath = path.resolve(TEST_UPLOAD_DIR, key);
 
     assert.ok(fs.existsSync(localPath), 'File should exist prior to deletion');
 
