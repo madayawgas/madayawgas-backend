@@ -342,9 +342,6 @@ SELECT
 FROM roles r
 JOIN permissions p
     ON p.name IN (
-        -- Dashboard
-        'dashboard.view',
-
         -- Inventory & Product Catalog
         'inventory.view',
         'inventory.manage',
@@ -371,9 +368,6 @@ SELECT
 FROM roles r
 JOIN permissions p
     ON p.name IN (
-
-        -- Dashboard
-        'dashboard.view',
 
         -- Fleet & Maintenance
         'fleet.view',
@@ -431,9 +425,6 @@ FROM roles r
 JOIN permissions p
     ON p.name IN (
 
-        -- Dashboard
-        'dashboard.view',
-
         -- Route Dispatch Visibility
         'route.view',
 
@@ -470,9 +461,6 @@ SELECT
 FROM roles r
 JOIN permissions p
     ON p.name IN (
-
-        -- Dashboard
-        'dashboard.view',
 
         -- Route Dispatch
         'route.view_own',

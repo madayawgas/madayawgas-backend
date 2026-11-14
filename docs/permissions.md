@@ -4,7 +4,7 @@
 
 | Permission | Super Admin | Admin | Plant Supervisor | Logistics Supervisor | Sales Supervisor | Sales Person | Driver | Description |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`dashboard.view`** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | View the main operational dashboard |
+| **`dashboard.view`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | View the main operational dashboard |
 | **`fleet.view`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | View fleet and maintenance overview & vehicle profiles |
 | **`fleet.view_own`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | View details & maintenance for assigned truck only |
 | **`fleet.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Register vehicles, update info, set condition, assign drivers, deactivate |
