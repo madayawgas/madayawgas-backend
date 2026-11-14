@@ -158,11 +158,12 @@ class MaintenanceRepository {
    * @param {Object} [filters] - Optional filters: { status, search, isPmDue }
    * @returns {Promise<Array<Object>>} Array of trucks with PM calculations
    */
-  async getFleetPmStatusOverview(filters = {}) {
+  async getFleetPmStatusOverview(filters = {}, pmThresholdKm = 5000) {
     const { status, search, isPmDue } = filters;
+    const threshold = Number.isFinite(Number(pmThresholdKm)) ? Number(pmThresholdKm) : 5000;
     const conditions = [];
-    const params = [];
-    let paramIndex = 1;
+    const params = [threshold];
+    let paramIndex = 2;
 
     if (status) {
       conditions.push(`t.status = $${paramIndex++}`);
@@ -177,7 +178,7 @@ class MaintenanceRepository {
 
     if (isPmDue !== undefined && isPmDue !== null && isPmDue !== '') {
       const pmBool = isPmDue === true || isPmDue === 'true';
-      conditions.push(`t.pm_due_flag = $${paramIndex++}`);
+      conditions.push(`((t.current_odometer - t.last_pm_odometer) >= $1) = $${paramIndex++}`);
       params.push(pmBool);
     }
 
@@ -194,9 +195,9 @@ class MaintenanceRepository {
         t.current_odometer,
         t.last_pm_odometer,
         (t.current_odometer - t.last_pm_odometer) AS distance_since_pm,
-        t.pm_due_flag AS is_pm_due,
-        t.pm_due_flag,
-        GREATEST(0, 5000 - (t.current_odometer - t.last_pm_odometer)) AS remaining_km_before_pm,
+        ((t.current_odometer - t.last_pm_odometer) >= $1) AS is_pm_due,
+        ((t.current_odometer - t.last_pm_odometer) >= $1) AS pm_due_flag,
+        GREATEST(0, $1 - (t.current_odometer - t.last_pm_odometer)) AS remaining_km_before_pm,
         t.driver_id,
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name,

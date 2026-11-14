@@ -7,16 +7,17 @@ Welcome to the MadayawGas Backend RESTful API documentation. This directory prov
 ## 1. Global API Standards & Architecture
 
 ### Base URL Paths
-| Subsystem | Base Path | Description |
+
+MadayawGas is organized into **5 Main Subsystems**, supported by **System Logic** cross-cutting utilities:
+
+| Classification | Base Path(s) | Description |
 | :--- | :--- | :--- |
-| **Users & Identity** | `/api/users` | Authentication, sessions, user profiles, admin management, and RBAC |
-| **Fleet & Logistics** | `/api/fleet` | Fleet overview, truck inventory, driver assignments, and maintenance tracking |
-| **Schedule & Routing** | `/api/schedules` | Service zones, weekly recurring route templates, and operational daily truck schedules |
-| **Trip & Reconciliation** | `/api/trips` | Real-time dispatch, multi-load inventory transfers, plant return check-in, and stock reconciliation |
-| **Inventory** | `/api/inventory` | LPG cylinder & canister product catalog and profile management |
-| **Sales & Delivery** | `/api/sales` | Customer profiles, commercial accounts, and retail distribution |
-| **System History** | `/api/history` | Centralized audit trail and system event historical logs |
-| **Media & Documents** | `/api/media` | Ingestion, validation, cloud/local storage, and resolution of images & receipts |
+| **1. User Management** | `/api/users` | Authentication, sessions, user profiles, avatars, admin management, and RBAC |
+| **2. Fleet & Maintenance** | `/api/fleet`, `/api/operations/fuel` | Fleet overview, vehicle inventory, driver assignments, maintenance tracking, and fuel telemetry |
+| **3. Trip & Schedule** | `/api/schedules`, `/api/trips`, `/api/operations/apprehensions`, `/api/operations/alerts` | Service zones, weekly route templates, daily schedules, trip dispatch, loads, reconciliation, road apprehensions, and emergency SOS alerts |
+| **4. Inventory** | `/api/inventory` | LPG product catalog, Bunawan plant bulk stock, adjustments, and stock transfers |
+| **5. Sales & Delivery** | `/api/sales` | Customer profiles, offline batch sync, transactions, invoices, shift closeout, and sales analytics |
+| **System Logic** *(Cross-Cutting Infrastructure)* | `/api/history`, `/api/media` | Centralized system event history logs and media/document storage utilities (non-subsystem) |
 
 - **Request / Response Format**: `application/json`
 - **Authentication**: Stateful server-side sessions stored in PostgreSQL, conveyed via HTTP-Only cookie `mg_sid`.
@@ -82,42 +83,48 @@ High-impact actions require administrator password confirmation before execution
 
 ## 2. Directory Structure
 
-The contracts are organized by subsystem, strictly mirroring the backend codebase in `src/features/`:
+The contracts are organized around the **5 Main Subsystems** plus **System Logic** cross-cutting utilities:
 
 ```text
 docs/api-contracts/
 ├── README.md                                # This master directory & route index
 ├── websockets.md                            # Real-Time WebSocket events, handshake auth & rooms catalog
 │
-├── fleet/                                   # Subsystem: Fleet & Maintenance
-│   ├── availability.api.md                  # Overview, availability metrics, vehicle state changes
-│   ├── vehicles.api.md                      # Vehicle inventory CRUD, registration options, deactivation
-│   ├── drivers.api.md                       # Driver assignment, unassignment, driver directory
-│   └── maintenance.api.md                   # Odometer return log, 5,000-km PM engine, log history
-│
-├── schedules/                               # Subsystem: Schedule & Routing
-│   └── schedules.api.md                     # Service zones, weekly master templates, daily schedules
-│
-├── trips/                                   # Subsystem: Trips & Reconciliation
-│   └── trips.api.md                         # Real-time dispatch, multi-load transfers, return odometer, reconciliation
-│
-├── history/                                 # Subsystem: Audit & History Logs
-│   └── history.api.md                       # System event history logs, module filters, search, detail
-│
-├── media/                                   # Subsystem: Media & Documents
-│   └── media.api.md                         # Ingest, validate, store, resolve canonical media assets
-│
-├── inventory/                               # Subsystem: Inventory
-│   └── products.api.md                      # Product CRUD, cylinder/canister specs, deactivation
-│
-├── sales/                                   # Subsystem: Sales & Delivery
-│   └── customer.api.md                      # Customer Profile CRUD, customer segments, deactivation
-│
-├── users/                                   # Subsystem: User Management & Identity
+├── users/                                   # Subsystem 1: User Management
 │   ├── auth.api.md                          # Login, logout, self password change
-│   ├── profile.api.md                       # /me profile inspection and personal updates
+│   ├── profile.api.md                       # /me profile inspection, personal updates & avatar upload/delete
 │   ├── management.api.md                    # User account administration, credentials, roles, status
 │   └── roles.api.md                         # Role CRUD, system permissions catalog
+│
+├── fleet/                                   # Subsystem 2: Fleet & Maintenance
+│   ├── availability.api.md                  # Overview, availability metrics, vehicle state changes
+│   ├── vehicles.api.md                      # Vehicle inventory CRUD, my-vehicle, registration options, deactivation
+│   ├── drivers.api.md                       # Driver assignment, unassignment, driver directory
+│   ├── maintenance.api.md                   # Odometer return log, 5,000-km PM engine, inspections, incidents, work orders
+│   └── fuel.api.md                          # Fuel intake logging, consumption summary & km/L efficiency analysis
+│
+├── schedules/                               # Subsystem 3: Trip & Schedule
+│   └── schedules.api.md                     # Service zones, weekly master templates, daily schedules
+├── trips/                                   # Subsystem 3: Trip & Schedule
+│   ├── trips.api.md                         # Real-time dispatch, active assignment, multi-load transfers, reconciliation
+│   ├── apprehensions.api.md                 # Driver roadside traffic apprehensions & resolution statuses
+│   └── alerts.api.md                        # Driver emergency SOS alerts, polling & triage
+│
+├── inventory/                               # Subsystem 4: Inventory
+│   ├── products.api.md                      # Product CRUD, cylinder/canister specs, deactivation
+│   └── plant-inventory-and-reconciliation.api.md # Plant bulk stock, adjustments, transfers & cabin stock
+│
+├── sales/                                   # Subsystem 5: Sales & Delivery
+│   ├── customer.api.md                      # Customer Profile CRUD, activation/deactivation
+│   ├── sync.api.md                          # Offline mobile store-and-forward batch sync
+│   ├── transactions.api.md                  # Transactions, voiding, overview analytics, trip performance & shift summary
+│   └── invoices.api.md                      # Sales invoices listing & supervisor GCash verification
+│
+├── history/                                 # System Logic: Audit & History Logs
+│   └── history.api.md                       # System event history logs, module filters, search, detail
+│
+├── media/                                   # System Logic: Media & Documents
+│   └── media.api.md                         # Ingest, validate, store, resolve canonical media assets
 │
 └── _archive/                                # Preserved original monolithic contract files
     ├── fleet-and-maintenance.api.md
@@ -131,7 +138,7 @@ docs/api-contracts/
 
 ## 3. Master Endpoint Routing Matrix
 
-### Subsystem: Users (`/api/users`)
+### 1. Subsystem: User Management (`/api/users`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |
@@ -140,10 +147,14 @@ docs/api-contracts/
 | `POST` | `/api/users/change-password` | Change user password (first login or self-service) | Authenticated | [users/auth.api.md](file:///docs/api-contracts/users/auth.api.md#3-change-password-self) |
 | `GET` | `/api/users/me` | Get current authenticated user profile | Authenticated | [users/profile.api.md](file:///docs/api-contracts/users/profile.api.md#1-get-current-user-profile-me) |
 | `PATCH` | `/api/users/me` | Update current user's personal details | Authenticated | [users/profile.api.md](file:///docs/api-contracts/users/profile.api.md#2-update-current-user-profile-me) |
+| `POST` | `/api/users/me/avatar` | Upload/replace own profile avatar | Authenticated | [users/profile.api.md](file:///docs/api-contracts/users/profile.api.md#3-upload--replace-own-profile-picture-post-meavatar) |
+| `DELETE` | `/api/users/me/avatar` | Remove own profile avatar | Authenticated | [users/profile.api.md](file:///docs/api-contracts/users/profile.api.md#4-remove-own-profile-picture-delete-meavatar) |
 | `GET` | `/api/users` | List all user accounts with filtering | `users.view` | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#1-list-all-users) |
 | `POST` | `/api/users` | Register new user account (auto credentials) | `users.manage` | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#2-register--create-user-account) |
 | `GET` | `/api/users/:id` | View specific user account details | `users.view` / Self | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#3-view-user-profile-by-id) |
 | `PATCH` | `/api/users/:id` | Update target user profile attributes | `users.manage` / Self | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#4-update-user-profile-by-id) |
+| `POST` | `/api/users/:id/avatar` | Upload/replace target user avatar | `users.manage` / Self | [users/profile.api.md](file:///docs/api-contracts/users/profile.api.md#5-admin-upload--replace-avatar-post-idavatar) |
+| `DELETE` | `/api/users/:id/avatar` | Remove target user avatar | `users.manage` / Self | [users/profile.api.md](file:///docs/api-contracts/users/profile.api.md#6-admin-remove-avatar-delete-idavatar) |
 | `PATCH` | `/api/users/:id/role` | Change user role & revoke active sessions | `users.manage` + Password | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#5-change-user-role-admin) |
 | `PATCH` | `/api/users/:id/credentials` | Admin password reset & credentials update | `users.manage` + Password | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#6-update-user-credentials--reset-password-admin-reset) |
 | `PATCH` | `/api/users/:id/status` | Activate/deactivate or block/unblock user | `users.manage` + Password | [users/management.api.md](file:///docs/api-contracts/users/management.api.md#7-deactivate--activate-or-block--unblock-user-account) |
@@ -156,7 +167,7 @@ docs/api-contracts/
 
 ---
 
-### Subsystem: Fleet (`/api/fleet`)
+### 2. Subsystem: Fleet & Maintenance (`/api/fleet`, `/api/operations/fuel`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |
@@ -200,17 +211,28 @@ docs/api-contracts/
 | `POST` | `/api/fleet/maintenance/work-orders/:id/receipts` | Attach proof receipt document to work order | `fleet.manage` | [fleet/maintenance.api.md](file:///docs/api-contracts/fleet/maintenance.api.md#22-attach-receipt-to-work-order) |
 | `GET` | `/api/fleet/maintenance/work-orders/:id/receipts` | List all receipts attached to work order | `fleet.view` | [fleet/maintenance.api.md](file:///docs/api-contracts/fleet/maintenance.api.md#23-list-work-order-receipts) |
 | `DELETE` | `/api/fleet/maintenance/receipts/:receiptId` | Delete a receipt attachment | `fleet.manage` | [fleet/maintenance.api.md](file:///docs/api-contracts/fleet/maintenance.api.md#24-delete-work-order-receipt) |
+| `GET` | `/api/fleet/my-vehicle` | Get authenticated driver's assigned vehicle | `fleet.view` / `fleet.view_own` | [fleet/vehicles.api.md](file:///docs/api-contracts/fleet/vehicles.api.md#8-get-authenticated-drivers-assigned-vehicle) |
+| `GET` | `/api/fleet/fuel-analysis` | Fleet-wide fuel efficiency & `km/L` analytics (alias) | `fleet.view` / `fuel.view` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#24-fleet-fuel-efficiency-analysis) |
+| `GET` | `/api/fleet/vehicles/:id/fuel-analysis` | Single-vehicle fuel efficiency analysis (alias) | `fleet.view` / `fuel.view` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#25-single-vehicle-fuel-analysis) |
+| `POST` | `/api/operations/fuel` | Record vehicle fuel intake & optional odometer reading | `fuel.create` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#21-record-fuel-entry) |
+| `GET` | `/api/operations/fuel` | List fuel logs with filtering & pagination | `fuel.view` / `fuel.view_own` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#22-list-fuel-logs) |
+| `GET` | `/api/operations/fuel/summary` | Fuel consumption summary statistics | `fuel.view` / `fuel.view_own` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#23-fuel-summary) |
+| `GET` | `/api/operations/fuel/analysis` | Fleet-wide fuel efficiency & `km/L` analytics | `fuel.view` / `fleet.view` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#24-fleet-fuel-efficiency-analysis) |
+| `GET` | `/api/operations/fuel/analysis/:vehicleId` | Single-vehicle fuel efficiency & fill-up breakdown | `fuel.view` / `fleet.view` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#25-single-vehicle-fuel-analysis) |
+| `GET` | `/api/operations/fuel/:id` | Get single fuel log entry details | `fuel.view` / `fuel.view_own` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#26-get-single-fuel-log) |
 
 ---
 
-### Subsystem: Schedule & Routing (`/api/schedules`)
+### 3. Subsystem: Trip & Schedule (`/api/schedules`, `/api/trips`, `/api/operations/apprehensions`, `/api/operations/alerts`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/schedules/zones` | List delivery service zones | `route.view` / `route.view_own` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
+| `GET` | `/api/schedules/zones/:id` | Get single delivery service zone | `route.view` / `route.view_own` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
 | `POST` | `/api/schedules/zones` | Register new delivery service zone | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
 | `PATCH` | `/api/schedules/zones/:id` | Update delivery service zone | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#1-service-zones) |
 | `GET` | `/api/schedules/templates` | List recurring weekly route templates | `route.view` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
+| `GET` | `/api/schedules/templates/:id` | Get single weekly route template | `route.view` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
 | `POST` | `/api/schedules/templates` | Create recurring weekly master template | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
 | `PATCH` | `/api/schedules/templates/:id` | Update weekly master template | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
 | `DELETE` | `/api/schedules/templates/:id` | Delete weekly master template | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#2-weekly-master-route-templates) |
@@ -221,15 +243,9 @@ docs/api-contracts/
 | `PATCH` | `/api/schedules/:id` | Modify operational schedule parameters | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
 | `PATCH` | `/api/schedules/:id/cancel` | Cancel scheduled operational run | `route.manage` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#3-operational-daily-truck-schedules) |
 | `GET` | `/api/schedules/sales-persons` | Active sales representatives directory | `route.view` / `route.manage` / `sales.view` / `users.view` | [schedules/schedules.api.md](file:///docs/api-contracts/schedules/schedules.api.md#4-sales-representatives-directory) |
-
----
-
-### Subsystem: Trip & Reconciliation (`/api/trips`)
-
-| Method | Endpoint | Description | Permissions | Contract Document |
-| :--- | :--- | :--- | :--- | :--- |
 | `POST` | `/api/trips/dispatch` | Dispatch truck for scheduled or ad-hoc run | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#1-dispatch-trip-post-apitripsdispatch) |
 | `GET` | `/api/trips` | List delivery trips with filters & pagination | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
+| `GET` | `/api/trips/active-assignment` | Get current user's active trip assignment | `route.view` / `route.view_own` / `route.end_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#5-driver-active-assignment-get-apitripsactive-assignment) |
 | `GET` | `/api/trips/:id` | View trip detail, crew snapshot & loads | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
 | `PATCH` | `/api/trips/:id/cancel` | Cancel active or pending trip | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
 | `POST` | `/api/trips/:id/loads` | Record multi-load transfer slip (reload/unload) | `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#2-multi-load-inventory-transfer-post-apitripsidloads) |
@@ -237,10 +253,21 @@ docs/api-contracts/
 | `POST` | `/api/trips/:id/end` | Driver end trip with mandatory odometer reading | `route.end_own` / `route.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#3-driver-end-trip-post-apitripsidend) |
 | `POST` | `/api/trips/:id/reconcile` | Settle post-trip stock variance, return unloads & discrepancies | `route.manage` / `inventory.vehicle.manage` / `inventory.plant.manage` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md#4-post-trip-stock-reconciliation-post-apitripsidreconcile) |
 | `GET` | `/api/trips/:id/reconciliation` | View reconciliation discrepancy breakdown | `route.view` / `route.view_own` | [trips/trips.api.md](file:///docs/api-contracts/trips/trips.api.md) |
+| `POST` | `/api/operations/apprehensions` | Record roadside traffic apprehension with ticket photo | `apprehensions.create` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#21-record-road-apprehension) |
+| `GET` | `/api/operations/apprehensions` | List road apprehensions with filters & pagination | `apprehensions.view` / `apprehensions.view_own` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#22-list-road-apprehensions) |
+| `GET` | `/api/operations/apprehensions/:id` | Get single apprehension detail | `apprehensions.view` / `apprehensions.view_own` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#23-get-single-apprehension-detail) |
+| `PATCH` | `/api/operations/apprehensions/:id/status` | Update apprehension resolution status | `apprehensions.manage` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#24-update-apprehension-status) |
+| `POST` | `/api/operations/alerts` | Trigger mobile emergency SOS alert | `alerts.trigger` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#21-trigger-emergency-sos-alert) |
+| `GET` | `/api/operations/alerts/active` | List active (`ACTIVE`, `ACKNOWLEDGED`) SOS alerts | `alerts.view` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#22-list-active-emergency-alerts) |
+| `GET` | `/api/operations/alerts/poll` | Delta polling for emergency alerts (`?since=`) | `alerts.view` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#23-poll-delta-alerts) |
+| `GET` | `/api/operations/alerts` | List all emergency alert logs | `alerts.view` / `alerts.view_own` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#24-list-all-alert-logs) |
+| `GET` | `/api/operations/alerts/:id` | Get single emergency alert detail | `alerts.view` / `alerts.view_own` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#25-get-single-alert-detail) |
+| `PATCH` | `/api/operations/alerts/:id/acknowledge` | Acknowledge emergency alert | `alerts.manage` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#26-acknowledge-emergency-alert) |
+| `PATCH` | `/api/operations/alerts/:id/resolve` | Resolve emergency alert with notes | `alerts.manage` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#27-resolve-emergency-alert) |
 
 ---
 
-### Subsystem: Inventory (`/api/inventory`)
+### 4. Subsystem: Inventory (`/api/inventory`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |
@@ -252,6 +279,7 @@ docs/api-contracts/
 | `GET` | `/api/inventory/plant` | Master Bunawan yard stock overview across all active products | `inventory.view` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#31-master-plant-bulk-inventory-overview) |
 | `POST` | `/api/inventory/plant/restock` | Supplier bulk shipment stock-in (increments plant stock) | `inventory.plant.manage` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#32-supplier-bulk-restock) |
 | `POST` | `/api/inventory/plant/quarantine-defects` | Quarantines yard leakers/defective stock into defective bucket | `inventory.plant.manage` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#33-quarantine-yard-defects) |
+| `POST` | `/api/inventory/plant/adjust` | Manual plant stock / physical count adjustment | `inventory.plant.manage` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#310-manual-plant-stock-adjustment) |
 | `GET` | `/api/inventory/plant/adjustments` | Historical plant stock adjustments audit log | `inventory.view` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#2-endpoints-matrix) |
 | `GET` | `/api/inventory/plant/suggested-split` | Equal truck loading split suggestion helper | `inventory.view` / `inventory.vehicle.manage` / `route.manage` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#34-suggested-equal-loading-split-helper) |
 | `GET` | `/api/inventory/transfers` | Global cross-fleet paginated ledger of all transfer slips & plant restocks | `inventory.view` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#39-global-cross-fleet-inventory-transfers-ledger) |
@@ -265,7 +293,7 @@ docs/api-contracts/
 
 ---
 
-### Subsystem: Sales & Delivery (`/api/sales`)
+### 5. Subsystem: Sales & Delivery (`/api/sales`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |
@@ -274,27 +302,31 @@ docs/api-contracts/
 | `GET` | `/api/sales/customers/:id` | View single customer profile by UUID | `sales.view` / `sales.view_own` | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#3-view-single-customer-profile) |
 | `PATCH` | `/api/sales/customers/:id` | Update customer profile attributes | `sales.update` | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#4-update-customer-profile) |
 | `PATCH` | `/api/sales/customers/:id/deactivate` | Soft-deactivate customer profile | `sales.update` + Password | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#5-deactivate-customer) |
+| `PATCH` | `/api/sales/customers/:id/activate` | Reactivate deactivated customer profile | `sales.update` | [sales/customer.api.md](file:///docs/api-contracts/sales/customer.api.md#6-activate-customer) |
 | `POST` | `/api/sales/sync-batch` | Itemized batch ingestion of offline mobile sales transactions with partial-success resilience | `sales.create` / `sales.view_own` | [sales/sync.api.md](file:///docs/api-contracts/sales/sync.api.md) |
-| `GET` | `/api/sales/transactions` | List and search sales transactions with filters & pagination | `sales.view` / `sales.view_own` | — |
-| `GET` | `/api/sales/transactions/:id` | View single transaction details with line items and invoice | `sales.view` / `sales.view_own` | — |
-| `PATCH` | `/api/sales/transactions/:id/cancel` | Supervisor cancellation of a transaction with canister ledger reversal | `sales.delete` | — |
-| `GET` | `/api/sales/trips/:tripId/shift-summary` | End-of-shift remittance summary — revenue, GCash refs, empties aggregation | `sales.view` / `sales.view_own` | — |
-| `GET` | `/api/sales/invoices` | List sales invoices with payment status filters | `sales.view` / `sales.view_own` | — |
-| `PATCH` | `/api/sales/invoices/:id/verify` | Supervisor GCash payment verification | `sales.view` (global) | — |
+| `GET` | `/api/sales/overview` | High-level sales KPIs, SKU/payment breakdowns & trends | `sales.view` / `sales.view_own` / `dashboard.view` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#24-sales-overview--analytics) |
+| `GET` | `/api/sales/analytics` | Sales analytics alias (`/overview`) | `sales.view` / `sales.view_own` / `dashboard.view` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#24-sales-overview--analytics) |
+| `GET` | `/api/sales/trip-performance` | Operational delivery trip sales revenue attribution | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#25-operational-delivery-trip-performance) |
+| `GET` | `/api/sales/transactions` | List and search sales transactions with filters & pagination | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#21-list-sales-transactions) |
+| `GET` | `/api/sales/transactions/:id` | View single transaction details with line items and invoice | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#22-get-single-transaction-details) |
+| `PATCH` | `/api/sales/transactions/:id/cancel` | Supervisor cancellation of a transaction with canister ledger reversal | `sales.delete` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#23-cancel--void-sales-transaction) |
+| `GET` | `/api/sales/trips/:tripId/shift-summary` | End-of-shift remittance summary — revenue, GCash refs, empties aggregation | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#26-shift-closeout-remittance-summary) |
+| `GET` | `/api/sales/invoices` | List sales invoices with payment status filters | `sales.view` / `sales.view_own` | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#21-list-sales-invoices) |
+| `GET` | `/api/sales/invoices/:id` | View single invoice detail | `sales.view` / `sales.view_own` | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#22-get-single-invoice-details) |
+| `PATCH` | `/api/sales/invoices/:id/verify` | Supervisor GCash payment verification | `sales.view` (global) | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#23-verify-invoice-payment-supervisor) |
 
 ---
 
+### System Logic (Cross-Cutting Infrastructure — Non-Subsystem)
 
-### Subsystem: System History (`/api/history`)
+#### System History (`/api/history`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/history` | Query paginated audit logs with filters | `history.view` | [history/history.api.md](file:///docs/api-contracts/history/history.api.md#1-view-history-logs-list-filter-search--pagination) |
 | `GET` | `/api/history/:id` | View single history log record detail | `history.view` | [history/history.api.md](file:///docs/api-contracts/history/history.api.md#2-view-single-history-log-detail) |
 
----
-
-### Subsystem: Media & Documents (`/api/media`)
+#### Media & Documents (`/api/media`)
 
 | Method | Endpoint | Description | Permissions | Contract Document |
 | :--- | :--- | :--- | :--- | :--- |

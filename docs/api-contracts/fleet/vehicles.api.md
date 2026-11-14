@@ -303,3 +303,24 @@ Retrieves a list of fleet vehicles with optional search, vehicle type filtering,
 - **URL**: `/api/fleet/vehicles/:id/unassign` (or `/api/fleet/vehicles/:id/unassign-driver`)
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `fleet.manage`
+
+
+---
+
+### 8. Get Authenticated Driver's Assigned Vehicle
+
+Retrieves the active vehicle currently assigned to the authenticated driver (`req.user.id`).
+
+- **Method**: `GET`
+- **URL**: `/api/fleet/my-vehicle`
+- **Permission Required**: `fleet.view` or `fleet.view_own`
+- **Response (`200 OK`)**: Returns `{ status: 'success', data: { vehicle } }` (or `null` if no vehicle is assigned).
+
+---
+
+### 9. Fleet & Vehicle Fuel Analysis (Aliases)
+
+Convenience endpoints under `/api/fleet` forwarding to the fuel efficiency analytics engine (see [fleet/fuel.api.md](./fuel.api.md)).
+
+- **`GET /api/fleet/fuel-analysis`**: Fleet-wide fuel consumption, cost, distance, and `km/L` analytics (`fleet.view`, `fleet.view_own`, `fuel.view`, `fuel.view_own`).
+- **`GET /api/fleet/vehicles/:id/fuel-analysis`**: Single-vehicle fuel consumption and fill-up efficiency breakdown (`fleet.view`, `fleet.view_own`, `fuel.view`, `fuel.view_own`).

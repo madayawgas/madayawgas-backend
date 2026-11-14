@@ -2,6 +2,7 @@ const availabilityRepository = require('./availability.repository');
 const vehiclesRepository = require('../vehicles/vehicles.repository');
 const { historyService, EVENTS } = require('../../history');
 const { safeEmitSocketEvent } = require('../../../socket');
+const { settingsService } = require('../../settings');
 
 /**
  * Availability Service
@@ -43,33 +44,39 @@ class AvailabilityService {
    * including their dedicated soft-bounded driver details.
    */
   async getAvailability(filters = {}) {
-    const rows = await availabilityRepository.getAvailableTrucks(filters);
-    const availableVehicles = rows.map((row) => ({
-      id: row.id,
-      plateNumber: row.plate_number,
-      model: row.model,
-      yearModel: Number(row.year_model),
-      vehicleType: row.vehicle_type || 'DELIVERY_TRUCK',
-      currentOdometer: Number(row.current_odometer),
-      lastPmOdometer: Number(row.last_pm_odometer),
-      isPmDue: row.pm_due_flag !== undefined ? Boolean(row.pm_due_flag) : (Number(row.current_odometer) - Number(row.last_pm_odometer) >= 5000),
-      pmDueFlag: row.pm_due_flag !== undefined ? Boolean(row.pm_due_flag) : (Number(row.current_odometer) - Number(row.last_pm_odometer) >= 5000),
-      status: row.status,
-      operationalStatus: 'ACTIVE',
-      isAvailable: true,
-      driverId: row.driver_id || null,
-      driver: row.driver_id
-        ? {
-            id: row.driver_id,
-            firstName: row.driver_first_name,
-            lastName: row.driver_last_name,
-            phone: row.driver_phone,
-            username: row.driver_username,
-          }
-        : null,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
+    const [rows, pmThresholdKm] = await Promise.all([
+      availabilityRepository.getAvailableTrucks(filters),
+      settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000),
+    ]);
+    const availableVehicles = rows.map((row) => {
+      const isPmDue = Number(row.current_odometer) - Number(row.last_pm_odometer) >= pmThresholdKm;
+      return {
+        id: row.id,
+        plateNumber: row.plate_number,
+        model: row.model,
+        yearModel: Number(row.year_model),
+        vehicleType: row.vehicle_type || 'DELIVERY_TRUCK',
+        currentOdometer: Number(row.current_odometer),
+        lastPmOdometer: Number(row.last_pm_odometer),
+        isPmDue,
+        pmDueFlag: isPmDue,
+        status: row.status,
+        operationalStatus: 'ACTIVE',
+        isAvailable: true,
+        driverId: row.driver_id || null,
+        driver: row.driver_id
+          ? {
+              id: row.driver_id,
+              firstName: row.driver_first_name,
+              lastName: row.driver_last_name,
+              phone: row.driver_phone,
+              username: row.driver_username,
+            }
+          : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    });
 
     return {
       availableCount: availableVehicles.length,

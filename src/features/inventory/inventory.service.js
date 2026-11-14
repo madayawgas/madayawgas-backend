@@ -5,6 +5,7 @@ const productsRepository = require('./products/products.repository');
 const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../socket');
+const { settingsService } = require('../settings');
 
 /**
  * Inventory Service
@@ -96,15 +97,18 @@ class InventoryService {
    * Retrieves plant bulk inventory balances across all catalog products.
    */
   async getPlantInventory() {
-    const items = await inventoryRepository.getPlantInventory();
+    const [items, canistersPerCrate] = await Promise.all([
+      inventoryRepository.getPlantInventory(),
+      settingsService.getInteger('inventory.canisters_per_crate', 24),
+    ]);
 
     return items.map((item) => {
       const isCanister = item.container_type === 'CANISTER';
       return {
         ...item,
-        cratesFilled: isCanister ? Math.floor(item.quantity_filled / 24) : null,
-        cratesEmptyGood: isCanister ? Math.floor(item.quantity_empty_good / 24) : null,
-        cratesDefective: isCanister ? Math.floor(item.quantity_defective / 24) : null,
+        cratesFilled: isCanister ? Math.floor(item.quantity_filled / canistersPerCrate) : null,
+        cratesEmptyGood: isCanister ? Math.floor(item.quantity_empty_good / canistersPerCrate) : null,
+        cratesDefective: isCanister ? Math.floor(item.quantity_defective / canistersPerCrate) : null,
       };
     });
   }

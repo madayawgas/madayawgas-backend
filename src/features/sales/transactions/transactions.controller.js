@@ -7,6 +7,26 @@ const { formatPaginatedEnvelope } = require('../../../utils/pagination');
  */
 class TransactionsController {
   /**
+   * Handles known domain/validation errors and delegates unexpected/DB errors
+   * to Express's global errorHandler via asyncHandler.
+   */
+  _handleControllerError(res, err, { allowNotFound = false } = {}) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        status: err.statusCode >= 500 ? 'error' : 'fail',
+        message: err.message,
+      });
+    }
+    if (allowNotFound && (err.message === 'Transaction not found' || err.message === 'Trip not found')) {
+      return res.status(404).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+    throw err;
+  }
+
+  /**
    * GET /api/sales/transactions
    * Retrieves paginated or complete listing of transactions.
    */
@@ -24,10 +44,7 @@ class TransactionsController {
         },
       });
     } catch (err) {
-      return res.status(err.statusCode || 400).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err);
     }
   }
 
@@ -44,11 +61,7 @@ class TransactionsController {
         data: { transaction: tx },
       });
     } catch (err) {
-      const isNotFound = err.message === 'Transaction not found';
-      return res.status(err.statusCode || (isNotFound ? 404 : 400)).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err, { allowNotFound: true });
     }
   }
 
@@ -66,11 +79,7 @@ class TransactionsController {
         data: { transaction: cancelledTx },
       });
     } catch (err) {
-      const isNotFound = err.message === 'Transaction not found';
-      return res.status(err.statusCode || (isNotFound ? 404 : 400)).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err, { allowNotFound: true });
     }
   }
 
@@ -87,11 +96,7 @@ class TransactionsController {
         data: summary,
       });
     } catch (err) {
-      const isNotFound = err.message === 'Trip not found';
-      return res.status(err.statusCode || (isNotFound ? 404 : 400)).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err, { allowNotFound: true });
     }
   }
 
@@ -105,10 +110,7 @@ class TransactionsController {
         data: { transactions: items },
       });
     } catch (err) {
-      return res.status(err.statusCode || 400).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err);
     }
   }
 
@@ -124,10 +126,7 @@ class TransactionsController {
         data: analytics,
       });
     } catch (err) {
-      return res.status(err.statusCode || 400).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err);
     }
   }
 
@@ -149,10 +148,7 @@ class TransactionsController {
         },
       });
     } catch (err) {
-      return res.status(err.statusCode || 400).json({
-        status: 'fail',
-        message: err.message,
-      });
+      return this._handleControllerError(res, err);
     }
   }
 }

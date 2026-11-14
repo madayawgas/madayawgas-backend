@@ -377,3 +377,9 @@
 }
 ```
 
+### 3.10 Manual Plant Stock Adjustment
+- **`POST /api/inventory/plant/adjust`**
+- Records a physical count or manual plant stock adjustment (`PHYSICAL_COUNT`, `SUPPLIER_PURCHASE`, `DEFECT_ADJUSTMENT`) across product condition buckets (`FILLED`, `EMPTY_GOOD`, `DEFECTIVE`).
+- **Permissions**: `inventory.plant.manage`
+- **Response (`201 Created`)**: `{ status: 'success', data: { adjustment, inventory } }`
+

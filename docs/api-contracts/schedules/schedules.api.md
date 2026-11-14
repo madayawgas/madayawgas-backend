@@ -93,6 +93,10 @@ Register a new delivery service zone.
 Update an existing service zone.
 - **Permission**: `route.manage`
 
+#### `GET /api/schedules/zones/:id`
+Retrieve a single service zone by UUID.
+- **Permission**: `route.view` or `route.view_own`
+
 ---
 
 ### 2. Weekly Master Route Templates
@@ -119,6 +123,10 @@ Create a recurring weekly master template.
 #### `PATCH /api/schedules/templates/:id`
 Update a weekly route template.
 - **Permission**: `route.manage`
+
+#### `GET /api/schedules/templates/:id`
+Retrieve a single weekly route template by UUID.
+- **Permission**: `route.view`
 
 #### `DELETE /api/schedules/templates/:id`
 Delete a weekly route template.

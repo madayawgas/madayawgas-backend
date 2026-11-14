@@ -2,6 +2,7 @@ const vehiclesRepository = require('./vehicles.repository');
 const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../../socket');
+const { settingsService } = require('../../settings');
 
 const VALID_VEHICLE_TYPES = ['DELIVERY_TRUCK', 'SERVICE_PICKUP', 'MOTORCYCLE', 'UTILITY_VAN'];
 const VALID_STATUSES = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
@@ -9,8 +10,10 @@ const VALID_STATUSES = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
 /**
  * Maps database row to camelCase DTO with soft-bounded driver details and availability.
  */
-function formatVehicle(row) {
+function formatVehicle(row, pmThresholdKm = 5000) {
   if (!row) return null;
+
+  const isPmDue = Number(row.current_odometer) - Number(row.last_pm_odometer) >= pmThresholdKm;
 
   const vehicle = {
     id: row.id,
@@ -20,8 +23,8 @@ function formatVehicle(row) {
     vehicleType: row.vehicle_type || 'DELIVERY_TRUCK',
     currentOdometer: Number(row.current_odometer),
     lastPmOdometer: Number(row.last_pm_odometer),
-    isPmDue: row.pm_due_flag !== undefined ? Boolean(row.pm_due_flag) : (Number(row.current_odometer) - Number(row.last_pm_odometer) >= 5000),
-    pmDueFlag: row.pm_due_flag !== undefined ? Boolean(row.pm_due_flag) : (Number(row.current_odometer) - Number(row.last_pm_odometer) >= 5000),
+    isPmDue,
+    pmDueFlag: isPmDue,
     status: row.status,
     operationalStatus: row.status,
     isAvailable: row.status === 'ACTIVE',
@@ -106,9 +109,11 @@ class VehiclesService {
       }
     }
 
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+
     if (!pagination) {
       const rows = await vehiclesRepository.getAllVehicles(effectiveFilters);
-      return rows.map(formatVehicle);
+      return rows.map((row) => formatVehicle(row, pmThresholdKm));
     }
 
     const offset = calculateOffset(pagination.page, pagination.limit);
@@ -117,7 +122,7 @@ class VehiclesService {
       offset,
     });
 
-    const items = rows.map(formatVehicle);
+    const items = rows.map((row) => formatVehicle(row, pmThresholdKm));
     const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
 
     return {
@@ -156,7 +161,8 @@ class VehiclesService {
       }
     }
 
-    return formatVehicle(row);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    return formatVehicle(row, pmThresholdKm);
   }
 
   /**
@@ -177,7 +183,8 @@ class VehiclesService {
       throw err;
     }
 
-    return formatVehicle(row);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    return formatVehicle(row, pmThresholdKm);
   }
 
   /**

@@ -1,4 +1,4 @@
-const { query: defaultQuery } = require('../../../../database/connection');
+const { query: defaultQuery, pool } = require('../../../../database/connection');
 
 /**
  * Transactions Repository
@@ -579,16 +579,80 @@ class TransactionsRepository {
   }
 
   /**
+   * Builds the time-series trends SQL query for a given timeframe.
+   * @param {'daily'|'weekly'|'monthly'|'annually'} timeframe
+   * @param {string[]} conditions
+   * @returns {string}
+   */
+  _buildTrendsSql(timeframe, conditions) {
+    let dateTruncUnit = 'month';
+    if (timeframe === 'daily') dateTruncUnit = 'day';
+    else if (timeframe === 'weekly') dateTruncUnit = 'week';
+    else if (timeframe === 'annually') dateTruncUnit = 'year';
+
+    return `
+      SELECT 
+        DATE_TRUNC('${dateTruncUnit}', st.transacted_at AT TIME ZONE 'Asia/Manila') AS bucket_date,
+        COUNT(DISTINCT st.id)::int AS transaction_count,
+        COALESCE(SUM(si.total_amount), 0)::numeric AS total_sales,
+        COALESCE(SUM(sti.quantity_sold), 0)::int AS total_units,
+        COALESCE(SUM(CASE WHEN p.container_type = 'CANISTER' THEN sti.quantity_sold ELSE 0 END), 0)::int AS butane,
+        COALESCE(SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg <= 22 THEN sti.quantity_sold ELSE 0 END), 0)::int AS lpg11kg,
+        COALESCE(SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg > 22 THEN sti.quantity_sold ELSE 0 END), 0)::int AS lpg50kg
+      FROM sales_transactions st
+      JOIN sales_invoices si ON si.transaction_id = st.id
+      LEFT JOIN trips tr ON tr.id = st.trip_id
+      LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.id
+      LEFT JOIN products p ON p.id = sti.product_id
+      WHERE st.status = 'COMPLETED' ${conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : ''}
+      GROUP BY bucket_date
+      ORDER BY bucket_date ASC;
+    `;
+  }
+
+  /**
+   * Formats raw trend rows into chart-ready series objects.
+   * @param {Array} rows
+   * @param {'daily'|'weekly'|'monthly'|'annually'} timeframe
+   * @returns {Array<Object>}
+   */
+  _formatTrends(rows, timeframe) {
+    return rows.map((t) => {
+      const bDate = new Date(t.bucket_date);
+      let label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+      if (timeframe === 'monthly') {
+        label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', year: 'numeric' });
+      } else if (timeframe === 'annually') {
+        label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', year: 'numeric' });
+      }
+
+      return {
+        date: t.bucket_date,
+        name: label,
+        totalSales: Number(t.total_sales) || 0,
+        transactionCount: parseInt(t.transaction_count || 0, 10),
+        totalUnits: parseInt(t.total_units || 0, 10),
+        butane: parseInt(t.butane || 0, 10),
+        lpg11kg: parseInt(t.lpg11kg || 0, 10),
+        lpg50kg: parseInt(t.lpg50kg || 0, 10),
+      };
+    });
+  }
+
+  /**
    * Retrieves authoritative sales analytics, KPI metrics, trends over time,
-   * SKU breakdowns, and payment settlement statistics.
+   * SKU breakdowns, and payment settlement statistics using a single pooled connection.
    *
    * @param {Object} [client]
    * @param {Object} [filters] - { startDate, endDate, timeframe, tripId, truckId, recordedBy }
    * @returns {Promise<Object>} Aggregated analytics data
    */
   async getSalesAnalytics(client, filters = {}) {
-    const [dbQuery, actualFilters] = this._resolveRunner(client, filters);
+    const [, actualFilters] = this._resolveRunner(client, filters);
     const { startDate, endDate, timeframe = 'monthly', tripId, truckId, recordedBy } = actualFilters || {};
+    const normalizedTimeframe = ['daily', 'weekly', 'monthly', 'annually'].includes(String(timeframe).toLowerCase())
+      ? String(timeframe).toLowerCase()
+      : 'monthly';
 
     const conditions = [];
     const params = [];
@@ -710,39 +774,41 @@ class TransactionsRepository {
       GROUP BY si.payment_method;
     `;
 
-    // 5. Time-Series Trends
-    let dateTruncUnit = 'month';
-    if (timeframe === 'daily') dateTruncUnit = 'day';
-    else if (timeframe === 'weekly') dateTruncUnit = 'week';
-    else if (timeframe === 'annually') dateTruncUnit = 'year';
+    // 5. Time-Series Trends (weekly, monthly, annually + optional daily)
+    const weeklyTrendsSql = this._buildTrendsSql('weekly', conditions);
+    const monthlyTrendsSql = this._buildTrendsSql('monthly', conditions);
+    const annualTrendsSql = this._buildTrendsSql('annually', conditions);
+    const dailyTrendsSql = normalizedTimeframe === 'daily' ? this._buildTrendsSql('daily', conditions) : null;
 
-    const trendsSql = `
-      SELECT 
-        DATE_TRUNC('${dateTruncUnit}', st.transacted_at AT TIME ZONE 'Asia/Manila') AS bucket_date,
-        COUNT(DISTINCT st.id)::int AS transaction_count,
-        COALESCE(SUM(si.total_amount), 0)::numeric AS total_sales,
-        COALESCE(SUM(sti.quantity_sold), 0)::int AS total_units,
-        COALESCE(SUM(CASE WHEN p.container_type = 'CANISTER' THEN sti.quantity_sold ELSE 0 END), 0)::int AS butane,
-        COALESCE(SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg <= 22 THEN sti.quantity_sold ELSE 0 END), 0)::int AS lpg11kg,
-        COALESCE(SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg > 22 THEN sti.quantity_sold ELSE 0 END), 0)::int AS lpg50kg
-      FROM sales_transactions st
-      JOIN sales_invoices si ON si.transaction_id = st.id
-      LEFT JOIN trips tr ON tr.id = st.trip_id
-      LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.id
-      LEFT JOIN products p ON p.id = sti.product_id
-      WHERE st.status = 'COMPLETED' ${conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : ''}
-      GROUP BY bucket_date
-      ORDER BY bucket_date ASC;
-    `;
+    // Acquire a single pooled client when none was provided so all queries pipeline over 1 session
+    const hasExternalClient = Boolean(client && typeof client.query === 'function');
+    const txClient = hasExternalClient ? client : await pool.connect();
 
-    // Run parallel queries
-    const [summaryRes, debtRes, productRes, paymentRes, trendsRes] = await Promise.all([
-      dbQuery(summarySql, params),
-      dbQuery(debtSql, debtParams),
-      dbQuery(productSql, params),
-      dbQuery(paymentSql, params),
-      dbQuery(trendsSql, params),
-    ]);
+    let summaryRes;
+    let debtRes;
+    let productRes;
+    let paymentRes;
+    let weeklyRes;
+    let monthlyRes;
+    let annualRes;
+    let dailyRes = null;
+
+    try {
+      summaryRes = await txClient.query(summarySql, params);
+      debtRes = await txClient.query(debtSql, debtParams);
+      productRes = await txClient.query(productSql, params);
+      paymentRes = await txClient.query(paymentSql, params);
+      weeklyRes = await txClient.query(weeklyTrendsSql, params);
+      monthlyRes = await txClient.query(monthlyTrendsSql, params);
+      annualRes = await txClient.query(annualTrendsSql, params);
+      if (dailyTrendsSql) {
+        dailyRes = await txClient.query(dailyTrendsSql, params);
+      }
+    } finally {
+      if (!hasExternalClient) {
+        txClient.release();
+      }
+    }
 
     const sRow = summaryRes.rows[0] || {};
     const totalGrossSales = Number(sRow.total_gross_sales) || 0;
@@ -792,26 +858,16 @@ class TransactionsRepository {
     }
 
     // Format Trends
-    const trends = trendsRes.rows.map((t) => {
-      const bDate = new Date(t.bucket_date);
-      let label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
-      if (timeframe === 'monthly') {
-        label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', year: 'numeric' });
-      } else if (timeframe === 'annually') {
-        label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', year: 'numeric' });
-      }
+    const weekly = this._formatTrends(weeklyRes.rows, 'weekly');
+    const monthly = this._formatTrends(monthlyRes.rows, 'monthly');
+    const annually = this._formatTrends(annualRes.rows, 'annually');
 
-      return {
-        date: t.bucket_date,
-        name: label,
-        totalSales: Number(t.total_sales) || 0,
-        transactionCount: parseInt(t.transaction_count || 0, 10),
-        totalUnits: parseInt(t.total_units || 0, 10),
-        butane: parseInt(t.butane || 0, 10),
-        lpg11kg: parseInt(t.lpg11kg || 0, 10),
-        lpg50kg: parseInt(t.lpg50kg || 0, 10),
-      };
-    });
+    let salesTrends = monthly;
+    if (normalizedTimeframe === 'weekly') salesTrends = weekly;
+    else if (normalizedTimeframe === 'annually') salesTrends = annually;
+    else if (normalizedTimeframe === 'daily' && dailyRes) {
+      salesTrends = this._formatTrends(dailyRes.rows, 'daily');
+    }
 
     return {
       summary: {
@@ -842,7 +898,10 @@ class TransactionsRepository {
           percentage: totalGrossSales > 0 ? Math.round((gcashAmount / totalGrossSales) * 1000) / 10 : 0,
         },
       },
-      salesTrends: trends,
+      salesTrends,
+      weekly,
+      monthly,
+      annually,
     };
   }
 

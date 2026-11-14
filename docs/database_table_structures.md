@@ -73,6 +73,8 @@ Table Name: audit_logs
 | `description` | `TEXT` | `NULL` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
 
+### System Logic (Cross-Cutting Infrastructure)
+
 Table Name: history_logs
 
 | Column | Data Type | Constraints |
@@ -439,7 +441,7 @@ Table Name: plant_stock_adjustments
 | `recorded_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT CURRENT_TIMESTAMP` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT CURRENT_TIMESTAMP` |
 
-### Sales
+### Sales & Delivery
 
 Table Name: customers
 

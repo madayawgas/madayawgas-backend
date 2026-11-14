@@ -5,6 +5,7 @@ const zonesRepository = require('./zones/zones.repository');
 const vehiclesRepository = require('../fleet/vehicles/vehicles.repository');
 const { historyService, EVENTS } = require('../history');
 const { safeEmitSocketEvent } = require('../../socket');
+const { settingsService } = require('../settings');
 
 /**
  * Truck Schedules Service
@@ -244,9 +245,10 @@ class SchedulesService {
       throw err;
     }
 
+    const maxGenerationDays = await settingsService.getInteger('schedules.max_generation_days', 31);
     const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
-    if (diffDays > 31) {
-      const err = new Error('Schedule generation date range cannot exceed 31 days');
+    if (diffDays > maxGenerationDays) {
+      const err = new Error(`Schedule generation date range cannot exceed ${maxGenerationDays} days`);
       err.statusCode = 400;
       throw err;
     }

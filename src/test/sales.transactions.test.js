@@ -1272,4 +1272,73 @@ test('Sales & Delivery Subsystem - Batch Sync, Invoicing & Receivables (Phase 4 
     )).rows[0].c;
     assert.equal(custCount, 1, 'Idempotent re-submission must not create duplicate customer');
   });
+
+  // ============================================================
+  // Subtest 13: Sales Overview & Analytics Consolidation
+  // ============================================================
+  await t.test('13. Sales Overview & Analytics - Timeframes & Concurrent Requests', async () => {
+    // 1. Seed a completed transaction in the queried date window
+    const overviewTxId = crypto.randomUUID();
+    const syncRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        tripId: testTripId,
+        transactions: [
+          {
+            id: overviewTxId,
+            transactionNo: 'TEST-TXSYNC-OVERVIEW-1',
+            customerId: testCustomerId1,
+            transactedAt: '2026-10-20T10:00:00.000Z',
+            items: [
+              {
+                productId: butaneProductId,
+                quantitySold: 2,
+                emptiesReturned: 1,
+                unitPriceAtSale: 120.0,
+                subtotalAmount: 240.0,
+              },
+            ],
+            invoice: {
+              invoiceNumber: 'INV-TEST-TXSYNC-OVERVIEW-1',
+              declarationNumber: 'CD-TEST-TXSYNC-OVERVIEW-1',
+              totalAmount: 240.0,
+              paymentMethod: 'CASH',
+            },
+          },
+        ],
+      }),
+    });
+    assert.equal(syncRes.status, 200);
+
+    // 2. Concurrent burst across timeframes (mirrors frontend SalesAndDelivery.jsx Promise.all)
+    const urls = [
+      `${baseUrl}/api/sales/overview?startDate=2026-10-15T13%3A55%3A11.370Z&endDate=2026-11-14T13%3A55%3A11.370Z&timeframe=monthly`,
+      `${baseUrl}/api/sales/overview?startDate=2026-10-15T13%3A55%3A11.370Z&endDate=2026-11-14T13%3A55%3A11.370Z&timeframe=weekly`,
+      `${baseUrl}/api/sales/overview?startDate=2026-10-15T13%3A55%3A11.370Z&endDate=2026-11-14T13%3A55%3A11.370Z&timeframe=annually`,
+      `${baseUrl}/api/sales/overview?timeframe=daily`,
+      `${baseUrl}/api/sales/analytics?timeframe=monthly`,
+    ];
+
+    const responses = await Promise.all(
+      urls.map((url) =>
+        fetch(url, {
+          headers: { Cookie: `mg_sid=${salesSupervisorCookie}` },
+        })
+      )
+    );
+
+    for (const res of responses) {
+      assert.equal(res.status, 200, `Expected 200 OK from ${res.url}, got ${res.status}`);
+      const json = await res.json();
+      assert.equal(json.status, 'success');
+      assert.ok(json.data.summary, 'summary must be present');
+      assert.ok(Array.isArray(json.data.productBreakdown), 'productBreakdown must be an array');
+      assert.ok(json.data.paymentBreakdown, 'paymentBreakdown must be present');
+      assert.ok(Array.isArray(json.data.salesTrends), 'salesTrends must be an array');
+      assert.ok(Array.isArray(json.data.weekly), 'weekly series must be an array');
+      assert.ok(Array.isArray(json.data.monthly), 'monthly series must be an array');
+      assert.ok(Array.isArray(json.data.annually), 'annually series must be an array');
+    }
+  });
 });

@@ -7,6 +7,7 @@ const { historyService, EVENTS } = require('../../history');
 const { mediaStorage, extractStorageKey } = require('../../media');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../../socket');
+const { settingsService } = require('../../settings');
 
 /**
  * Formats database row into camelCase API DTO with resolved receipt URL.
@@ -577,7 +578,7 @@ class FuelService {
    * @param {number|null} fleetAverageKmPerLiter
    * @returns {Object}
    */
-  _formatVehicleAnalysis(v, fleetAverageKmPerLiter = null) {
+  _formatVehicleAnalysis(v, fleetAverageKmPerLiter = null, varianceThresholdPercent = 5) {
     const fuelUsedLiters = Number(Number(v.total_liters || 0).toFixed(2));
     const fuelCost = Number(Number(v.total_cost || 0).toFixed(2));
     const totalEntries = parseInt(v.total_entries || 0, 10);
@@ -601,9 +602,9 @@ class FuelService {
     if (kmPerLiter !== null && fleetAverageKmPerLiter !== null && fleetAverageKmPerLiter > 0) {
       const variance = ((kmPerLiter - fleetAverageKmPerLiter) / fleetAverageKmPerLiter) * 100;
       varianceFromFleetAvgPercent = Number(variance.toFixed(2));
-      if (variance >= 5) {
+      if (variance >= varianceThresholdPercent) {
         efficiencyRating = 'ABOVE_AVERAGE';
-      } else if (variance <= -5) {
+      } else if (variance <= -varianceThresholdPercent) {
         efficiencyRating = 'BELOW_AVERAGE';
       }
     }
@@ -727,7 +728,13 @@ class FuelService {
       : 0.00;
 
     // 2. Format individual vehicle metrics
-    let formattedVehicles = vehicles.map(v => this._formatVehicleAnalysis(v, averageKmPerLiter));
+    const varianceThresholdPercent = await settingsService.getNumber(
+      'operations.fuel_efficiency_variance_percent',
+      5
+    );
+    let formattedVehicles = vehicles.map((v) =>
+      this._formatVehicleAnalysis(v, averageKmPerLiter, varianceThresholdPercent)
+    );
 
     // 3. Apply sorting
     const isAsc = String(order).trim().toUpperCase() === 'ASC';

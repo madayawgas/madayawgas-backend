@@ -1,26 +1,25 @@
 # Entity-Relationship Diagrams (ERD) — Directory & Architecture Guide
 
 > **Database Engine**: PostgreSQL 18.x  
-> **Schema Migrations**: 001 through 021 (`database/migrations/`)  
-> **Last Synchronized**: November 13, 2026
+> **Schema Migrations**: 001 through 022 (`database/migrations/`)  
+> **Last Synchronized**: November 14, 2026
 
-Welcome to the Entity-Relationship Diagram (ERD) directory for the MadayawGas backend. All schemas documented here reflect the exact live database implementation across all migrations (`001` through `021`).
+Welcome to the Entity-Relationship Diagram (ERD) directory for the MadayawGas backend. All schemas documented here reflect the exact live database implementation across all migrations (`001` through `022`) and are organized strictly around the **5 Main Subsystems** plus **System Logic** cross-cutting infrastructure.
 
 ---
 
 ## 1. Subsystem ERD Documents
 
-| Subsystem | Scope & Tables | Document Link |
+| Classification | Scope & Tables | Document Link |
 | :--- | :--- | :--- |
-| **Unified Master Database (Full)** | Complete 36-table system diagram with all fields and constraints | [**`master_database_erd.md`**](./master_database_erd.md) |
+| **Unified Master Database (Full)** | Complete 37-table system diagram with all fields and constraints | [**`master_database_erd.md`**](./master_database_erd.md) |
 | **Unified Master Database (Relationships Only)** | Clean high-level table-and-connector diagram without fields | [**`master_database_relationships_erd.md`**](./master_database_relationships_erd.md) |
-| **User Management & RBAC** | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [**`users_and_rbac_erd.md`**](./users_and_rbac_erd.md) |
-| **System Event History Logs** | `history_logs` (denormalized actor snapshots, JSONB `metadata`) | [**`system_history_logs_erd.md`**](./system_history_logs_erd.md) |
-| **Fleet & Maintenance** | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts` | [**`fleet_and_maintenance_erd.md`**](./fleet_and_maintenance_erd.md) |
-| **Inventory Subsystem** | `products`, `plant_inventory`, `plant_stock_adjustments`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [**`inventory_erd.md`**](./inventory_erd.md) |
-| **Sales & Delivery** | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` | [**`sales_and_delivery_erd.md`**](./sales_and_delivery_erd.md) |
-| **Schedule & Trip Subsystem** | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [**`schedule_and_trip_erd.md`**](./schedule_and_trip_erd.md) |
-| **Frontline Operations** | `driver_apprehensions`, `vehicle_fuel_logs`, `emergency_alerts` | [**`operations_erd.md`**](./operations_erd.md) |
+| **1. User Management** *(Subsystem)* | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [**`users_and_rbac_erd.md`**](./users_and_rbac_erd.md) |
+| **2. Fleet & Maintenance** *(Subsystem)* | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts`, `vehicle_fuel_logs` | [**`fleet_and_maintenance_erd.md`**](./fleet_and_maintenance_erd.md) |
+| **3. Trip & Schedule** *(Subsystem)* | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations`, `driver_apprehensions`, `emergency_alerts` | [**`schedule_and_trip_erd.md`**](./schedule_and_trip_erd.md) |
+| **4. Inventory** *(Subsystem)* | `products`, `plant_inventory`, `plant_stock_adjustments` *(plus cross-references to `trip_loads`, `trip_load_items`, `trip_stock_reconciliations`)* | [**`inventory_erd.md`**](./inventory_erd.md) |
+| **5. Sales & Delivery** *(Subsystem)* | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` | [**`sales_and_delivery_erd.md`**](./sales_and_delivery_erd.md) |
+| **System Logic** *(Cross-Cutting Infrastructure — Non-Subsystem)* | `history_logs`, `schema_migrations` | [**`system_logic_erd.md`**](./system_logic_erd.md) |
 
 ---
 

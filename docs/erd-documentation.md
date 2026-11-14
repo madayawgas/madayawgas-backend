@@ -2,10 +2,10 @@
 
 > **Database Engine**: PostgreSQL 18.3  
 > **Host Environment**: Windows x86_64 / Cloud PostgreSQL  
-> **Schema Migrations**: `001_initial-setup.sql` through `017_ensure_driver_route_permissions.sql`  
-> **Total Documented Tables**: 38 Base Tables  
-> **Last Updated**: November 4, 2026  
-> **Standard**: Single Source of Truth database documentation adhering to vertical slice subsystems and nested layout contracts.
+> **Schema Migrations**: `001_initial-setup.sql` through `022_finalize_roles_and_permissions.sql`  
+> **Total Documented Tables**: 37 Base Tables (across 5 Main Subsystems + System Logic Infrastructure)  
+> **Last Updated**: November 14, 2026  
+> **Standard**: Single Source of Truth database documentation adhering to the 5 Main Subsystems (`User Management`, `Fleet & Maintenance`, `Trip & Schedule`, `Inventory`, `Sales & Delivery`) plus `System Logic` cross-cutting infrastructure.
 
 ---
 
@@ -13,12 +13,12 @@
 
 - [Architectural Overview \& Global Conventions](#architectural-overview--global-conventions)
 - [PostgreSQL Custom ENUM Catalog](#postgresql-custom-enum-catalog)
-- [Subsystem 1: User Management & RBAC](#1-user-management--rbac) (8 Tables)
-- [Subsystem 2: Fleet, Maintenance \& Frontline Operations](#subsystem-2-fleet-maintenance--frontline-operations) (13 Tables)
-- [Subsystem 3: Plant Inventory Subsystem](#subsystem-3-plant-inventory-subsystem) (3 Tables)
-- [Subsystem 4: Schedule \& Trip Subsystem](#subsystem-4-schedule--trip-subsystem) (7 Tables)
-- [Subsystem 5: Sales \& Delivery Subsystem](#subsystem-5-sales--delivery-subsystem) (5 Tables)
-- [Subsystem 6: System \& Migration Infrastructure](#subsystem-6-system--migration-infrastructure) (1 Table)
+- [1. User Management](#1-user-management) (7 Tables)
+- [2. Fleet \& Maintenance](#2-fleet--maintenance) (11 Tables)
+- [3. Inventory](#3-inventory) (3 Tables)
+- [4. Trip \& Schedule](#4-trip--schedule) (9 Tables)
+- [5. Sales \& Delivery](#5-sales--delivery) (5 Tables)
+- [System Logic (Cross-Cutting Infrastructure — Non-Subsystem)](#system-logic-cross-cutting-infrastructure--non-subsystem) (2 Tables)
 - [Database Documentation Summary](#database-documentation-summary)
 
 ---
@@ -69,10 +69,10 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 
 ---
 
-## 1. User Management & RBAC
+## 1. User Management
 
-> **Scope**: Manages enterprise identity, authentication sessions, cryptographic credential lifecycles, role-based authorization matrices, immutable administrative audit logging, and centralized system event history.  
-> **Tables in Subsystem**: 8 tables
+> **Scope**: Manages enterprise identity, authentication sessions, cryptographic credential lifecycles, role-based authorization matrices, and immutable administrative audit logging.  
+> **Tables in Subsystem**: 7 tables *(Note: `history_logs` is documented under [System Logic](#system-logic-cross-cutting-infrastructure--non-subsystem) as cross-cutting infrastructure)*
 
 ### Table: `users`
 
@@ -1838,7 +1838,7 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 ---
 
 
-## 3. Plant Inventory Subsystem
+## 3. Inventory
 
 > **Scope**: Tracks central product SKU catalogs, LPG cylinder and canister specifications, plant warehouse physical inventory segregated by condition (filled, empty good, defective), and historical stock adjustment transactions.  
 > **Tables in Subsystem**: 3 tables
@@ -2101,10 +2101,10 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 ---
 
 
-## 4. Schedule & Trip Subsystem
+## 4. Trip & Schedule
 
-> **Scope**: Coordinates regional service zones, recurring weekly schedule master templates, daily truck dispatch schedules, live transit execution runs, material transfer manifest slips (loads and returns), manifest line items, and post-trip stock variance reconciliations.  
-> **Tables in Subsystem**: 7 tables
+> **Scope**: Coordinates regional service zones, recurring weekly schedule master templates, daily truck dispatch schedules, live transit execution runs, material transfer manifest slips (loads and returns), manifest line items, post-trip stock variance reconciliations, roadside apprehensions, and driver emergency SOS alerts.  
+> **Tables in Subsystem**: 9 tables *(includes `driver_apprehensions` and `emergency_alerts`)*
 
 ### Table: `service_zones`
 
@@ -3260,10 +3260,10 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 ---
 
 
-## 6. System & Migration Infrastructure
+## System Logic (Cross-Cutting Infrastructure — Non-Subsystem)
 
-> **Scope**: Internal ledger managed by the transactional database migration runner to enforce schema versioning, execution ordering, and integrity verification across development and production environments.  
-> **Tables in Subsystem**: 1 tables
+> **Scope**: Cross-cutting enterprise event history auditing (`history_logs`) and internal schema migration tracking (`schema_migrations`). These tables support all 5 main subsystems and are classified as System Logic infrastructure rather than a business subsystem.  
+> **Tables in Group**: 2 tables (`history_logs` — detailed above; `schema_migrations` — detailed below)
 
 ### Table: `schema_migrations`
 
@@ -3328,20 +3328,20 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 ## Database Documentation Summary
 
 ### 1. Overall Statistics
-- **Total Tables Documented**: **38** database tables.
-- **Subsystems Covered**: 6 vertical slice architectural domains.
+- **Total Tables Documented**: **37** database tables.
+- **Main Subsystems Covered**: **5** business subsystems (`User Management`, `Fleet & Maintenance`, `Trip & Schedule`, `Inventory`, `Sales & Delivery`) + **System Logic** cross-cutting infrastructure.
 - **Verification**: 100% concordance with live PostgreSQL 18.3 database catalog (`information_schema.tables`).
 
 ### 2. Breakdown by Subsystem
-| # | Subsystem Name | Table Count | Tables Included |
+| # | Classification | Table Count | Tables Included |
 | :---: | :--- | :---: | :--- |
-| 1 | **User Management & RBAC** | **8** | `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `audit_logs`, `history_logs` |
-| 2 | **Fleet, Maintenance & Frontline Operations** | **13** | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts`, `vehicle_fuel_logs`, `driver_apprehensions`, `emergency_alerts` |
-| 3 | **Plant Inventory Subsystem** | **3** | `products`, `plant_inventory`, `plant_stock_adjustments` |
-| 4 | **Schedule & Trip Subsystem** | **7** | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` |
-| 5 | **Sales & Delivery Subsystem** | **5** | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` |
-| 6 | **System & Migration Infrastructure** | **1** | `schema_migrations` |
-| | **TOTAL** | **38** | All base tables in `public` schema |
+| 1 | **User Management** *(Subsystem)* | **7** | `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `audit_logs` |
+| 2 | **Fleet & Maintenance** *(Subsystem)* | **11** | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts`, `vehicle_fuel_logs` |
+| 3 | **Trip & Schedule** *(Subsystem)* | **9** | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations`, `driver_apprehensions`, `emergency_alerts` |
+| 4 | **Inventory** *(Subsystem)* | **3** | `products`, `plant_inventory`, `plant_stock_adjustments` |
+| 5 | **Sales & Delivery** *(Subsystem)* | **5** | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` |
+| — | **System Logic** *(Cross-Cutting Infrastructure — Non-Subsystem)* | **2** | `history_logs`, `schema_migrations` |
+| | **TOTAL** | **37** | All base tables in `public` schema |
 
 ### 3. Reconciliation with Proposed Architecture Reference
 The table below details all reconciliations between the initial proposed architecture reference and the actual live database schema:

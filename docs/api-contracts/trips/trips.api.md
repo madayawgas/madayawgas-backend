@@ -232,3 +232,12 @@ Executes plant physical count reconciliation and settles inventory variance.
   }
 }
 ```
+
+---
+
+### 5. Driver Active Assignment (`GET /api/trips/active-assignment`)
+
+Retrieves the authenticated driver or sales person's currently active (`PENDING`, `IN_PROGRESS`, or `RETURNED`) trip assignment and vehicle context for mobile hydration.
+
+- **Permission**: `route.view`, `route.view_own`, or `route.end_own`
+- **Response (`200 OK`)**: `{ status: 'success', data: { trip, ... } }` (or `null` when no active trip is assigned).

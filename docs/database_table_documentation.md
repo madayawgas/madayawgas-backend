@@ -35,6 +35,8 @@ Table Name: audit_logs
 - Structure:
 - Notes: Captures both the acting administrator (`user_id`) and the affected employee account (`target_user_id`).
 
+### System Logic (Cross-Cutting Infrastructure)
+
 Table Name: history_logs
 - Purpose: Maintains a chronological audit log of operational and administrative events across all system modules.
 - Structure:
@@ -161,7 +163,7 @@ Table Name: plant_stock_adjustments
 - Structure:
 - Notes: Serves as an append-only audit ledger recording the quantity delta, source and target stock conditions, and the supervisor who authorized the adjustment.
 
-### Sales
+### Sales & Delivery
 
 Table Name: customers
 - Purpose: Stores customer master profiles, contact details, and delivery addresses for retail, commercial, wholesale, and household accounts.

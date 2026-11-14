@@ -15,6 +15,8 @@ const {
 
 const connectionString = getDatabaseUrl();
 const requiresSsl = shouldEnableSsl(connectionString, isProduction);
+const isSupabasePooler = Boolean(connectionString && connectionString.includes('pooler.supabase.com'));
+const defaultPoolMax = isSupabasePooler ? 10 : (isProduction ? 15 : 50);
 
 const pool = new Pool({
     connectionString,
@@ -23,7 +25,8 @@ const pool = new Pool({
     ssl: requiresSsl ? { rejectUnauthorized: false } : false,
 
     // Sized for direct / pooler connections (customizable via DB_POOL_MAX)
-    max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : (isProduction ? 20 : 50),
+    // Supabase Supavisor Session Mode limits pool_size to 15; cap default at 10 when using the pooler.
+    max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : defaultPoolMax,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
 });

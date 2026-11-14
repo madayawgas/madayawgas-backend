@@ -318,21 +318,7 @@ class TransactionsService {
       filters.recordedBy = actorUser.id;
     }
 
-    const analytics = await transactionsRepository.getSalesAnalytics(null, filters);
-
-    // Also populate weekly, monthly, annually trend series for dashboard charts
-    const [weeklyData, monthlyData, annualData] = await Promise.all([
-      transactionsRepository.getSalesAnalytics(null, { ...filters, timeframe: 'weekly' }),
-      transactionsRepository.getSalesAnalytics(null, { ...filters, timeframe: 'monthly' }),
-      transactionsRepository.getSalesAnalytics(null, { ...filters, timeframe: 'annually' }),
-    ]);
-
-    return {
-      ...analytics,
-      weekly: weeklyData.salesTrends || [],
-      monthly: monthlyData.salesTrends || [],
-      annually: annualData.salesTrends || [],
-    };
+    return transactionsRepository.getSalesAnalytics(null, filters);
   }
 
   /**

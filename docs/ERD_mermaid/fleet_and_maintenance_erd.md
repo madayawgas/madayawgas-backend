@@ -173,6 +173,25 @@ erDiagram
         timestamptz created_at
     }
 
+    VEHICLE_FUEL_LOGS {
+        uuid id PK
+        uuid vehicle_id FK "vehicles(id)"
+        uuid driver_id FK "Nullable, users(id)"
+        uuid trip_id FK "Nullable, trips(id)"
+        uuid recorded_by FK "users(id)"
+        numeric liters_pumped "NUMERIC(8, 2) > 0"
+        numeric total_cost "NUMERIC(10, 2) >= 0"
+        numeric price_per_liter "NUMERIC(8, 2) >= 0"
+        string fuel_station "Nullable"
+        string fuel_type "DIESEL, GASOLINE, AUTO_LPG, OTHER"
+        int odometer_reading "Nullable >= 0"
+        string receipt_media_key "Nullable"
+        timestamptz fueled_at
+        string notes "Nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
 
     %% ==========================================
     %% RELATIONSHIPS
@@ -206,6 +225,11 @@ erDiagram
     WORK_ORDERS ||--o{ APPROVAL_REQUESTS : "requires"
     WORK_ORDERS ||--o| MAINTENANCE_LOGS : "finalized_as"
     WORK_ORDERS ||--o{ WORK_ORDER_RECEIPTS : "supported_by"
+
+    %% Vehicle Fuel Logs
+    VEHICLES ||--o{ VEHICLE_FUEL_LOGS : "fueled_in"
+    USERS ||--o{ VEHICLE_FUEL_LOGS : "driver (driver_id)"
+    USERS ||--o{ VEHICLE_FUEL_LOGS : "recorded_by"
 ```
 
 ---
@@ -374,3 +398,28 @@ Decoupled supporting audit attachments (0..N) for work orders. Pure visual proof
 
 - **`trigger_update_vehicles_updated_at`**: `BEFORE UPDATE` trigger on `vehicles` executing `update_vehicles_updated_at_column()`.
 - **`trigger_update_work_orders_updated_at`**: `BEFORE UPDATE` trigger on `work_orders` executing `update_work_orders_updated_at_column()`.
+- **`trigger_update_vehicle_fuel_logs_updated_at`**: `BEFORE UPDATE` trigger on `vehicle_fuel_logs` executing `update_timestamp_column()`.
+
+---
+
+### `vehicle_fuel_logs`
+Tracks vehicle fuel intake, expenditure, station details, and odometer telemetry.
+
+| Column | Data Type | Nullable | Default / Constraints | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | `UUID` | No | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique fuel log identifier |
+| `vehicle_id` | `UUID` | No | `FK -> vehicles(id) ON DELETE RESTRICT` | Fueled vehicle |
+| `driver_id` | `UUID` | Yes | `FK -> users(id) ON DELETE SET NULL` | Driver operating the vehicle |
+| `trip_id` | `UUID` | Yes | `FK -> trips(id) ON DELETE SET NULL` | Associated delivery trip (if fueled en route) |
+| `recorded_by` | `UUID` | No | `FK -> users(id) ON DELETE RESTRICT` | User who recorded the fuel log |
+| `liters_pumped` | `NUMERIC(8, 2)` | No | `CHECK (liters_pumped > 0)` | Volume of fuel pumped in liters |
+| `total_cost` | `NUMERIC(10, 2)` | No | `CHECK (total_cost >= 0)` | Total fuel expenditure |
+| `price_per_liter` | `NUMERIC(8, 2)` | No | `CHECK (price_per_liter >= 0)` | Unit price per liter |
+| `fuel_station` | `VARCHAR(150)` | Yes | `NULL` | Fuel station name or branch |
+| `fuel_type` | `VARCHAR(50)` | No | `DEFAULT 'DIESEL'` (`'DIESEL'`, `'GASOLINE'`, `'AUTO_LPG'`, `'OTHER'`) | Fuel classification |
+| `odometer_reading` | `INTEGER` | Yes | `CHECK (odometer_reading IS NULL OR odometer_reading >= 0)` | Odometer reading at refueling |
+| `receipt_media_key` | `VARCHAR(255)` | Yes | `NULL` | Canonical media key for fuel receipt photo |
+| `fueled_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Timestamp of refueling |
+| `notes` | `TEXT` | Yes | `NULL` | Remarks or fuel efficiency observations |
+| `created_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
+| `updated_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Managed automatically via trigger |

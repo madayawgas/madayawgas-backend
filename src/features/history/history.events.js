@@ -16,6 +16,7 @@ const MODULES = Object.freeze({
   SCHEDULE: 'SCHEDULE',
   TRIP: 'TRIP',
   OPERATIONS: 'Operations',
+  SETTINGS: 'System Settings',
 });
 
 const DOMAINS = MODULES;
@@ -546,6 +547,17 @@ const EVENT_DEFINITIONS = {
     targetType: 'emergency_alert',
     template: (p) =>
       `Emergency alert #${p.alertId || p.id} resolved by supervisor '${p.supervisorName || p.supervisorId}'`,
+  },
+
+  // ============================================================
+  // SYSTEM SETTINGS EVENTS
+  // ============================================================
+  SYSTEM_SETTING_UPDATED: {
+    module: MODULES.SETTINGS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'system_setting',
+    template: (p) =>
+      `System setting '${p.key}' updated from '${p.oldValue}' to '${p.newValue}'`,
   },
 };
 

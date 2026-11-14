@@ -7,10 +7,19 @@ const app = require('../app');
 const { query, pool } = require('../../database/connection');
 const { mediaStorage } = require('../features/media');
 
+const TEST_UPLOAD_DIR = path.resolve('./uploads-test-avatar');
+const originalProduction = process.env.PRODUCTION;
+const originalNodeEnv = process.env.NODE_ENV;
+const originalLocalMediaPath = process.env.LOCAL_MEDIA_PATH;
+
 let server;
 let baseUrl;
 
 before(async () => {
+  process.env.PRODUCTION = 'false';
+  process.env.NODE_ENV = 'test';
+  process.env.LOCAL_MEDIA_PATH = TEST_UPLOAD_DIR;
+
   await new Promise((resolve) => {
     server = app.listen(0, () => {
       const port = server.address().port;
@@ -24,6 +33,19 @@ after(async () => {
   if (server) {
     server.close();
   }
+  try {
+    if (fs.existsSync(TEST_UPLOAD_DIR)) {
+      fs.rmSync(TEST_UPLOAD_DIR, { recursive: true, force: true });
+    }
+  } catch {
+    // Ignore cleanup errors
+  }
+  if (originalProduction !== undefined) process.env.PRODUCTION = originalProduction;
+  else delete process.env.PRODUCTION;
+  if (originalNodeEnv !== undefined) process.env.NODE_ENV = originalNodeEnv;
+  else delete process.env.NODE_ENV;
+  if (originalLocalMediaPath !== undefined) process.env.LOCAL_MEDIA_PATH = originalLocalMediaPath;
+  else delete process.env.LOCAL_MEDIA_PATH;
   await pool.end();
 });
 

@@ -4,6 +4,7 @@ const vehiclesRepository = require('../../fleet/vehicles/vehicles.repository');
 const tripsRepository = require('../../trips/trips.repository');
 const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
+const { settingsService } = require('../../settings');
 
 /**
  * Formats database row into camelCase API DTO.
@@ -75,8 +76,9 @@ class AlertsService {
     const driverId = actorUser.id;
 
     // 1. Anti-Spam Idempotency Guard:
-    // Check if the driver already submitted an ACTIVE alert within the last 60 seconds
-    const recentAlert = await alertsRepository.findRecentActiveAlertByDriverId(driverId, 60);
+    // Check if the driver already submitted an ACTIVE alert within the configured deduplication window
+    const dedupWindowSeconds = await settingsService.getInteger('operations.sos_dedup_window_seconds', 60);
+    const recentAlert = await alertsRepository.findRecentActiveAlertByDriverId(driverId, dedupWindowSeconds);
     if (recentAlert) {
       const fullRecord = await alertsRepository.getAlertById(recentAlert.id);
       const existingDto = formatAlertRecord(fullRecord);

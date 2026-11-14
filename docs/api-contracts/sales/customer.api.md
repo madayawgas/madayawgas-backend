@@ -383,3 +383,15 @@ Soft-deactivates a customer profile (`is_active = false`) so they are not treate
     "message": "Customer not found"
   }
   ```
+
+
+---
+
+### 6. Activate Customer
+
+Reactivates a previously deactivated customer profile (`is_active = true`).
+
+- **Method**: `PATCH`
+- **URL**: `/api/sales/customers/:id/activate`
+- **Permission Required**: `sales.update`
+- **Response (`200 OK`)**: `{ status: 'success', message: 'Customer successfully activated', data: { customer } }`

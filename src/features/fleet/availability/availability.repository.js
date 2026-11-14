@@ -58,7 +58,6 @@ class AvailabilityRepository {
         v.vehicle_type,
         v.current_odometer,
         v.last_pm_odometer,
-        v.pm_due_flag,
         v.status,
         v.driver_id,
         v.created_at,
