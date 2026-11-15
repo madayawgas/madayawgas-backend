@@ -3,6 +3,7 @@ const corsOptions = require('./config/cors');
 const { isProduction } = require('./config/env');
 const authService = require('./features/users/auth.service');
 const { COOKIE_NAME } = require('./config/cookie');
+const ttlCache = require('./utils/ttlCache');
 
 let io = null;
 
@@ -251,6 +252,12 @@ function emitSocketEvent(eventName, data = {}, room = null) {
  * @returns {object|null} The emitted payload, or null if Socket.IO is uninitialized
  */
 function safeEmitSocketEvent(eventName, data = {}, room = null) {
+  if (
+    typeof eventName === 'string' &&
+    (eventName.startsWith('SALES_') || eventName.startsWith('TRIP_'))
+  ) {
+    ttlCache.invalidatePrefix('sales:analytics:');
+  }
   if (!isSocketInitialized()) {
     return null;
   }

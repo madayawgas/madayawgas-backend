@@ -6,6 +6,10 @@ const { historyService, EVENTS } = require('../../../features/history');
 const { mediaStorage, mediaService, extractStorageKey } = require('../../media');
 const { safeEmitSocketEvent } = require('../../../socket');
 const { settingsService } = require('../../settings');
+const systemConfig = require('../../../config/system.config');
+
+const DEFAULT_PM_THRESHOLD_KM = systemConfig.businessDefaults['fleet.pm_odometer_threshold_km'];
+const DEFAULT_WORK_ORDER_APPROVAL_THRESHOLD = systemConfig.businessDefaults['fleet.work_order_approval_threshold'];
 
 /**
  * Normalizes and formats receipt file path adhering to the Storage Path Invariant:
@@ -100,7 +104,7 @@ class MaintenanceService {
     }
 
     // 4. Distance-Based PM Math & Threshold Evaluation
-    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', DEFAULT_PM_THRESHOLD_KM);
     const previousOdometer = truck.current_odometer;
     const distanceDrivenThisTrip = numOdometer - previousOdometer;
     const distanceSinceLastPm = numOdometer - truck.last_pm_odometer;
@@ -256,7 +260,7 @@ class MaintenanceService {
    * @returns {Promise<Object>} Aggregated overview and truck array
    */
   async getFleetPmOverview(queryParams = {}) {
-    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', DEFAULT_PM_THRESHOLD_KM);
     const rows = await maintenanceRepository.getFleetPmStatusOverview(queryParams, pmThresholdKm);
 
     const vehicles = rows.map((r) => ({
@@ -1145,7 +1149,7 @@ class MaintenanceService {
     const cleanShopName = shopName && typeof shopName === 'string' ? shopName.trim() : null;
 
     // 8. Cost Approval Threshold & Status Determination
-    const approvalThreshold = await settingsService.getNumber('fleet.work_order_approval_threshold', 5000.0);
+    const approvalThreshold = await settingsService.getNumber('fleet.work_order_approval_threshold', DEFAULT_WORK_ORDER_APPROVAL_THRESHOLD);
     const needsApproval =
       Boolean(requiresApproval) || numEstimatedCost >= approvalThreshold;
 

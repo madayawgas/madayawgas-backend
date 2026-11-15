@@ -6,6 +6,9 @@ const { historyService, EVENTS } = require('../history');
 const { buildPaginationMeta } = require('../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../socket');
 const { settingsService } = require('../settings');
+const systemConfig = require('../../config/system.config');
+
+const DEFAULT_CANISTERS_PER_CRATE = systemConfig.businessDefaults['inventory.canisters_per_crate'];
 
 /**
  * Inventory Service
@@ -99,7 +102,7 @@ class InventoryService {
   async getPlantInventory() {
     const [items, canistersPerCrate] = await Promise.all([
       inventoryRepository.getPlantInventory(),
-      settingsService.getInteger('inventory.canisters_per_crate', 24),
+      settingsService.getInteger('inventory.canisters_per_crate', DEFAULT_CANISTERS_PER_CRATE),
     ]);
 
     return items.map((item) => {
@@ -592,9 +595,13 @@ class InventoryService {
       targetCount = 1;
     }
 
+    const canistersPerCrate = await settingsService.getInteger(
+      'inventory.canisters_per_crate',
+      DEFAULT_CANISTERS_PER_CRATE
+    );
     const suggestedUnitsPerTruck = Math.floor(filledAvailable / targetCount);
     const isCanister = product.container_type === 'CANISTER';
-    const suggestedCratesPerTruck = isCanister ? Math.floor(suggestedUnitsPerTruck / 24) : null;
+    const suggestedCratesPerTruck = isCanister ? Math.floor(suggestedUnitsPerTruck / canistersPerCrate) : null;
     const remainingUnits = filledAvailable - suggestedUnitsPerTruck * targetCount;
 
     return {
@@ -895,7 +902,10 @@ class InventoryService {
       throw err;
     }
 
-    const stockItems = await inventoryRepository.getVehicleActiveStockPerProduct(trip.id);
+    const [stockItems, canistersPerCrate] = await Promise.all([
+      inventoryRepository.getVehicleActiveStockPerProduct(trip.id),
+      settingsService.getInteger('inventory.canisters_per_crate', DEFAULT_CANISTERS_PER_CRATE),
+    ]);
 
     const items = stockItems.map((it) => {
       const onBoardFull = it.loaded_full - it.returned_full;
@@ -914,7 +924,7 @@ class InventoryService {
         currentOnBoardFull: onBoardFull,
         currentOnBoardEmpty: it.returned_empty_good,
         currentOnBoardDefective: it.returned_defective,
-        cratesOnBoardFull: isCanister ? Math.floor(onBoardFull / 24) : null,
+        cratesOnBoardFull: isCanister ? Math.floor(onBoardFull / canistersPerCrate) : null,
       };
     });
 
@@ -1185,11 +1195,16 @@ class InventoryService {
    * @param {Object} [pagination]
    */
   async getGlobalTransfers(filters = {}, pagination = null) {
+    const canistersPerCrate = await settingsService.getInteger(
+      'inventory.canisters_per_crate',
+      DEFAULT_CANISTERS_PER_CRATE
+    );
+
     if (!pagination || !pagination.isPaginated) {
-      return inventoryRepository.getGlobalTransfers(filters, null);
+      return inventoryRepository.getGlobalTransfers(filters, null, canistersPerCrate);
     }
 
-    const { rows, total } = await inventoryRepository.getGlobalTransfers(filters, pagination);
+    const { rows, total } = await inventoryRepository.getGlobalTransfers(filters, pagination, canistersPerCrate);
     const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
 
     return { items: rows, meta };

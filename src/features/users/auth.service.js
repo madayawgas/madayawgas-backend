@@ -3,9 +3,10 @@ const bcrypt = require('bcrypt');
 const usersRepository = require('./users.repository');
 const permissionService = require('./permission.service');
 const mediaStorage = require('../media/media.storage');
+const systemConfig = require('../../config/system.config');
 
-const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
-const ABSOLUTE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const IDLE_TIMEOUT_MS = systemConfig.system.auth.idleTimeoutMs;
+const ABSOLUTE_LIFETIME_MS = systemConfig.system.auth.absoluteLifetimeMs;
 
 /**
  * Authentication Service

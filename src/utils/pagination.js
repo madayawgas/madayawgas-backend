@@ -3,6 +3,7 @@
  * Provides request query parsing, boundary sanitization, offset calculation,
  * and standardized metadata formatting for server-side pagination.
  */
+const systemConfig = require('../config/system.config');
 
 /**
  * Parses and sanitizes pagination query parameters from Express `req.query`.
@@ -19,8 +20,8 @@
  */
 function parsePaginationQuery(query = {}, options = {}) {
   const {
-    defaultLimit = 20,
-    maxLimit = 100,
+    defaultLimit = systemConfig.system.pagination.defaultLimit,
+    maxLimit = systemConfig.system.pagination.maxLimit,
     defaultSort = 'created_at',
     defaultOrder = 'DESC',
     allowedSortFields = {},

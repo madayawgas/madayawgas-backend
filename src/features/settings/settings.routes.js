@@ -7,6 +7,12 @@ const asyncHandler = require('../../utils/asyncHandler');
 
 router.use(authenticate);
 
+// Authenticated effective operational config (non-secret thresholds & bounds for all roles)
+router.get(
+  '/effective',
+  asyncHandler(settingsController.getEffectiveConfig.bind(settingsController))
+);
+
 // Admin-only Business System Settings endpoints
 router.get(
   '/',

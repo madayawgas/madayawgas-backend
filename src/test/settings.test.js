@@ -390,4 +390,56 @@ test('Business System Settings Subsystem Tests', async (t) => {
       );
     }
   });
+
+  await t.test('GET /api/settings/effective is accessible to non-admin authenticated roles and reflects live config', async () => {
+    const unauthRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/settings/effective',
+      method: 'GET',
+    });
+    assert.equal(unauthRes.statusCode, 401);
+
+    // Clear cache and update a single setting on cold cache to ensure full hydration still works
+    settingsService.clearCache();
+    const key = 'fleet.pm_odometer_threshold_km';
+    const orig = originalSettings.get(key) || '5000';
+
+    try {
+      const patchRes = await makeRequest(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: `/api/settings/${key}`,
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        },
+        { value: 2500 }
+      );
+      assert.equal(patchRes.statusCode, 200);
+
+      const driverRes = await makeRequest({
+        hostname: '127.0.0.1',
+        port,
+        path: '/api/settings/effective',
+        method: 'GET',
+        headers: { Cookie: driverCookie },
+      });
+      assert.equal(driverRes.statusCode, 200);
+      assert.equal(driverRes.body.data.settings['fleet.pm_odometer_threshold_km'], 2500);
+      assert.equal(typeof driverRes.body.data.settings['inventory.canisters_per_crate'], 'number');
+      assert.equal(driverRes.body.data.system.fleet.maxOdometerKm, 999999);
+    } finally {
+      await makeRequest(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: `/api/settings/${key}`,
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+        },
+        { value: Number(orig) }
+      );
+    }
+  });
 });

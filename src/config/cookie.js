@@ -1,4 +1,5 @@
 const { isProduction } = require('./env');
+const systemConfig = require('./system.config');
 
 /**
  * Centralized Cookie Configuration
@@ -29,7 +30,7 @@ const getCookieOptions = (req) => {
     secure: isSecure,
     sameSite: isSecure ? 'none' : 'lax',
     path: '/',
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
+    maxAge: systemConfig.system.auth.absoluteLifetimeMs,
   };
 };
 

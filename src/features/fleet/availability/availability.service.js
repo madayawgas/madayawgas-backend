@@ -3,6 +3,9 @@ const vehiclesRepository = require('../vehicles/vehicles.repository');
 const { historyService, EVENTS } = require('../../history');
 const { safeEmitSocketEvent } = require('../../../socket');
 const { settingsService } = require('../../settings');
+const systemConfig = require('../../../config/system.config');
+
+const DEFAULT_PM_THRESHOLD_KM = systemConfig.businessDefaults['fleet.pm_odometer_threshold_km'];
 
 /**
  * Availability Service
@@ -46,7 +49,7 @@ class AvailabilityService {
   async getAvailability(filters = {}) {
     const [rows, pmThresholdKm] = await Promise.all([
       availabilityRepository.getAvailableTrucks(filters),
-      settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000),
+      settingsService.getInteger('fleet.pm_odometer_threshold_km', DEFAULT_PM_THRESHOLD_KM),
     ]);
     const availableVehicles = rows.map((row) => {
       const isPmDue = Number(row.current_odometer) - Number(row.last_pm_odometer) >= pmThresholdKm;

@@ -520,8 +520,9 @@ class InventoryRepository {
    * @param {string} [filters.endDate] - ISO timestamp or date
    * @param {string} [filters.search] - Search string
    * @param {Object} [pagination] - Sanitized pagination options from parsePaginationQuery
+   * @param {number} [canistersPerCrate=24] - Configured canister units per crate
    */
-  async getGlobalTransfers(filters = {}, pagination = null) {
+  async getGlobalTransfers(filters = {}, pagination = null, canistersPerCrate = 24) {
     let includeTripLoads = true;
     let includePlantAdjustments = true;
 
@@ -747,7 +748,7 @@ class InventoryRepository {
           netWeightKg: it.net_weight_kg != null ? parseFloat(it.net_weight_kg) : null,
           condition: it.condition,
           quantityUnits: it.quantity_units,
-          crates: isCanister ? Math.floor(it.quantity_units / 24) : null,
+          crates: isCanister ? Math.floor(it.quantity_units / canistersPerCrate) : null,
         });
       }
     }
@@ -769,7 +770,7 @@ class InventoryRepository {
             netWeightKg: r.net_weight_kg != null ? parseFloat(r.net_weight_kg) : null,
             condition: r.target_condition,
             quantityUnits: qty,
-            crates: isCanister ? Math.floor(qty / 24) : null,
+            crates: isCanister ? Math.floor(qty / canistersPerCrate) : null,
           },
         ];
       }

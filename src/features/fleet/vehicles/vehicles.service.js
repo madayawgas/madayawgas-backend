@@ -3,6 +3,9 @@ const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../../socket');
 const { settingsService } = require('../../settings');
+const systemConfig = require('../../../config/system.config');
+
+const DEFAULT_PM_THRESHOLD_KM = systemConfig.businessDefaults['fleet.pm_odometer_threshold_km'];
 
 const VALID_VEHICLE_TYPES = ['DELIVERY_TRUCK', 'SERVICE_PICKUP', 'MOTORCYCLE', 'UTILITY_VAN'];
 const VALID_STATUSES = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
@@ -10,7 +13,7 @@ const VALID_STATUSES = ['ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED'];
 /**
  * Maps database row to camelCase DTO with soft-bounded driver details and availability.
  */
-function formatVehicle(row, pmThresholdKm = 5000) {
+function formatVehicle(row, pmThresholdKm = DEFAULT_PM_THRESHOLD_KM) {
   if (!row) return null;
 
   const isPmDue = Number(row.current_odometer) - Number(row.last_pm_odometer) >= pmThresholdKm;
@@ -109,7 +112,7 @@ class VehiclesService {
       }
     }
 
-    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', DEFAULT_PM_THRESHOLD_KM);
 
     if (!pagination) {
       const rows = await vehiclesRepository.getAllVehicles(effectiveFilters);
@@ -161,7 +164,7 @@ class VehiclesService {
       }
     }
 
-    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', DEFAULT_PM_THRESHOLD_KM);
     return formatVehicle(row, pmThresholdKm);
   }
 
@@ -183,7 +186,7 @@ class VehiclesService {
       throw err;
     }
 
-    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', 5000);
+    const pmThresholdKm = await settingsService.getInteger('fleet.pm_odometer_threshold_km', DEFAULT_PM_THRESHOLD_KM);
     return formatVehicle(row, pmThresholdKm);
   }
 

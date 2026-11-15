@@ -1,4 +1,7 @@
 const { query, pool } = require('../../../../database/connection');
+const systemConfig = require('../../../config/system.config');
+
+const DEFAULT_PM_THRESHOLD_KM = systemConfig.businessDefaults['fleet.pm_odometer_threshold_km'];
 
 /**
  * Maintenance Repository
@@ -158,9 +161,9 @@ class MaintenanceRepository {
    * @param {Object} [filters] - Optional filters: { status, search, isPmDue }
    * @returns {Promise<Array<Object>>} Array of trucks with PM calculations
    */
-  async getFleetPmStatusOverview(filters = {}, pmThresholdKm = 5000) {
+  async getFleetPmStatusOverview(filters = {}, pmThresholdKm = DEFAULT_PM_THRESHOLD_KM) {
     const { status, search, isPmDue } = filters;
-    const threshold = Number.isFinite(Number(pmThresholdKm)) ? Number(pmThresholdKm) : 5000;
+    const threshold = Number.isFinite(Number(pmThresholdKm)) ? Number(pmThresholdKm) : DEFAULT_PM_THRESHOLD_KM;
     const conditions = [];
     const params = [threshold];
     let paramIndex = 2;

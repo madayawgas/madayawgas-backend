@@ -5,6 +5,9 @@ const tripsRepository = require('../../trips/trips.repository');
 const { historyService, EVENTS } = require('../../history');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 const { settingsService } = require('../../settings');
+const systemConfig = require('../../../config/system.config');
+
+const DEFAULT_SOS_DEDUP_SECONDS = systemConfig.businessDefaults['operations.sos_dedup_window_seconds'];
 
 /**
  * Formats database row into camelCase API DTO.
@@ -77,7 +80,7 @@ class AlertsService {
 
     // 1. Anti-Spam Idempotency Guard:
     // Check if the driver already submitted an ACTIVE alert within the configured deduplication window
-    const dedupWindowSeconds = await settingsService.getInteger('operations.sos_dedup_window_seconds', 60);
+    const dedupWindowSeconds = await settingsService.getInteger('operations.sos_dedup_window_seconds', DEFAULT_SOS_DEDUP_SECONDS);
     const recentAlert = await alertsRepository.findRecentActiveAlertByDriverId(driverId, dedupWindowSeconds);
     if (recentAlert) {
       const fullRecord = await alertsRepository.getAlertById(recentAlert.id);

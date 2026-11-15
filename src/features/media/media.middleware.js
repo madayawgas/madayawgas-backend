@@ -1,4 +1,5 @@
 const multer = require('multer');
+const systemConfig = require('../../config/system.config');
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -13,7 +14,7 @@ const ALLOWED_AVATAR_MIME_TYPES = new Set([
   'image/webp',
 ]);
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE_BYTES = systemConfig.system.maxUploadFileSizeBytes;
 
 const storage = multer.memoryStorage();
 

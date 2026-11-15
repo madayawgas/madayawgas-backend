@@ -1,7 +1,9 @@
 const settingsRepository = require('./settings.repository');
 const { historyService, EVENTS } = require('../history');
+const { safeEmitSocketEvent } = require('../../socket');
+const systemConfig = require('../../config/system.config');
 
-const CACHE_TTL_MS = 60 * 1000;
+const CACHE_TTL_MS = systemConfig.system.settingsCacheTtlMs;
 
 /**
  * Parses a raw stored string value according to its declared value_type.
@@ -129,6 +131,7 @@ class SettingsService {
   constructor() {
     this._cache = new Map();
     this._cacheLoadedAt = 0;
+    this._allLoaded = false;
   }
 
   /**
@@ -137,6 +140,7 @@ class SettingsService {
   clearCache() {
     this._cache.clear();
     this._cacheLoadedAt = 0;
+    this._allLoaded = false;
   }
 
   /**
@@ -144,7 +148,7 @@ class SettingsService {
    */
   async _ensureCache() {
     const now = Date.now();
-    if (this._cache.size > 0 && now - this._cacheLoadedAt < CACHE_TTL_MS) {
+    if (this._allLoaded && now - this._cacheLoadedAt < CACHE_TTL_MS) {
       return;
     }
 
@@ -155,6 +159,7 @@ class SettingsService {
         this._cache.set(row.key, row);
       }
       this._cacheLoadedAt = Date.now();
+      this._allLoaded = true;
     } catch {
       // Allow graceful fallback to caller defaults if DB is temporarily unavailable
     }
@@ -212,6 +217,28 @@ class SettingsService {
     const row = this._cache.get(key);
     if (!row) return fallback;
     return String(row.value);
+  }
+
+  /**
+   * Returns effective operational settings (DB values merged over central config defaults)
+   * alongside non-UI system-wide constants for authenticated clients.
+   * @returns {Promise<{ settings: Object, system: Object }>}
+   */
+  async getEffectiveConfig() {
+    await this._ensureCache();
+    const effectiveSettings = { ...systemConfig.businessDefaults };
+
+    for (const [key, row] of this._cache.entries()) {
+      effectiveSettings[key] = parseTypedValue(row.value, row.value_type);
+    }
+
+    return {
+      settings: effectiveSettings,
+      system: {
+        fleet: { ...systemConfig.system.fleet },
+        maxUploadFileSizeBytes: systemConfig.system.maxUploadFileSizeBytes,
+      },
+    };
   }
 
   /**
@@ -282,6 +309,14 @@ class SettingsService {
       this._cacheLoadedAt = Date.now();
     }
 
+    const dto = formatSettingDto(updated);
+
+    safeEmitSocketEvent('settings:updated', {
+      key: cleanKey,
+      value: dto.value,
+      category: dto.category,
+    });
+
     await historyService.log(EVENTS.SYSTEM_SETTING_UPDATED, {
       actorUser,
       payload: {
@@ -297,7 +332,7 @@ class SettingsService {
       },
     });
 
-    return formatSettingDto(updated);
+    return dto;
   }
 }
 

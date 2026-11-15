@@ -5,6 +5,19 @@ const settingsService = require('./settings.service');
  */
 class SettingsController {
   /**
+   * GET /api/settings/effective
+   * Returns active operational settings & system constants for any authenticated user.
+   */
+  async getEffectiveConfig(req, res) {
+    const config = await settingsService.getEffectiveConfig();
+
+    return res.status(200).json({
+      status: 'success',
+      data: config,
+    });
+  }
+
+  /**
    * GET /api/settings
    */
   async listSettings(req, res) {

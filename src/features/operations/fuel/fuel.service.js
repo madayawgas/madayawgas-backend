@@ -8,6 +8,9 @@ const { mediaStorage, extractStorageKey } = require('../../media');
 const { calculateOffset, buildPaginationMeta } = require('../../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../../socket');
 const { settingsService } = require('../../settings');
+const systemConfig = require('../../../config/system.config');
+
+const DEFAULT_VARIANCE_PERCENT = systemConfig.businessDefaults['operations.fuel_efficiency_variance_percent'];
 
 /**
  * Formats database row into camelCase API DTO with resolved receipt URL.
@@ -730,7 +733,7 @@ class FuelService {
     // 2. Format individual vehicle metrics
     const varianceThresholdPercent = await settingsService.getNumber(
       'operations.fuel_efficiency_variance_percent',
-      5
+      DEFAULT_VARIANCE_PERCENT
     );
     let formattedVehicles = vehicles.map((v) =>
       this._formatVehicleAnalysis(v, averageKmPerLiter, varianceThresholdPercent)

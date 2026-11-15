@@ -8,6 +8,7 @@ const {
   buildPaginationMeta,
 } = require('../../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../../socket');
+const ttlCache = require('../../../utils/ttlCache');
 
 const ALLOWED_TRANSACTION_SORT_FIELDS = Object.freeze({
   transactedAt: 'st.transacted_at',
@@ -318,7 +319,15 @@ class TransactionsService {
       filters.recordedBy = actorUser.id;
     }
 
-    return transactionsRepository.getSalesAnalytics(null, filters);
+    const cacheKey = `sales:analytics:${filters.recordedBy || 'global'}:${filters.startDate || ''}:${filters.endDate || ''}:${filters.timeframe}:${filters.tripId || ''}:${filters.truckId || ''}`;
+    const cached = ttlCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const analytics = await transactionsRepository.getSalesAnalytics(null, filters);
+    ttlCache.set(cacheKey, analytics, 60000);
+    return analytics;
   }
 
   /**
