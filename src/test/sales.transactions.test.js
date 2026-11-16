@@ -1341,4 +1341,96 @@ test('Sales & Delivery Subsystem - Batch Sync, Invoicing & Receivables (Phase 4 
       assert.ok(Array.isArray(json.data.annually), 'annually series must be an array');
     }
   });
+
+  // ============================================================
+  // Subtest 14: Catalog Price Fallback, Override Audit Trail, Invoice Payment & Transaction Edit
+  // ============================================================
+  await t.test('14. Catalog Price Fallback, Override Audit Trail, Invoice Payment & Transaction Edit', async () => {
+    // 1. Sync transaction with omitted unitPriceAtSale -> defaults to catalog unit_price (75.00 for Butane 170g)
+    //    and a second line item with overridden price -> recorded in audit metadata
+    const txId = crypto.randomUUID();
+    const invId = crypto.randomUUID();
+
+    const syncRes = await fetch(`${baseUrl}/api/sales/sync-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        tripId: testTripId,
+        transactions: [
+          {
+            id: txId,
+            transactionNo: 'TEST-TXSYNC-PRICE-1',
+            customerId: testCustomerId1,
+            transactedAt: '2026-10-15T14:00:00.000Z',
+            items: [
+              {
+                productId: butaneProductId,
+                quantitySold: 2,
+                emptiesReturned: 2,
+              },
+              {
+                productId: lpg11kgProductId,
+                quantitySold: 1,
+                emptiesReturned: 1,
+                unitPriceAtSale: 920.0,
+              },
+            ],
+            invoice: {
+              id: invId,
+              invoiceNumber: 'INV-TEST-TXSYNC-PRICE-1',
+              declarationNumber: 'CD-TEST-TXSYNC-PRICE-1',
+              totalAmount: 1070.0,
+              paymentMethod: 'CASH',
+              paymentStatus: 'PAID_UNVERIFIED',
+            },
+          },
+        ],
+      }),
+    });
+    assert.equal(syncRes.status, 200);
+    const syncJson = await syncRes.json();
+    assert.equal(syncJson.data.processedCount, 1);
+
+    const itemRows = (await query(
+      `SELECT product_id, unit_price_at_sale, subtotal_amount FROM sales_transaction_items WHERE transaction_id = $1`,
+      [txId]
+    )).rows;
+    const butaneItem = itemRows.find((r) => r.product_id === butaneProductId);
+    assert.equal(Number(butaneItem.unit_price_at_sale), 75.0);
+    assert.equal(Number(butaneItem.subtotal_amount), 150.0);
+
+    // 2. Verify priceOverrides recorded in history_logs metadata
+    const histRes = await query(
+      `SELECT metadata FROM history_logs WHERE action = 'SALES_BATCH_SYNCED' AND target_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [testTripId]
+    );
+    const meta = histRes.rows[0].metadata;
+    assert.ok(meta.priceOverrideCount >= 1);
+    assert.ok(meta.priceOverrides.some((o) => o.transactionNo === 'TEST-TXSYNC-PRICE-1' && o.syncedPrice === 920));
+
+    // 3. Update unverified invoice payment details (PATCH /api/sales/invoices/:id/payment)
+    const payRes = await fetch(`${baseUrl}/api/sales/invoices/${invId}/payment`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({
+        paymentMethod: 'GCASH',
+        paymentReferenceNumber: 'GCASH-NEW-999',
+        paymentProofKey: 'proofs/new-999.png',
+      }),
+    });
+    assert.equal(payRes.status, 200);
+    const payJson = await payRes.json();
+    assert.equal(payJson.data.invoice.payment_method, 'GCASH');
+    assert.equal(payJson.data.invoice.payment_reference_number, 'GCASH-NEW-999');
+
+    // 4. Update transaction customerId (PATCH /api/sales/transactions/:id)
+    const txPatchRes = await fetch(`${baseUrl}/api/sales/transactions/${txId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${salesPersonCookie}` },
+      body: JSON.stringify({ customerId: testCustomerId2 }),
+    });
+    assert.equal(txPatchRes.status, 200);
+    const txPatchJson = await txPatchRes.json();
+    assert.equal(txPatchJson.data.transaction.customer_id, testCustomerId2);
+  });
 });

@@ -69,6 +69,28 @@ router.get(
 );
 
 /**
+ * PATCH /api/operations/fuel/:id
+ * Updates an existing fuel log entry.
+ */
+router.patch(
+  '/:id',
+  authenticate,
+  requirePermission('fuel.manage'),
+  asyncHandler(fuelController.updateFuelLog.bind(fuelController))
+);
+
+/**
+ * DELETE /api/operations/fuel/:id
+ * Deletes a fuel log entry.
+ */
+router.delete(
+  '/:id',
+  authenticate,
+  requirePermission('fuel.manage'),
+  asyncHandler(fuelController.deleteFuelLog.bind(fuelController))
+);
+
+/**
  * GET /api/operations/fuel
  * Retrieves paginated fuel logs with vehicle filtering.
  */

@@ -217,6 +217,17 @@ router.patch(
 );
 
 /**
+ * PATCH /api/inventory/products/:id/activate
+ * Re-activate a product item.
+ */
+router.patch(
+  '/products/:id/activate',
+  authenticate,
+  requirePermission('inventory.manage'),
+  asyncHandler(productsController.activateProduct.bind(productsController))
+);
+
+/**
  * GET /api/inventory/products/:id
  * Retrieve single product profile by UUID.
  */
@@ -228,10 +239,17 @@ router.get(
 );
 
 /**
- * PATCH /api/inventory/products/:id
+ * PATCH /api/inventory/products/:id & PUT /api/inventory/products/:id
  * Update product item details.
  */
 router.patch(
+  '/products/:id',
+  authenticate,
+  requirePermission('inventory.manage'),
+  asyncHandler(productsController.updateProduct.bind(productsController))
+);
+
+router.put(
   '/products/:id',
   authenticate,
   requirePermission('inventory.manage'),

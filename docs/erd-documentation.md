@@ -1893,6 +1893,10 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
               <td>NUMERIC(6, 3) (NOT NULL)</td>
             </tr>
             <tr>
+              <td><code>unit_price</code></td>
+              <td>NUMERIC(10, 2) (NOT NULL, Default: <code>0.00</code>, CHECK (&gt;= 0))</td>
+            </tr>
+            <tr>
               <td><code>is_active</code></td>
               <td>BOOLEAN (NOT NULL, Default: <code>true</code>)</td>
             </tr>
@@ -1916,6 +1920,7 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
           <li><code>products.name</code> is unique.</li>
           <li><code>container_type</code> uses the custom ENUM <code>container_type_enum</code> (<code>'CYLINDER'</code>, <code>'CANISTER'</code>).</li>
           <li><code>net_weight_kg</code> stores the exact gas net weight in kilograms.</li>
+          <li><code>unit_price</code> stores the standard catalog unit selling price in PHP (non-negative).</li>
           <li>Maintains an automated <code>updated_at</code> trigger.</li>
         </ol>
       </td>

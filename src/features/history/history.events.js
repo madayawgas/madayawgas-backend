@@ -520,12 +520,61 @@ const EVENT_DEFINITIONS = {
     template: (p) =>
       `Updated apprehension '${p.citationTicketNo || p.id}' status to '${p.status}'`,
   },
+  APPREHENSION_UPDATED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'driver_apprehension',
+    template: (p) =>
+      `Updated apprehension details for '${p.citationTicketNo || p.id}'`,
+  },
   FUEL_LOGGED: {
     module: MODULES.OPERATIONS,
     actionType: ACTION_TYPES.CREATED,
     targetType: 'vehicle_fuel_log',
     template: (p) =>
       `Logged fuel intake of ${p.litersPumped}L (₱${p.totalCost}) for vehicle '${p.plateNumber || p.vehicleId}'`,
+  },
+  FUEL_UPDATED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'vehicle_fuel_log',
+    template: (p) =>
+      `Updated fuel log (${p.litersPumped}L, ₱${p.totalCost}) for vehicle '${p.plateNumber || p.vehicleId}'`,
+  },
+  FUEL_DELETED: {
+    module: MODULES.OPERATIONS,
+    actionType: ACTION_TYPES.DELETED,
+    targetType: 'vehicle_fuel_log',
+    template: (p) =>
+      `Deleted fuel log (${p.litersPumped}L, ₱${p.totalCost}) for vehicle '${p.plateNumber || p.vehicleId}'`,
+  },
+  PRODUCT_ACTIVATED: {
+    module: MODULES.INVENTORY_MANAGEMENT,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'product',
+    template: (p) =>
+      `Activated product '${p.name}'`,
+  },
+  SALES_BATCH_SYNC_FAILED: {
+    module: MODULES.SALES_DELIVERY,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'trip',
+    template: (p) =>
+      `Sales batch sync failed for trip '${p.tripNumber || p.tripId}' (${p.failedCount} failed transaction(s))`,
+  },
+  SALES_TRANSACTION_UPDATED: {
+    module: MODULES.SALES_DELIVERY,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'sales_transaction',
+    template: (p) =>
+      `Updated sales transaction #${p.transactionNo || p.id}`,
+  },
+  INVOICE_PAYMENT_UPDATED: {
+    module: MODULES.SALES_DELIVERY,
+    actionType: ACTION_TYPES.UPDATED,
+    targetType: 'sales_invoice',
+    template: (p) =>
+      `Updated payment status for invoice '${p.invoiceNumber || p.id}' to '${p.paymentStatus}'`,
   },
   EMERGENCY_ALERT_TRIGGERED: {
     module: MODULES.OPERATIONS,

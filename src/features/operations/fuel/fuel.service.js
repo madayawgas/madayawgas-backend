@@ -1009,6 +1009,234 @@ class FuelService {
       fillUpLogs: formattedFillUpLogs,
     };
   }
+
+  /**
+   * Updates an existing fuel log record (Supervisor/Admin action).
+   * @param {string} id
+   * @param {Object} actorUser
+   * @param {Object} payload
+   * @returns {Promise<Object>}
+   */
+  async updateFuelLog(id, actorUser, payload = {}) {
+    const existing = await fuelRepository.getFuelLogById(id);
+    if (!existing) {
+      const err = new Error('Fuel log not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const updateData = {};
+
+    let effectiveLiters = Number(existing.liters_pumped);
+    if (payload.litersPumped !== undefined) {
+      const numLiters = Number(payload.litersPumped);
+      if (!Number.isFinite(numLiters) || numLiters <= 0) {
+        const err = new Error('Fuel volume (litersPumped) must be greater than 0');
+        err.statusCode = 400;
+        throw err;
+      }
+      effectiveLiters = numLiters;
+      updateData.litersPumped = numLiters;
+    }
+
+    let effectiveCost = Number(existing.total_cost);
+    if (payload.totalCost !== undefined) {
+      const numCost = Number(payload.totalCost);
+      if (!Number.isFinite(numCost) || numCost < 0) {
+        const err = new Error('Total fuel cost must be a non-negative number');
+        err.statusCode = 400;
+        throw err;
+      }
+      effectiveCost = numCost;
+      updateData.totalCost = numCost;
+    }
+
+    if (payload.pricePerLiter !== undefined && payload.pricePerLiter !== null && payload.pricePerLiter !== '') {
+      const numPpl = Number(payload.pricePerLiter);
+      if (!Number.isFinite(numPpl) || numPpl < 0) {
+        const err = new Error('Price per liter must be a non-negative number');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.pricePerLiter = Number(numPpl.toFixed(2));
+    } else if (payload.litersPumped !== undefined || payload.totalCost !== undefined) {
+      updateData.pricePerLiter = Number((effectiveCost / effectiveLiters).toFixed(2));
+    }
+
+    if (payload.fuelStation !== undefined) {
+      updateData.fuelStation = payload.fuelStation ? String(payload.fuelStation).trim() : null;
+    }
+
+    if (payload.fuelType !== undefined) {
+      if (!payload.fuelType || typeof payload.fuelType !== 'string' || !payload.fuelType.trim()) {
+        const err = new Error('Fuel type cannot be empty');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.fuelType = payload.fuelType.trim().toUpperCase();
+    }
+
+    if (payload.notes !== undefined) {
+      updateData.notes = payload.notes ? String(payload.notes).trim() : null;
+    }
+
+    const rawKey = payload.receiptMediaKey !== undefined ? payload.receiptMediaKey : payload.receiptImageUrl;
+    if (rawKey !== undefined) {
+      updateData.receiptMediaKey = rawKey ? (extractStorageKey(String(rawKey)) || String(rawKey).trim()) : null;
+    }
+
+    if (payload.fueledAt !== undefined) {
+      const parsed = new Date(payload.fueledAt);
+      if (isNaN(parsed.getTime())) {
+        const err = new Error('Invalid fueling timestamp format');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.fueledAt = parsed.toISOString();
+    }
+
+    let shouldAdvanceOdometer = false;
+    let validOdometer = null;
+    if (payload.odometerReading !== undefined) {
+      if (payload.odometerReading === null || payload.odometerReading === '') {
+        updateData.odometerReading = null;
+      } else {
+        const numOdo = Number(payload.odometerReading);
+        if (!Number.isInteger(numOdo) || numOdo < 0) {
+          const err = new Error('Odometer reading must be a non-negative integer');
+          err.statusCode = 400;
+          throw err;
+        }
+        const vehicle = await vehiclesRepository.getVehicleById(existing.vehicle_id);
+        const currentOdo = Number(vehicle?.current_odometer || 0);
+        if (numOdo !== Number(existing.odometer_reading) && numOdo < currentOdo) {
+          const err = new Error(
+            `New odometer reading (${numOdo} km) cannot be less than current vehicle odometer (${currentOdo} km).`
+          );
+          err.statusCode = 400;
+          err.code = 'INVALID_ODOMETER_SEQUENCE';
+          throw err;
+        }
+        validOdometer = numOdo;
+        updateData.odometerReading = numOdo;
+        shouldAdvanceOdometer = numOdo > currentOdo;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      const err = new Error('At least one editable fuel log field is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await fuelRepository.updateFuelLog(id, updateData, client);
+
+      if (shouldAdvanceOdometer && validOdometer !== null) {
+        await maintenanceRepository.updateTruckOdometer(
+          { truckId: existing.vehicle_id, currentOdometer: validOdometer },
+          client
+        );
+        await maintenanceRepository.insertOdometerLog(
+          {
+            vehicleId: existing.vehicle_id,
+            odometerReading: validOdometer,
+            loggedBy: actorUser.id,
+            source: 'FUEL_ENTRY',
+            notes: `Updated fuel entry #${id}`,
+          },
+          client
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const fullRecord = await fuelRepository.getFuelLogById(id);
+    const dto = formatFuelRecord(fullRecord);
+
+    await historyService.log(EVENTS.FUEL_UPDATED, {
+      actorUser,
+      targetId: id,
+      payload: {
+        plateNumber: dto.vehicle.plateNumber,
+        litersPumped: dto.litersPumped,
+        totalCost: dto.totalCost,
+      },
+      metadata: {
+        fuelLogId: id,
+        updatedFields: Object.keys(updateData),
+      },
+    });
+
+    safeEmitSocketEvent('FUEL_LOG_UPDATED', {
+      fuelLog: dto,
+      updatedAt: new Date().toISOString(),
+    }, ['room:operations', 'room:fleet', `user:${dto.driverId}`]);
+
+    return dto;
+  }
+
+  /**
+   * Deletes a fuel log record (Supervisor/Admin action).
+   * @param {string} id
+   * @param {Object} actorUser
+   * @returns {Promise<Object>} Deleted fuel log snapshot
+   */
+  async deleteFuelLog(id, actorUser) {
+    const existing = await fuelRepository.getFuelLogById(id);
+    if (!existing) {
+      const err = new Error('Fuel log not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const dto = formatFuelRecord(existing);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await fuelRepository.deleteFuelLog(id, client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await historyService.log(EVENTS.FUEL_DELETED, {
+      actorUser,
+      targetId: id,
+      payload: {
+        plateNumber: dto.vehicle.plateNumber,
+        litersPumped: dto.litersPumped,
+        totalCost: dto.totalCost,
+      },
+      metadata: {
+        fuelLogId: id,
+        vehicleId: dto.vehicleId,
+        driverId: dto.driverId,
+        litersPumped: dto.litersPumped,
+        totalCost: dto.totalCost,
+        odometerReading: dto.odometerReading,
+      },
+    });
+
+    safeEmitSocketEvent('FUEL_LOG_DELETED', {
+      fuelLogId: id,
+      vehicleId: dto.vehicleId,
+      deletedAt: new Date().toISOString(),
+    }, ['room:operations', 'room:fleet', `user:${dto.driverId}`]);
+
+    return dto;
+  }
 }
 
 module.exports = new FuelService();

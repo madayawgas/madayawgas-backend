@@ -262,6 +262,48 @@ class ApprehensionsRepository {
       total: parseInt(countResult.rows[0].total, 10),
     };
   }
+
+  /**
+   * Updates editable details of a road apprehension record.
+   * @param {string} id
+   * @param {Object} updateData
+   * @returns {Promise<Object|null>}
+   */
+  async updateApprehension(id, updateData = {}) {
+    const fields = [];
+    const params = [id];
+    let idx = 2;
+
+    const columnMap = {
+      citationTicketNo: 'citation_ticket_no',
+      violationType: 'violation_type',
+      apprehendingAgency: 'apprehending_agency',
+      incidentTime: 'incident_time',
+      location: 'location',
+      penaltyAmount: 'penalty_amount',
+      ticketMediaKey: 'ticket_media_key',
+      notes: 'notes',
+    };
+
+    for (const [key, col] of Object.entries(columnMap)) {
+      if (updateData[key] !== undefined) {
+        fields.push(`${col} = $${idx++}`);
+        params.push(updateData[key]);
+      }
+    }
+
+    if (fields.length === 0) {
+      return this.getApprehensionById(id);
+    }
+
+    fields.push('updated_at = NOW()');
+
+    const res = await query(
+      `UPDATE driver_apprehensions SET ${fields.join(', ')} WHERE id = $1 RETURNING *`,
+      params
+    );
+    return res.rows[0] || null;
+  }
 }
 
 module.exports = new ApprehensionsRepository();

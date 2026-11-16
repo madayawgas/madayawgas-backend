@@ -82,12 +82,12 @@ The batch sync endpoint is the offline-first ingestion gateway for the frontline
 | `transactions[].transactedAt` | `string (ISO 8601)` | Optional | Device-local sale timestamp (offline clock). Defaults to server time if omitted. |
 | `transactions[].items` | `array` | Optional | Line item SKUs. Empty array is accepted (zero-sale pickup stop). |
 | `transactions[].items[].id` | `string (UUID)` | Recommended | Client-generated UUID. |
-| `transactions[].items[].productId` | `string (UUID)` | ✅ Required | Must reference an existing active product in the catalog. |
-| `transactions[].items[].quantitySold` | `integer` | ✅ Required | Units sold (`>= 0`). |
-| `transactions[].items[].emptiesReturned` | `integer` | Optional | Canister shells returned (`>= 0`). Defaults to `0`. |
-| `transactions[].items[].emptiesDefective` | `integer` | Optional | Defective returns (`>= 0`). Defaults to `0`. |
-| `transactions[].items[].unitPriceAtSale` | `number` | ✅ Required | Frozen per-unit price at time of sale. |
-| `transactions[].items[].subtotalAmount` | `number` | Optional | Pre-computed line total. Falls back to `quantitySold × unitPriceAtSale`. |
+| `transactions[].items[].productId` | `string (UUID)` | ✅ Required | Must reference an existing product in the catalog (validated per item). |
+| `transactions[].items[].quantitySold` | `integer` | ✅ Required | Units sold (`>= 0`). Negative values are rejected. |
+| `transactions[].items[].emptiesReturned` | `integer` | Optional | Canister shells returned (`>= 0`). Defaults to `0`. Negative values are rejected. |
+| `transactions[].items[].emptiesDefective` | `integer` | Optional | Defective returns (`>= 0`). Defaults to `0`. Negative values are rejected. |
+| `transactions[].items[].unitPriceAtSale` | `number` | Optional | Frozen per-unit price at time of sale (`>= 0`). Falls back to `products.unit_price` if omitted; deviations from non-zero catalog prices are logged in `history_logs` (`priceOverrides`). |
+| `transactions[].items[].subtotalAmount` | `number` | Optional | Pre-computed line total (`>= 0`). Falls back to `quantitySold × unitPriceAtSale`. |
 | `transactions[].invoice` | `object` | Optional | Payment settlement record. |
 | `transactions[].invoice.id` | `string (UUID)` | Recommended | Client-generated UUID. |
 | `transactions[].invoice.invoiceNumber` | `string` | Optional | Defaults to `INV-{transactionNo}`. |

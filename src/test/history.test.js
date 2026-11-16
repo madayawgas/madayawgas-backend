@@ -305,6 +305,7 @@ test('System Event History Log Subsystem Tests', async (t) => {
         category: 'LPG Cylinder',
         containerType: 'CYLINDER',
         netWeightKg: 50.0,
+        unitPrice: 3950.0,
       }
     );
     assert.equal(prodRes.statusCode, 201);

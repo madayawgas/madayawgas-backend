@@ -20,6 +20,17 @@ router.patch(
 );
 
 /**
+ * PATCH /api/sales/transactions/:id
+ * Updates editable metadata on a sales transaction.
+ */
+router.patch(
+  '/:id',
+  authenticate,
+  requirePermission('sales.update'),
+  asyncHandler(transactionsController.updateTransaction.bind(transactionsController))
+);
+
+/**
  * GET /api/sales/transactions
  * List all sales transactions with optional filters and pagination.
  */

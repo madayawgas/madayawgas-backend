@@ -236,6 +236,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'LPG Cylinder',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
+        unitPrice: 980.0,
       }),
     });
     assert.equal(psPost.status, 201);
@@ -252,6 +253,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'LPG Cylinder',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
+        unitPrice: 980.0,
       }),
     });
     assert.equal(adminPost.status, 201);
@@ -273,6 +275,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Household LPG',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
+        unitPrice: 980.0,
       }),
     });
     assert.equal(createCylinderRes.status, 201);
@@ -283,11 +286,12 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     assert.equal(cylinderData.data.product.category, 'Household LPG');
     assert.equal(cylinderData.data.product.containerType, 'CYLINDER');
     assert.equal(cylinderData.data.product.netWeightKg, 11.0);
+    assert.equal(cylinderData.data.product.unitPrice, 980.0);
     assert.equal(cylinderData.data.product.isActive, true);
     assert.ok(cylinderData.data.product.createdAt);
     assert.ok(cylinderData.data.product.updatedAt);
 
-    // B. Successfully create CANISTER product (Butane Canister 250g)
+    // B. Successfully create CANISTER product (Butane Canister 250g) with 0.00 unitPrice
     const createCanisterRes = await fetch(`${baseUrl}/api/inventory/products`, {
       method: 'POST',
       headers: {
@@ -299,6 +303,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Canister',
         containerType: 'CANISTER',
         netWeightKg: 0.25,
+        unitPrice: 0.0,
       }),
     });
     assert.equal(createCanisterRes.status, 201);
@@ -306,6 +311,44 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     assert.equal(canisterData.status, 'success');
     assert.equal(canisterData.data.product.containerType, 'CANISTER');
     assert.equal(canisterData.data.product.netWeightKg, 0.25);
+    assert.equal(canisterData.data.product.unitPrice, 0);
+
+    // B2. Validation: Missing unitPrice -> 400
+    const missingPriceRes = await fetch(`${baseUrl}/api/inventory/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-PROD- Missing Price',
+        category: 'Canister',
+        containerType: 'CANISTER',
+        netWeightKg: 0.25,
+      }),
+    });
+    assert.equal(missingPriceRes.status, 400);
+    const missingPriceJson = await missingPriceRes.json();
+    assert.match(missingPriceJson.message, /Unit price is required/i);
+
+    // B3. Validation: Negative unitPrice -> 400
+    const negPriceRes = await fetch(`${baseUrl}/api/inventory/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        name: 'TEST-PROD- Negative Price',
+        category: 'Canister',
+        containerType: 'CANISTER',
+        netWeightKg: 0.25,
+        unitPrice: -10,
+      }),
+    });
+    assert.equal(negPriceRes.status, 400);
+    const negPriceJson = await negPriceRes.json();
+    assert.match(negPriceJson.message, /Unit price must be a non-negative number/i);
 
     // C. Validation: Missing name
     const missingNameRes = await fetch(`${baseUrl}/api/inventory/products`, {
@@ -393,6 +436,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Duplicate LPG',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
+        unitPrice: 980.0,
       }),
     });
     assert.equal(dupRes.status, 409);
@@ -414,6 +458,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Household LPG',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
+        unitPrice: 980.0,
       }),
     });
     const p1Id = (await p1.json()).data.product.id;
@@ -426,6 +471,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Commercial LPG',
         containerType: 'CYLINDER',
         netWeightKg: 22.0,
+        unitPrice: 1950.0,
       }),
     });
     const p2Id = (await p2.json()).data.product.id;
@@ -438,6 +484,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Canister',
         containerType: 'CANISTER',
         netWeightKg: 0.25,
+        unitPrice: 95.0,
       }),
     });
     const p3Id = (await p3.json()).data.product.id;
@@ -505,11 +552,12 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Original Category',
         containerType: 'CYLINDER',
         netWeightKg: 11.0,
+        unitPrice: 950.0,
       }),
     });
     const createdProduct = (await createRes.json()).data.product;
 
-    // 2. Update multiple fields
+    // 2. Update multiple fields including unitPrice
     const updateRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
@@ -517,6 +565,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         name: 'TEST-PROD- Updated Name',
         category: 'Updated Category',
         netWeightKg: 11.5,
+        unitPrice: 1025.5,
       }),
     });
     assert.equal(updateRes.status, 200);
@@ -526,7 +575,33 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     assert.equal(updateJson.data.product.name, 'TEST-PROD- Updated Name');
     assert.equal(updateJson.data.product.category, 'Updated Category');
     assert.equal(updateJson.data.product.netWeightKg, 11.5);
+    assert.equal(updateJson.data.product.unitPrice, 1025.5);
     assert.equal(updateJson.data.product.containerType, 'CYLINDER');
+
+    // 2b. Verify PUT alias updates unitPrice and history log records actor user_id
+    const putRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ unitPrice: 999.0 }),
+    });
+    assert.equal(putRes.status, 200);
+    const putJson = await putRes.json();
+    assert.equal(putJson.data.product.unitPrice, 999.0);
+
+    const histRows = (await query(
+      `SELECT user_id, action FROM history_logs WHERE target_id = $1 AND action = 'PRODUCT_UPDATED' ORDER BY created_at DESC LIMIT 1`,
+      [createdProduct.id]
+    )).rows;
+    assert.equal(histRows.length, 1);
+    assert.ok(histRows[0].user_id, 'PRODUCT_UPDATED audit log must record actor user_id');
+
+    // 2c. Direct deactivation via PATCH /:id { isActive: false } is blocked (must use /deactivate)
+    const bypassRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${adminCookie}` },
+      body: JSON.stringify({ isActive: false }),
+    });
+    assert.equal(bypassRes.status, 400);
 
     // 3. Validation: Empty name on update -> 400
     const invalidUpdate = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}`, {
@@ -564,6 +639,7 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
         category: 'Discontinued',
         containerType: 'CYLINDER',
         netWeightKg: 22.0,
+        unitPrice: 1950.0,
       }),
     });
     const createdProduct = (await createRes.json()).data.product;
@@ -635,5 +711,14 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     const notFoundJson = await notFoundDeact.json();
     assert.equal(notFoundJson.status, 'fail');
     assert.equal(notFoundJson.message, 'Product not found');
+
+    // 9. Re-activate deactivated product via PATCH /api/inventory/products/:id/activate
+    const actRes = await fetch(`${baseUrl}/api/inventory/products/${createdProduct.id}/activate`, {
+      method: 'PATCH',
+      headers: { Cookie: `mg_sid=${adminCookie}` },
+    });
+    assert.equal(actRes.status, 200);
+    const actJson = await actRes.json();
+    assert.equal(actJson.data.product.isActive, true);
   });
 });

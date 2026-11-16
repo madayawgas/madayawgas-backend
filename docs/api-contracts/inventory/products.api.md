@@ -39,6 +39,7 @@ MadayawGas distributes three standard product lines:
 | `category` | `VARCHAR(100)` | No | Non-empty | Product classification / category |
 | `container_type` | `container_type_enum` | No | `'CYLINDER'` \| `'CANISTER'` | Container type category |
 | `net_weight_kg` | `NUMERIC(6, 3)` | No | `CHECK (net_weight_kg > 0)` | Net gas capacity in kilograms |
+| `unit_price` | `NUMERIC(10, 2)` | No | `DEFAULT 0.00, CHECK (unit_price >= 0)` | Standard catalog unit selling price (PHP) |
 | `is_active` | `BOOLEAN` | No | `DEFAULT true` | Active operational status indicator |
 | `created_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Record creation timestamp |
 | `updated_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Record last updated timestamp |
@@ -70,6 +71,7 @@ Content-Type: application/json
   "category": "Canister",
   "containerType": "CANISTER",
   "netWeightKg": 0.250,
+  "unitPrice": 95.00,
   "isActive": true
 }
 ```
@@ -80,6 +82,7 @@ Content-Type: application/json
 | `category` | String | Yes | Product category (1-100 characters) |
 | `containerType` | String | Yes | Container type (`CYLINDER` or `CANISTER`) |
 | `netWeightKg` | Number | Yes | Positive numeric weight in kg (`> 0`, max `999.999`) |
+| `unitPrice` | Number | Yes | Non-negative catalog unit price (`>= 0.00`, max `99999999.99`) |
 | `isActive` | Boolean | No | Optional initial status (defaults to `true`) |
 
 #### Response: `201 Created` (Success)
@@ -94,6 +97,7 @@ Content-Type: application/json
       "category": "Canister",
       "containerType": "CANISTER",
       "netWeightKg": 0.25,
+      "unitPrice": 95,
       "isActive": true,
       "createdAt": "2026-08-28T12:20:00.000Z",
       "updatedAt": "2026-08-28T12:20:00.000Z"
@@ -282,7 +286,7 @@ Retrieves the complete profile information of a single product item by UUID.
 
 Updates one or more attributes of an existing product item.
 
-- **HTTP Method**: `PATCH`
+- **HTTP Method**: `PATCH` / `PUT`
 - **URL**: `/api/inventory/products/:id`
 - **Authentication**: Required (`mg_sid` cookie)
 - **Permission Required**: `inventory.manage`
@@ -301,7 +305,7 @@ Content-Type: application/json
   "category": "LPG Cylinder",
   "containerType": "CYLINDER",
   "netWeightKg": 11.000,
-  "isActive": true
+  "unitPrice": 995.00
 }
 ```
 
@@ -311,7 +315,8 @@ Content-Type: application/json
 | `category` | String | No | Updated category (non-empty, max 100 chars) |
 | `containerType` | String | No | Updated container type (`CYLINDER` or `CANISTER`) |
 | `netWeightKg` | Number | No | Updated net weight (> 0, max 999.999) |
-| `isActive` | Boolean | No | Updated active status |
+| `unitPrice` | Number | No | Updated unit selling price (>= 0.00, max 99999999.99) |
+| `isActive` | Boolean | No | Set `true` to re-activate (deactivation must use `/deactivate` with password confirmation) |
 
 #### Response: `200 OK` (Success)
 
@@ -325,6 +330,7 @@ Content-Type: application/json
       "category": "LPG Cylinder",
       "containerType": "CYLINDER",
       "netWeightKg": 11,
+      "unitPrice": 995,
       "isActive": true,
       "createdAt": "2026-08-28T12:20:00.000Z",
       "updatedAt": "2026-08-28T12:25:00.000Z"
@@ -338,6 +344,17 @@ Content-Type: application/json
 - **`400 Bad Request`**: Validation error on supplied values.
 - **`404 Not Found`**: Product ID not found.
 - **`409 Conflict`**: New product name is already in use by another item.
+
+---
+
+### 4b. Activate Item
+
+Re-activates a previously deactivated product item.
+
+- **HTTP Method**: `PATCH`
+- **URL**: `/api/inventory/products/:id/activate`
+- **Authentication**: Required (`mg_sid` cookie)
+- **Permission Required**: `inventory.manage`
 
 ---
 

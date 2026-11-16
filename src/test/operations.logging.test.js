@@ -602,4 +602,80 @@ test('Operational Logging Subsystems Integration Tests', async (t) => {
     assert.equal(resolveBody.data.status, 'RESOLVED');
     assert.equal(resolveBody.data.resolvedBy, supervisorUser.id);
   });
+
+  // ============================================================
+  // Subtest 6: Fuel Log Edit/Delete & Apprehension Edit (Manage)
+  // ============================================================
+  await t.test('6. Fuel Log Edit/Delete (fuel.manage) & Apprehension Edit (apprehensions.manage)', async () => {
+    // 6.1 Create a fuel log as driver
+    const fuelRes = await fetch(`${baseUrl}/api/operations/fuel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${driver1Cookie}` },
+      body: JSON.stringify({
+        vehicleId: truck1.id,
+        litersPumped: 20,
+        totalCost: 1200,
+        fuelStation: 'TEST_OPS_Station A',
+      }),
+    });
+    assert.equal(fuelRes.status, 201);
+    const fuelId = (await fuelRes.json()).data.id;
+
+    // 6.2 Driver lacks fuel.manage -> 403 on PATCH & DELETE
+    const driverPatchFuel = await fetch(`${baseUrl}/api/operations/fuel/${fuelId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${driver1Cookie}` },
+      body: JSON.stringify({ totalCost: 1300 }),
+    });
+    assert.equal(driverPatchFuel.status, 403);
+
+    // 6.3 Supervisor edits fuel log -> 200 and recalculates pricePerLiter
+    const supPatchFuel = await fetch(`${baseUrl}/api/operations/fuel/${fuelId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${supervisorCookie}` },
+      body: JSON.stringify({ litersPumped: 25, totalCost: 1500, notes: 'TEST_OPS_Corrected volume' }),
+    });
+    assert.equal(supPatchFuel.status, 200);
+    const supPatchFuelBody = await supPatchFuel.json();
+    assert.equal(supPatchFuelBody.data.litersPumped, 25);
+    assert.equal(supPatchFuelBody.data.totalCost, 1500);
+    assert.equal(supPatchFuelBody.data.pricePerLiter, 60);
+
+    // 6.4 Supervisor deletes fuel log -> 200, subsequent GET -> 404
+    const delFuelRes = await fetch(`${baseUrl}/api/operations/fuel/${fuelId}`, {
+      method: 'DELETE',
+      headers: { Cookie: `mg_sid=${supervisorCookie}` },
+    });
+    assert.equal(delFuelRes.status, 200);
+
+    const getDeletedFuel = await fetch(`${baseUrl}/api/operations/fuel/${fuelId}`, {
+      headers: { Cookie: `mg_sid=${supervisorCookie}` },
+    });
+    assert.equal(getDeletedFuel.status, 404);
+
+    // 6.5 Create apprehension and edit details via PATCH /api/operations/apprehensions/:id
+    const appRes = await fetch(`${baseUrl}/api/operations/apprehensions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${driver1Cookie}` },
+      body: JSON.stringify({
+        vehicleId: truck1.id,
+        violationType: 'TEST_OPS_Illegal Parking',
+        apprehendingAgency: 'CTTMO',
+        ticketMediaKey: 'apprehensions/test-edit.jpg',
+        penaltyAmount: 500,
+      }),
+    });
+    assert.equal(appRes.status, 201);
+    const appId = (await appRes.json()).data.id;
+
+    const patchAppRes = await fetch(`${baseUrl}/api/operations/apprehensions/${appId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: `mg_sid=${supervisorCookie}` },
+      body: JSON.stringify({ penaltyAmount: 750, location: 'TEST_OPS_Bajada Davao' }),
+    });
+    assert.equal(patchAppRes.status, 200);
+    const patchAppBody = await patchAppRes.json();
+    assert.equal(patchAppBody.data.penaltyAmount, 750);
+    assert.equal(patchAppBody.data.location, 'TEST_OPS_Bajada Davao');
+  });
 });

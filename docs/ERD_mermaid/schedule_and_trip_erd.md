@@ -57,6 +57,7 @@ erDiagram
         string name UK
         enum container_type
         numeric net_weight_kg
+        numeric unit_price
     }
 
     VEHICLE_ODOMETER_LOGS {

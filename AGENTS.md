@@ -350,7 +350,7 @@ madayawgas-backend/
    * Added comprehensive integration test suite in `src/test/management.test.js`.
 9. **Inventory Subsystem: Item Profile / Product CRUD (`src/features/inventory/`)**:
    * Implemented 3-Layer Architecture for Item Profile management (`products.repository.js`, `products.service.js`, `products.controller.js`, `inventory.routes.js`).
-   * Maintained exact schema fields from `003_products.sql` (`id`, `name`, `category`, `container_type`, `net_weight_kg`, `is_active`, timestamps).
+   * Maintained schema fields from `003_products.sql` + `025_product_unit_price.sql` (`id`, `name`, `category`, `container_type`, `net_weight_kg`, `unit_price`, `is_active`, timestamps). `unitPrice` is required on creation (`>= 0.00`), editable via `PATCH`/`PUT /api/inventory/products/:id`, and products support `PATCH /api/inventory/products/:id/activate`.
    * Enforced RBAC route protections (`inventory.view` for listing/detail viewing, `inventory.manage` for creation, updates, and soft-deactivation).
    * Implemented comprehensive test suite in `src/test/inventory.test.js` covering all 4 user stories, validations, container type enforcement (`CYLINDER`, `CANISTER`), weight validation, and soft-deactivation filtering.
    * Created formal API contract `docs/API Contract/inventory-products.api.md`.
@@ -802,9 +802,9 @@ madayawgas-backend/
       - Supports zero-sale canister pickup/return stops (`quantity_sold = 0`, `empties_returned > 0`, generating ₱0.00 collection declaration `CD-...`).
     * **Invoicing, Document Series & Supervisor Verification (`src/features/sales/invoices/`)**:
       - Full 3-layer architecture for invoice browsing (`GET /api/sales/invoices`, `GET /api/sales/invoices/:id`) supporting document numbers (`INV-...`, `CD-...`), payment methods (`CASH`, `GCASH`), and payment statuses (`PAID_UNVERIFIED`, `VERIFIED`).
-      - Supervisor payment verification endpoint `PATCH /api/sales/invoices/:id/verify` guarded with `sales.view` permission, validating GCash reference numbers and optional payment proof media URLs, recording verifier user ID and timestamp.
+      - Supervisor payment verification endpoint `PATCH /api/sales/invoices/:id/verify` guarded with both `sales.view` and `sales.update` permissions, validating GCash reference numbers and optional payment proof media URLs, recording verifier user ID and timestamp. Unverified invoice payment details can be updated via `PATCH /api/sales/invoices/:id/payment`.
     * **Transaction Oversight & Controlled Voiding (`src/features/sales/transactions/`)**:
-      - Full 3-layer architecture for transactions (`GET /api/sales/transactions`, `GET /api/sales/transactions/:id`).
+      - Full 3-layer architecture for transactions (`GET /api/sales/transactions`, `GET /api/sales/transactions/:id`, `PATCH /api/sales/transactions/:id` for editable metadata).
       - Ownership scoping: Frontline sales representatives with `sales.view_own` are strictly filtered to transactions created by their user account; supervisors with `sales.view` have global visibility.
       - Transaction cancellation endpoint `PATCH /api/sales/transactions/:id/cancel` guarded with `sales.delete` (blocking frontline sales reps). Updates transaction status to `CANCELLED`, records `cancellation_reason`, `cancelled_by`, and automatically deletes associated `canister_ledger` records to reverse customer debt impact.
     * **Shift Closeout Remittance (`GET /api/sales/trips/:tripId/shift-summary`)**:
@@ -837,7 +837,9 @@ madayawgas-backend/
     * **Media Storage Whitelisting (`src/features/media/media.service.js`)**:
       - Whitelisted `operations/apprehensions`, `operations/fuel`, `fleet/apprehensions`, `fleet/fuel`.
     * **Event History Definitions (`src/features/history/history.events.js`)**:
-      - Added `MODULES.OPERATIONS` and registered event templates for `APPREHENSION_LOGGED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`, `EMERGENCY_ALERT_TRIGGERED`, `EMERGENCY_ALERT_ACKNOWLEDGED`, `EMERGENCY_ALERT_RESOLVED`.
+      - Added `MODULES.OPERATIONS` and registered event templates for `APPREHENSION_LOGGED`, `APPREHENSION_UPDATED`, `APPREHENSION_STATUS_UPDATED`, `FUEL_LOGGED`, `FUEL_UPDATED`, `FUEL_DELETED`, `EMERGENCY_ALERT_TRIGGERED`, `EMERGENCY_ALERT_ACKNOWLEDGED`, `EMERGENCY_ALERT_RESOLVED`.
+      - Fuel logs support `PATCH /api/operations/fuel/:id` and `DELETE /api/operations/fuel/:id` (`fuel.manage`); apprehensions support `PATCH /api/operations/apprehensions/:id` (`apprehensions.manage`).
+      - Unified executive dashboard endpoint `GET /api/dashboard/overview` (`src/features/dashboard/`, guarded by `dashboard.view`) aggregates Fleet, Trips, Operations, Plant Inventory, and Sales KPIs.
     * **Comprehensive Integration Test Suite (`src/test/operations.logging.test.js`)**:
       - 4 modular subtests verifying driver scoping, road apprehensions, fuel tracking with odometer updates, and emergency SOS alerts.
       - 100% test pass rate across all 18 test suites with `npm test`.

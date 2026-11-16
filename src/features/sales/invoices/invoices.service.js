@@ -197,6 +197,100 @@ class InvoicesService {
     return enrichInvoiceMedia(updatedInvoice);
   }
 
+  /**
+   * Updates payment details (method, reference number, proof key) on an invoice.
+   * @param {Object} actorUser
+   * @param {string} id
+   * @param {Object} payload
+   * @returns {Promise<Object>}
+   */
+  async recordPayment(actorUser, id, payload = {}) {
+    if (!id || typeof id !== 'string') {
+      const err = new Error('Invoice ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const invoice = await invoicesRepository.getInvoiceById(null, id);
+    if (!invoice) {
+      const err = new Error('Invoice not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const permissions = actorUser?.permissions || [];
+    const hasGlobalView = permissions.includes('sales.view');
+    if (!hasGlobalView && invoice.recorded_by !== actorUser?.id) {
+      const err = new Error('Forbidden');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    if (invoice.payment_status === 'VERIFIED') {
+      const err = new Error('Cannot modify payment details of an already verified invoice');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updateData = {};
+
+    const rawMethod = payload.paymentMethod || payload.payment_method;
+    if (rawMethod !== undefined) {
+      const normalizedMethod = String(rawMethod).trim().toUpperCase();
+      if (!['CASH', 'GCASH'].includes(normalizedMethod)) {
+        const err = new Error("Invalid payment method. Allowed values: 'CASH', 'GCASH'");
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.paymentMethod = normalizedMethod;
+    }
+
+    const rawRef = payload.paymentReferenceNumber !== undefined
+      ? payload.paymentReferenceNumber
+      : payload.payment_reference_number;
+    if (rawRef !== undefined) {
+      updateData.paymentReferenceNumber = rawRef ? String(rawRef).trim() : null;
+    }
+
+    const rawProof = payload.paymentProofKey !== undefined
+      ? payload.paymentProofKey
+      : payload.payment_proof_key;
+    if (rawProof !== undefined) {
+      updateData.paymentProofKey = rawProof ? (extractStorageKey(String(rawProof)) || String(rawProof).trim()) : null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      const err = new Error('At least one payment field (paymentMethod, paymentReferenceNumber, paymentProofKey) is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updated = await invoicesRepository.updateInvoicePaymentDetails(null, id, updateData);
+
+    await historyService.log(EVENTS.INVOICE_PAYMENT_UPDATED, {
+      actorUser,
+      targetId: id,
+      payload: {
+        invoiceNumber: invoice.invoice_number,
+        paymentStatus: updated.payment_status,
+      },
+      metadata: {
+        paymentMethod: updated.payment_method,
+        paymentReferenceNumber: updated.payment_reference_number,
+      },
+    });
+
+    safeEmitSocketEvent('SALES_INVOICE_UPDATED', {
+      invoiceId: id,
+      invoiceNumber: invoice.invoice_number,
+      paymentMethod: updated.payment_method,
+      paymentStatus: updated.payment_status,
+      updatedAt: new Date().toISOString(),
+    }, 'room:sales');
+
+    return enrichInvoiceMedia(updated);
+  }
+
   // Backward-compatible aliases
   async getInvoiceByTransactionId(transactionId) {
     if (!transactionId) {

@@ -86,6 +86,7 @@ erDiagram
         string category
         enum container_type "container_type_enum"
         numeric net_weight_kg
+        numeric unit_price "DEFAULT 0.00, CHECK >= 0"
         boolean is_active
         timestamptz created_at
         timestamptz updated_at

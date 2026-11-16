@@ -335,6 +335,50 @@ class InvoicesRepository {
     const res = await dbQuery(sql, [actualId, verifiedBy]);
     return res.rows[0] || null;
   }
+
+  /**
+   * Updates payment details on an unverified invoice (method, reference number, proof key).
+   * @param {Object} [client]
+   * @param {string} id - Invoice UUID
+   * @param {Object} updateData
+   * @returns {Promise<Object|null>}
+   */
+  async updateInvoicePaymentDetails(client, id, updateData = {}) {
+    const [dbQuery, actualId] = this._resolveRunner(client, id);
+
+    const fields = [];
+    const params = [actualId];
+    let idx = 2;
+
+    if (updateData.paymentMethod !== undefined) {
+      fields.push(`payment_method = $${idx++}`);
+      params.push(updateData.paymentMethod);
+    }
+    if (updateData.paymentReferenceNumber !== undefined) {
+      fields.push(`payment_reference_number = $${idx++}`);
+      params.push(updateData.paymentReferenceNumber);
+    }
+    if (updateData.paymentProofKey !== undefined) {
+      fields.push(`payment_proof_key = $${idx++}`);
+      params.push(updateData.paymentProofKey);
+    }
+
+    if (fields.length === 0) {
+      return this.getInvoiceById(client, actualId);
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+
+    const sql = `
+      UPDATE sales_invoices
+      SET ${fields.join(', ')}
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+    const res = await dbQuery(sql, params);
+    return res.rows[0] || null;
+  }
 }
 
 module.exports = new InvoicesRepository();

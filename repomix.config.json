@@ -1,0 +1,28 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "repomix-backend.md",
+    "style": "markdown",
+    "fileSummary": true,
+    "directoryStructure": true
+  },
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "**/.agents/**",
+      "**/.github/**",
+      "**/.husky/**",
+      "**/.idea/**",
+      "**/.vscode/**",
+      "**/coverage/**",
+      "**/build/**",
+      "**/*.log",
+      ".env",
+      ".env.*",
+      "!.env.example",
+      "**/*.min.js",
+      "**/*.map"
+    ]
+  }
+}

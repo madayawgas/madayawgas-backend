@@ -127,3 +127,26 @@
 - **Method & URL**: `GET /api/sales/trips/:tripId/shift-summary`
 - **Permissions**: `sales.view` or `sales.view_own`
 - **Response (`200 OK`)**: Returns `{ status: 'success', data: summary }` containing cash/GCash revenue totals, resolved `paymentProofUrl`s, and empties aggregation for the trip.
+
+---
+
+### 2.7 Update Transaction Metadata
+**`PATCH /api/sales/transactions/:id`**
+- **Permissions**: `sales.update` (scoped to own recorded transactions unless user also holds `sales.view`).
+- **Body**: `{ customerId?, transactedAt?, cancellationReason? }`
+  - `customerId`: Reassigns customer on non-cancelled transactions and atomically updates `canister_ledger.customer_id`.
+  - `transactedAt`: Updates transaction timestamp (ISO 8601).
+  - `cancellationReason`: Updates cancellation reason (only when status is `CANCELLED`).
+- **Response (`200 OK`)**: `{ status: 'success', message: 'Transaction successfully updated', data: { transaction } }`
+
+---
+
+### 2.8 Verify Invoice Payment (Supervisor) & Update Unverified Payment Details
+**`PATCH /api/sales/invoices/:id/verify`**
+- **Permissions**: Requires **both** `sales.view` and `sales.update` (frontline `Sales Person` cannot self-verify).
+- **Response (`200 OK`)**: Marks `payment_status = 'VERIFIED'`, records `verified_by` and `verified_at`, logs `SALES_INVOICE_VERIFIED`, and emits `SALES_INVOICE_VERIFIED` to `room:sales`.
+
+**`PATCH /api/sales/invoices/:id/payment`**
+- **Permissions**: `sales.update` (scoped to own recorded transactions unless user also holds `sales.view`).
+- **Body**: `{ paymentMethod?: 'CASH' | 'GCASH', paymentReferenceNumber?: string | null, paymentProofKey?: string | null }` (cannot modify an already `VERIFIED` invoice).
+- **Response (`200 OK`)**: `{ status: 'success', message: 'Invoice payment details updated', data: { invoice } }`

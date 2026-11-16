@@ -1,4 +1,5 @@
 const transactionsRepository = require('./transactions.repository');
+const { pool } = require('../../../../database/connection');
 const { historyService } = require('../../history');
 const { EVENTS } = require('../../history/history.events');
 const { mediaStorage, extractStorageKey } = require('../../media');
@@ -385,6 +386,113 @@ class TransactionsService {
       items: rows,
       meta,
     };
+  }
+
+  /**
+   * Updates editable metadata on a sales transaction (customerId, transactedAt, cancellationReason).
+   * @param {Object} actorUser
+   * @param {string} id
+   * @param {Object} payload
+   * @returns {Promise<Object>}
+   */
+  async updateTransaction(actorUser, id, payload = {}) {
+    if (!id || typeof id !== 'string') {
+      const err = new Error('Transaction ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const existing = await transactionsRepository.getTransactionById(null, id);
+    if (!existing) {
+      const err = new Error('Transaction not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const permissions = actorUser?.permissions || [];
+    const hasGlobalView = permissions.includes('sales.view');
+    if (!hasGlobalView && existing.recorded_by !== actorUser?.id) {
+      const err = new Error('Forbidden');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const updateData = {};
+
+    const rawCustomerId = payload.customerId || payload.customer_id;
+    if (rawCustomerId !== undefined) {
+      if (existing.status === 'CANCELLED') {
+        const err = new Error('Cannot reassign customer on a cancelled transaction');
+        err.statusCode = 400;
+        throw err;
+      }
+      const custRes = await pool.query(`SELECT id FROM customers WHERE id = $1`, [rawCustomerId]);
+      if (custRes.rows.length === 0) {
+        const err = new Error('Customer not found');
+        err.statusCode = 404;
+        throw err;
+      }
+      updateData.customerId = rawCustomerId;
+    }
+
+    const rawTransactedAt = payload.transactedAt || payload.transacted_at;
+    if (rawTransactedAt !== undefined) {
+      const parsed = new Date(rawTransactedAt);
+      if (isNaN(parsed.getTime())) {
+        const err = new Error('Invalid transactedAt timestamp format');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.transactedAt = parsed.toISOString();
+    }
+
+    const rawReason = payload.cancellationReason !== undefined ? payload.cancellationReason : payload.cancellation_reason;
+    if (rawReason !== undefined) {
+      if (existing.status !== 'CANCELLED') {
+        const err = new Error('Cancellation reason can only be updated on a cancelled transaction');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.cancellationReason = rawReason ? String(rawReason).trim() : null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      const err = new Error('At least one editable field (customerId, transactedAt, cancellationReason) is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const client = await pool.connect();
+    let updated;
+    try {
+      await client.query('BEGIN');
+      updated = await transactionsRepository.updateTransaction(client, id, updateData);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    ttlCache.invalidatePrefix('sales:');
+
+    await historyService.log(EVENTS.SALES_TRANSACTION_UPDATED, {
+      actorUser,
+      targetId: id,
+      payload: { transactionNo: existing.transaction_no },
+      metadata: {
+        updatedFields: Object.keys(updateData),
+      },
+    });
+
+    safeEmitSocketEvent('SALES_TRANSACTION_UPDATED', {
+      transactionId: id,
+      transactionNo: existing.transaction_no,
+      updatedAt: new Date().toISOString(),
+    }, 'room:sales');
+
+    return enrichTransactionMedia(updated);
   }
 }
 

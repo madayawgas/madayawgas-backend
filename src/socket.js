@@ -141,6 +141,17 @@ function initializeSocket(httpServer, customOptions = {}) {
         socket.join('room:sales');
       }
 
+      // Product Catalog Room (Inventory, Supervisors, and Frontline Sales Reps)
+      if (
+        permissions.includes('inventory.view') ||
+        permissions.includes('sales.view') ||
+        permissions.includes('sales.view_own') ||
+        permissions.includes('sales.create') ||
+        permissions.includes('dashboard.view')
+      ) {
+        socket.join('room:catalog');
+      }
+
       // Route Dispatch & Daily Schedules Rooms (Supervisors / Dispatchers / Admins)
       if (
         permissions.includes('route.view') ||

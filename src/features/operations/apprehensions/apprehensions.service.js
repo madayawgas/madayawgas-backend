@@ -380,6 +380,123 @@ class ApprehensionsService {
       meta,
     };
   }
+
+  /**
+   * Updates editable citation details of an apprehension record.
+   * @param {string} id
+   * @param {Object} actorUser
+   * @param {Object} payload
+   * @returns {Promise<Object>}
+   */
+  async updateApprehension(id, actorUser, payload = {}) {
+    const existing = await apprehensionsRepository.getApprehensionById(id);
+    if (!existing) {
+      const err = new Error('Apprehension record not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const updateData = {};
+
+    const rawCitation = payload.citationTicketNo !== undefined
+      ? payload.citationTicketNo
+      : (payload.citationNumber !== undefined ? payload.citationNumber : payload.ticketNumber);
+    if (rawCitation !== undefined) {
+      updateData.citationTicketNo = rawCitation ? String(rawCitation).trim() : null;
+    }
+
+    const rawViolation = payload.violationType !== undefined
+      ? payload.violationType
+      : (payload.violation !== undefined ? payload.violation : payload.violationClassification);
+    if (rawViolation !== undefined) {
+      if (!rawViolation || typeof rawViolation !== 'string' || !rawViolation.trim()) {
+        const err = new Error('Violation classification cannot be empty');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.violationType = rawViolation.trim();
+    }
+
+    const rawAgency = payload.apprehendingAgency !== undefined ? payload.apprehendingAgency : payload.agency;
+    if (rawAgency !== undefined) {
+      if (!rawAgency || typeof rawAgency !== 'string' || !rawAgency.trim()) {
+        const err = new Error('Apprehending agency cannot be empty');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.apprehendingAgency = rawAgency.trim();
+    }
+
+    if (payload.incidentTime !== undefined) {
+      const parsed = new Date(payload.incidentTime);
+      if (isNaN(parsed.getTime())) {
+        const err = new Error('Invalid incidentTime timestamp format');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.incidentTime = parsed.toISOString();
+    }
+
+    if (payload.location !== undefined) {
+      updateData.location = payload.location ? String(payload.location).trim() : null;
+    }
+
+    const rawPenalty = payload.penaltyAmount !== undefined ? payload.penaltyAmount : payload.fineAmount;
+    if (rawPenalty !== undefined) {
+      const numPenalty = Number(rawPenalty);
+      if (!Number.isFinite(numPenalty) || numPenalty < 0) {
+        const err = new Error('Penalty amount must be a non-negative number');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.penaltyAmount = Number(numPenalty.toFixed(2));
+    }
+
+    const rawMediaKey = payload.ticketMediaKey !== undefined
+      ? payload.ticketMediaKey
+      : (payload.mediaKey !== undefined ? payload.mediaKey : payload.ticketImageUrl);
+    if (rawMediaKey !== undefined) {
+      if (!rawMediaKey || typeof rawMediaKey !== 'string' || !rawMediaKey.trim()) {
+        const err = new Error('Apprehension ticket image proof cannot be empty');
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.ticketMediaKey = extractStorageKey(rawMediaKey) || rawMediaKey.trim();
+    }
+
+    if (payload.notes !== undefined) {
+      updateData.notes = payload.notes ? String(payload.notes).trim() : null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      const err = new Error('At least one editable apprehension field is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await apprehensionsRepository.updateApprehension(id, updateData);
+    const fullRecord = await apprehensionsRepository.getApprehensionById(id);
+    const dto = formatApprehensionRecord(fullRecord);
+
+    await historyService.log(EVENTS.APPREHENSION_UPDATED, {
+      actorUser,
+      targetId: id,
+      payload: {
+        citationTicketNo: dto.citationTicketNo,
+      },
+      metadata: {
+        apprehensionId: id,
+        updatedFields: Object.keys(updateData),
+      },
+    });
+
+    safeEmitSocketEvent('APPREHENSION_UPDATED', {
+      apprehension: dto,
+      updatedAt: new Date().toISOString(),
+    }, ['room:operations', 'room:fleet', `user:${dto.driverId}`]);
+
+    return dto;
+  }
 }
 
 module.exports = new ApprehensionsService();

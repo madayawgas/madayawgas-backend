@@ -112,6 +112,32 @@ class FuelController {
       data,
     });
   }
+
+  /**
+   * PATCH /api/operations/fuel/:id
+   * Updates an existing fuel log record.
+   */
+  async updateFuelLog(req, res) {
+    const data = await fuelService.updateFuelLog(req.params.id, req.user, req.body || {});
+    return res.status(200).json({
+      status: 'success',
+      message: 'Fuel log successfully updated',
+      data,
+    });
+  }
+
+  /**
+   * DELETE /api/operations/fuel/:id
+   * Deletes a fuel log record.
+   */
+  async deleteFuelLog(req, res) {
+    const data = await fuelService.deleteFuelLog(req.params.id, req.user);
+    return res.status(200).json({
+      status: 'success',
+      message: 'Fuel log successfully deleted',
+      data,
+    });
+  }
 }
 
 module.exports = new FuelController();

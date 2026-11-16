@@ -19,10 +19,30 @@ function formatProduct(row) {
     category: row.category,
     containerType: row.container_type,
     netWeightKg: Number(row.net_weight_kg),
+    unitPrice: Number(row.unit_price ?? 0),
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/**
+ * Validates and normalizes a product unit price.
+ * @param {*} rawPrice
+ * @returns {number}
+ */
+function parseAndValidateUnitPrice(rawPrice) {
+  if (rawPrice === undefined || rawPrice === null || rawPrice === '') {
+    throw new Error('Unit price is required');
+  }
+  const numPrice = Number(rawPrice);
+  if (!Number.isFinite(numPrice) || numPrice < 0) {
+    throw new Error('Unit price must be a non-negative number (>= 0)');
+  }
+  if (numPrice > 99999999.99) {
+    throw new Error('Unit price cannot exceed 99,999,999.99');
+  }
+  return Number(numPrice.toFixed(2));
 }
 
 /**
@@ -130,11 +150,16 @@ class ProductsService {
       throw new Error('Net weight (kg) cannot exceed 999.999 kg');
     }
 
+    // 5. Validate unit price (required, >= 0.00)
+    const rawUnitPrice = data.unitPrice !== undefined ? data.unitPrice : (data.unit_price !== undefined ? data.unit_price : data.price);
+    const numUnitPrice = parseAndValidateUnitPrice(rawUnitPrice);
+
     const createdRow = await productsRepository.createProduct({
       name: cleanName,
       category: cleanCategory,
       containerType: normalizedContainerType,
       netWeightKg: numWeight,
+      unitPrice: numUnitPrice,
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     });
 
@@ -144,25 +169,30 @@ class ProductsService {
       actorUser,
       targetId: result.id,
       payload: { name: result.name, category: result.category },
-      metadata: { containerType: result.containerType, netWeightKg: result.netWeightKg },
+      metadata: {
+        containerType: result.containerType,
+        netWeightKg: result.netWeightKg,
+        unitPrice: result.unitPrice,
+      },
     });
 
     safeEmitSocketEvent('PRODUCT_CATALOG_UPDATED', {
       product: result,
       action: 'CREATED',
       updatedAt: new Date().toISOString(),
-    }, ['room:inventory', 'room:sales']);
+    }, ['room:inventory', 'room:sales', 'room:catalog']);
 
     return result;
   }
 
   /**
    * Updates an existing product profile.
+   * @param {Object} actorUser - Authenticated user context
    * @param {string} id - Product UUID
    * @param {Object} data - Update fields
    * @returns {Promise<Object>}
    */
-  async updateProduct(id, data = {}) {
+  async updateProduct(actorUser, id, data = {}) {
     if (!id || typeof id !== 'string') {
       throw new Error('Product ID is required');
     }
@@ -228,34 +258,51 @@ class ProductsService {
       updateFields.netWeightKg = numWeight;
     }
 
-    // Validate isActive if provided
+    // Validate unit price if provided
+    const rawUnitPrice = data.unitPrice !== undefined ? data.unitPrice : (data.unit_price !== undefined ? data.unit_price : data.price);
+    if (rawUnitPrice !== undefined) {
+      updateFields.unitPrice = parseAndValidateUnitPrice(rawUnitPrice);
+    }
+
+    // Guard deactivation behind dedicated password-confirmed endpoint
     if (data.isActive !== undefined) {
-      updateFields.isActive = Boolean(data.isActive);
+      if (Boolean(data.isActive) === false) {
+        throw new Error('Use PATCH /api/inventory/products/:id/deactivate with password confirmation to deactivate a product');
+      }
+      updateFields.isActive = true;
     }
 
     const updatedRow = await productsRepository.updateProduct(id, updateFields);
     const updated = formatProduct(updatedRow);
 
     await historyService.log(EVENTS.PRODUCT_UPDATED, {
+      actorUser,
       targetId: id,
       payload: { name: updated.name },
+      metadata: {
+        updatedFields: Object.keys(updateFields),
+        previousUnitPrice: Number(existing.unit_price ?? 0),
+        unitPrice: updated.unitPrice,
+      },
     });
 
     safeEmitSocketEvent('PRODUCT_CATALOG_UPDATED', {
       product: updated,
       action: 'UPDATED',
+      previousUnitPrice: Number(existing.unit_price ?? 0),
       updatedAt: new Date().toISOString(),
-    }, ['room:inventory', 'room:sales']);
+    }, ['room:inventory', 'room:sales', 'room:catalog']);
 
     return updated;
   }
 
   /**
    * Deactivates a product by setting is_active to false.
+   * @param {Object} actorUser - Authenticated user context
    * @param {string} id - Product UUID
    * @returns {Promise<Object>}
    */
-  async deactivateProduct(id) {
+  async deactivateProduct(actorUser, id) {
     if (!id || typeof id !== 'string') {
       throw new Error('Product ID is required');
     }
@@ -269,6 +316,7 @@ class ProductsService {
     const deactivated = formatProduct(deactivatedRow);
 
     await historyService.log(EVENTS.PRODUCT_DEACTIVATED, {
+      actorUser,
       targetId: id,
       payload: { name: deactivated.name },
     });
@@ -277,9 +325,43 @@ class ProductsService {
       product: deactivated,
       action: 'DEACTIVATED',
       updatedAt: new Date().toISOString(),
-    }, ['room:inventory', 'room:sales']);
+    }, ['room:inventory', 'room:sales', 'room:catalog']);
 
     return deactivated;
+  }
+
+  /**
+   * Re-activates a product by setting is_active to true.
+   * @param {Object} actorUser - Authenticated user context
+   * @param {string} id - Product UUID
+   * @returns {Promise<Object>}
+   */
+  async activateProduct(actorUser, id) {
+    if (!id || typeof id !== 'string') {
+      throw new Error('Product ID is required');
+    }
+
+    const existing = await productsRepository.getProductById(id);
+    if (!existing) {
+      throw new Error('Product not found');
+    }
+
+    const activatedRow = await productsRepository.activateProduct(id);
+    const activated = formatProduct(activatedRow);
+
+    await historyService.log(EVENTS.PRODUCT_ACTIVATED, {
+      actorUser,
+      targetId: id,
+      payload: { name: activated.name },
+    });
+
+    safeEmitSocketEvent('PRODUCT_CATALOG_UPDATED', {
+      product: activated,
+      action: 'ACTIVATED',
+      updatedAt: new Date().toISOString(),
+    }, ['room:inventory', 'room:sales', 'room:catalog']);
+
+    return activated;
   }
 }
 

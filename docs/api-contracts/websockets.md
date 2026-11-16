@@ -611,20 +611,26 @@ Emitted whenever bulk plant stock balances mutate at the Bunawan refilling yard.
 ---
 
 #### Event: `PRODUCT_CATALOG_UPDATED`
-Emitted when products in the catalog are added, modified, or deactivated.
+Emitted when products in the catalog are added, modified (including `unitPrice`), activated, or deactivated.
 
-* **Trigger**: `POST /api/inventory/products`, `PUT /api/inventory/products/:id`, `PATCH /api/inventory/products/:id/deactivate`.
-* **Target Room**: `room:inventory`
+* **Trigger**: `POST /api/inventory/products`, `PATCH`/`PUT /api/inventory/products/:id`, `PATCH /api/inventory/products/:id/activate`, `PATCH /api/inventory/products/:id/deactivate`.
+* **Target Rooms**: `room:inventory`, `room:sales`, `room:catalog` (includes frontline `Sales Person` clients).
 * **Payload Structure**:
 ```json
 {
   "event": "PRODUCT_CATALOG_UPDATED",
   "data": {
     "action": "UPDATED",
-    "productId": "11111111-1111-1111-1111-111111111111",
-    "sku": "LPG-11KG-POL",
-    "name": "11kg POL Valve LPG Cylinder",
-    "category": "LPG_CYLINDER",
+    "previousUnitPrice": 980,
+    "product": {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "11kg LPG Cylinder",
+      "category": "LPG Cylinder",
+      "containerType": "CYLINDER",
+      "netWeightKg": 11,
+      "unitPrice": 995,
+      "isActive": true
+    },
     "updatedAt": "2026-10-19T10:00:00.000Z"
   },
   "meta": {
@@ -796,6 +802,27 @@ Emitted when a vehicle refueling entry is recorded.
 }
 ```
 * **Frontend Action**: Invalidate `['operations-fuel']`, `['fleet-vehicles']`, and vehicle odometer cards.
+
+---
+
+#### Event: `FUEL_LOG_UPDATED` & `FUEL_LOG_DELETED`
+Emitted when a supervisor/admin edits or deletes a vehicle fuel log (`PATCH /api/operations/fuel/:id`, `DELETE /api/operations/fuel/:id`).
+* **Target Rooms**: `room:operations`, `room:fleet`, `user:{driverId}`
+* **Frontend Action**: Invalidate `['operations-fuel']` and `['fleet-vehicles']`.
+
+---
+
+#### Event: `APPREHENSION_UPDATED`
+Emitted when a supervisor/admin updates citation details on a road apprehension (`PATCH /api/operations/apprehensions/:id`).
+* **Target Rooms**: `room:operations`, `room:fleet`, `user:{driverId}`
+* **Frontend Action**: Invalidate `['operations-apprehensions']`.
+
+---
+
+#### Event: `SALES_TRANSACTION_UPDATED` & `SALES_INVOICE_UPDATED`
+Emitted when transaction metadata (`PATCH /api/sales/transactions/:id`) or unverified invoice payment details (`PATCH /api/sales/invoices/:id/payment`) are updated.
+* **Target Room**: `room:sales`
+* **Frontend Action**: Invalidate `['sales-transactions']` or `['sales-invoices']`.
 
 ---
 

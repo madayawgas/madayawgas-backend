@@ -155,6 +155,7 @@ class SyncService {
     const failedTransactions = [];
     const syncedCustomerIds = [];
     const failedCustomers = [];
+    const priceOverrides = [];
     let processedCount = 0;
     let ignoredCount = 0;
 
@@ -329,6 +330,8 @@ class SyncService {
             ? tx.items
             : (Array.isArray(tx.order_items) ? tx.order_items : (Array.isArray(tx.line_items) ? tx.line_items : []));
 
+          const txPriceOverrides = [];
+
           for (const item of items) {
             const itemId = item.id || crypto.randomUUID();
             const productId = item.productId || item.product_id;
@@ -344,15 +347,65 @@ class SyncService {
               item.emptiesDefective !== undefined ? item.emptiesDefective : (item.empties_defective !== undefined ? item.empties_defective : 0),
               10
             ) || 0;
-            const unitPrice = Number(
-              item.unitPriceAtSale !== undefined ? item.unitPriceAtSale : (item.unit_price_at_sale !== undefined ? item.unit_price_at_sale : (item.unitPrice !== undefined ? item.unitPrice : item.unit_price))
-            ) || 0;
-            const subtotal = Number(
-              item.subtotalAmount !== undefined ? item.subtotalAmount : (item.subtotal_amount !== undefined ? item.subtotal_amount : (item.totalPrice !== undefined ? item.totalPrice : item.total_price))
-            ) || (quantitySold * unitPrice);
 
             if (!productId) {
               throw new Error(`Product ID is required for line item in transaction #${txNo}`);
+            }
+
+            if (quantitySold < 0 || emptiesReturned < 0 || emptiesDefective < 0) {
+              throw new Error(`Quantities cannot be negative in transaction #${txNo}`);
+            }
+
+            // Look up authoritative product catalog record
+            const prodRes = await client.query(
+              `SELECT id, name, unit_price, is_active FROM products WHERE id = $1`,
+              [productId]
+            );
+            if (prodRes.rows.length === 0) {
+              throw new Error(`Product '${productId}' not found for transaction #${txNo}`);
+            }
+            const catalogProduct = prodRes.rows[0];
+            const catalogPrice = Number(catalogProduct.unit_price ?? 0);
+
+            const rawUnitPrice = item.unitPriceAtSale !== undefined
+              ? item.unitPriceAtSale
+              : (item.unit_price_at_sale !== undefined
+                ? item.unit_price_at_sale
+                : (item.unitPrice !== undefined ? item.unitPrice : item.unit_price));
+
+            let unitPrice;
+            if (rawUnitPrice !== undefined && rawUnitPrice !== null && rawUnitPrice !== '') {
+              unitPrice = Number(rawUnitPrice);
+              if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+                throw new Error(`Invalid negative or non-numeric unit price in transaction #${txNo}`);
+              }
+            } else {
+              unitPrice = catalogPrice;
+            }
+
+            if (catalogPrice > 0 && Math.abs(unitPrice - catalogPrice) > 0.009) {
+              txPriceOverrides.push({
+                transactionId: txId,
+                transactionNo: txNo,
+                productId,
+                productName: catalogProduct.name,
+                catalogPrice,
+                syncedPrice: unitPrice,
+              });
+            }
+
+            const rawSubtotal = item.subtotalAmount !== undefined
+              ? item.subtotalAmount
+              : (item.subtotal_amount !== undefined
+                ? item.subtotal_amount
+                : (item.totalPrice !== undefined ? item.totalPrice : item.total_price));
+
+            const subtotal = rawSubtotal !== undefined && rawSubtotal !== null && rawSubtotal !== ''
+              ? Number(rawSubtotal)
+              : Number((quantitySold * unitPrice).toFixed(2));
+
+            if (!Number.isFinite(subtotal) || subtotal < 0) {
+              throw new Error(`Invalid subtotal amount in transaction #${txNo}`);
             }
 
             // Insert line item
@@ -476,6 +529,9 @@ class SyncService {
 
           processedCount++;
           syncedTransactionIds.push(txId);
+          if (txPriceOverrides.length > 0) {
+            priceOverrides.push(...txPriceOverrides);
+          }
 
         } catch (itemErr) {
           // Roll back only this order — all previously committed orders survive
@@ -524,6 +580,28 @@ class SyncService {
           ignoredCount,
           failedCount,
           totalSubmitted,
+          priceOverrideCount: priceOverrides.length,
+          priceOverrides,
+        },
+      });
+    } else if (failedCount > 0) {
+      await historyService.log(EVENTS.SALES_BATCH_SYNC_FAILED, {
+        actorUser,
+        targetId: resolvedTripId,
+        payload: {
+          tripId: resolvedTripId,
+          tripNumber: trip.trip_number,
+          failedCount,
+        },
+        metadata: {
+          tripId: resolvedTripId,
+          totalSubmitted,
+          failedCount,
+          failedTransactions: failedTransactions.map((f) => ({
+            id: f.id,
+            transactionNo: f.transactionNo,
+            errorCode: f.errorCode,
+          })),
         },
       });
     }

@@ -12,6 +12,7 @@ const { tripsRoutes } = require('../features/trips');
 const { mediaRoutes } = require('../features/media');
 const { operationsRoutes } = require('../features/operations');
 const { settingsRoutes } = require('../features/settings');
+const { dashboardRoutes } = require('../features/dashboard');
 
 // Register API Module Routes
 
@@ -26,6 +27,7 @@ router.use('/trips', tripsRoutes);
 router.use('/media', mediaRoutes);
 router.use('/operations', operationsRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/dashboard', dashboardRoutes);
 
 module.exports = router;
 

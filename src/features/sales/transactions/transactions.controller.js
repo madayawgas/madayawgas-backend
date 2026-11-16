@@ -84,6 +84,24 @@ class TransactionsController {
   }
 
   /**
+   * PATCH /api/sales/transactions/:id
+   * Updates editable metadata on a sales transaction.
+   */
+  async updateTransaction(req, res) {
+    try {
+      const { id } = req.params;
+      const updatedTx = await transactionsService.updateTransaction(req.user, id, req.body || {});
+      return res.status(200).json({
+        status: 'success',
+        message: 'Transaction successfully updated',
+        data: { transaction: updatedTx },
+      });
+    } catch (err) {
+      return this._handleControllerError(res, err, { allowNotFound: true });
+    }
+  }
+
+  /**
    * GET /api/sales/trips/:tripId/shift-summary
    * Retrieves shift closeout summary for a trip.
    */

@@ -220,6 +220,8 @@ docs/api-contracts/
 | `GET` | `/api/operations/fuel/analysis` | Fleet-wide fuel efficiency & `km/L` analytics | `fuel.view` / `fleet.view` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#24-fleet-fuel-efficiency-analysis) |
 | `GET` | `/api/operations/fuel/analysis/:vehicleId` | Single-vehicle fuel efficiency & fill-up breakdown | `fuel.view` / `fleet.view` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#25-single-vehicle-fuel-analysis) |
 | `GET` | `/api/operations/fuel/:id` | Get single fuel log entry details | `fuel.view` / `fuel.view_own` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md#26-get-single-fuel-log) |
+| `PATCH` | `/api/operations/fuel/:id` | Edit vehicle fuel log record | `fuel.manage` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md) |
+| `DELETE` | `/api/operations/fuel/:id` | Delete vehicle fuel log record | `fuel.manage` | [fleet/fuel.api.md](file:///docs/api-contracts/fleet/fuel.api.md) |
 
 ---
 
@@ -256,6 +258,7 @@ docs/api-contracts/
 | `POST` | `/api/operations/apprehensions` | Record roadside traffic apprehension with ticket photo | `apprehensions.create` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#21-record-road-apprehension) |
 | `GET` | `/api/operations/apprehensions` | List road apprehensions with filters & pagination | `apprehensions.view` / `apprehensions.view_own` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#22-list-road-apprehensions) |
 | `GET` | `/api/operations/apprehensions/:id` | Get single apprehension detail | `apprehensions.view` / `apprehensions.view_own` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#23-get-single-apprehension-detail) |
+| `PATCH` | `/api/operations/apprehensions/:id` | Update editable citation details | `apprehensions.manage` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md) |
 | `PATCH` | `/api/operations/apprehensions/:id/status` | Update apprehension resolution status | `apprehensions.manage` | [trips/apprehensions.api.md](file:///docs/api-contracts/trips/apprehensions.api.md#24-update-apprehension-status) |
 | `POST` | `/api/operations/alerts` | Trigger mobile emergency SOS alert | `alerts.trigger` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#21-trigger-emergency-sos-alert) |
 | `GET` | `/api/operations/alerts/active` | List active (`ACTIVE`, `ACKNOWLEDGED`) SOS alerts | `alerts.view` | [trips/alerts.api.md](file:///docs/api-contracts/trips/alerts.api.md#22-list-active-emergency-alerts) |
@@ -274,8 +277,9 @@ docs/api-contracts/
 | `POST` | `/api/inventory/products` | Register a new product item | `inventory.manage` | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#1-register-item--product) |
 | `GET` | `/api/inventory/products` | List and search products with filters | `inventory.view` | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#2-view-item-profiles-list--search) |
 | `GET` | `/api/inventory/products/:id` | View single product profile by UUID | `inventory.view` | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#3-view-single-item-profile) |
-| `PATCH` | `/api/inventory/products/:id` | Update product item attributes | `inventory.manage` | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#4-update-item-profile) |
+| `PATCH` / `PUT` | `/api/inventory/products/:id` | Update product item attributes (including `unitPrice`) | `inventory.manage` | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#4-update-item-profile) |
 | `PATCH` | `/api/inventory/products/:id/deactivate` | Soft-deactivate product item | `inventory.manage` + Password | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#5-deactivate-item) |
+| `PATCH` | `/api/inventory/products/:id/activate` | Re-activate deactivated product item | `inventory.manage` | [inventory/products.api.md](file:///docs/api-contracts/inventory/products.api.md#4b-activate-item) |
 | `GET` | `/api/inventory/plant` | Master Bunawan yard stock overview across all active products | `inventory.view` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#31-master-plant-bulk-inventory-overview) |
 | `POST` | `/api/inventory/plant/restock` | Supplier bulk shipment stock-in (increments plant stock) | `inventory.plant.manage` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#32-supplier-bulk-restock) |
 | `POST` | `/api/inventory/plant/quarantine-defects` | Quarantines yard leakers/defective stock into defective bucket | `inventory.plant.manage` | [inventory/plant-inventory-and-reconciliation.api.md](file:///docs/api-contracts/inventory/plant-inventory-and-reconciliation.api.md#33-quarantine-yard-defects) |
@@ -309,11 +313,21 @@ docs/api-contracts/
 | `GET` | `/api/sales/trip-performance` | Operational delivery trip sales revenue attribution | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#25-operational-delivery-trip-performance) |
 | `GET` | `/api/sales/transactions` | List and search sales transactions with filters & pagination | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#21-list-sales-transactions) |
 | `GET` | `/api/sales/transactions/:id` | View single transaction details with line items and invoice | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#22-get-single-transaction-details) |
+| `PATCH` | `/api/sales/transactions/:id` | Update editable transaction metadata (`customerId`, `transactedAt`, `cancellationReason`) | `sales.update` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md) |
 | `PATCH` | `/api/sales/transactions/:id/cancel` | Supervisor cancellation of a transaction with canister ledger reversal | `sales.delete` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#23-cancel--void-sales-transaction) |
 | `GET` | `/api/sales/trips/:tripId/shift-summary` | End-of-shift remittance summary — revenue, GCash refs, empties aggregation | `sales.view` / `sales.view_own` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md#26-shift-closeout-remittance-summary) |
 | `GET` | `/api/sales/invoices` | List sales invoices with payment status filters | `sales.view` / `sales.view_own` | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#21-list-sales-invoices) |
 | `GET` | `/api/sales/invoices/:id` | View single invoice detail | `sales.view` / `sales.view_own` | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#22-get-single-invoice-details) |
-| `PATCH` | `/api/sales/invoices/:id/verify` | Supervisor GCash payment verification | `sales.view` (global) | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#23-verify-invoice-payment-supervisor) |
+| `PATCH` | `/api/sales/invoices/:id/verify` | Supervisor GCash payment verification | `sales.view` + `sales.update` | [sales/invoices.api.md](file:///docs/api-contracts/sales/invoices.api.md#23-verify-invoice-payment-supervisor) |
+| `PATCH` | `/api/sales/invoices/:id/payment` | Update payment method, reference number, or proof on unverified invoice | `sales.update` | [sales/transactions.api.md](file:///docs/api-contracts/sales/transactions.api.md) |
+
+---
+
+### 6. Subsystem: Executive Dashboard (`/api/dashboard`)
+
+| Method | Endpoint | Description | Permissions | Contract Document |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/dashboard/overview` | Unified cross-domain operational KPIs (Fleet, Trips, Operations, Inventory, Sales) | `dashboard.view` | [dashboard/dashboard.api.md](file:///docs/api-contracts/dashboard/dashboard.api.md) |
 
 ---
 
@@ -361,13 +375,18 @@ Comprehensive WebSocket event schemas, handshake authentication requirements, mo
 | **`VEHICLE_DRIVER_UNASSIGNED`** | Fleet Assets | `room:fleet`, `user:{unassignedDriverUserId}` | `POST /api/fleet/trucks/:id/unassign-driver` | Driver mobile clears assigned truck profile |
 | **`VEHICLE_STATUS_UPDATED`** | Fleet Assets | `room:fleet` | `PATCH /api/fleet/trucks/:id/status` | Invalidate `['fleet-vehicles']`, `['fleet-availability']` |
 | **`PLANT_STOCK_UPDATED`** | Yard Inventory | `room:inventory` | Dispatch load, return unload, restock, or quarantine | Invalidate `['inventory-plant']`, `['transfers']` |
-| **`PRODUCT_CATALOG_UPDATED`** | Product Catalog | `room:inventory` | Product created, updated, or deactivated | Invalidate `['inventory-products']` |
+| **`PRODUCT_CATALOG_UPDATED`** | Product Catalog | `room:inventory`, `room:sales`, `room:catalog` | Product created, updated (incl. `unitPrice`), activated, or deactivated | Invalidate `['inventory-products']` |
 | **`SALES_BATCH_SYNCED`** | Commercial Sales | `room:sales` | `POST /api/sales/sync-batch` (`processedCount > 0`) | Invalidate `['sales-shift-summary']`, `['sales-transactions']` |
+| **`SALES_TRANSACTION_UPDATED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/transactions/:id` | Invalidate `['sales-transactions']` |
 | **`SALES_TRANSACTION_CANCELLED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/transactions/:id/cancel` | Invalidate `['sales-transactions']`, reverse customer debt |
 | **`SALES_INVOICE_VERIFIED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/invoices/:id/verify` | Invalidate `['sales-invoices']`, badge `VERIFIED` |
+| **`SALES_INVOICE_UPDATED`** | Commercial Sales | `room:sales` | `PATCH /api/sales/invoices/:id/payment` | Invalidate `['sales-invoices']` |
 | **`APPREHENSION_LOGGED`** | Operational Telemetry | `room:operations`, `user:{driverUserId}` | `POST /api/operations/apprehensions` | Invalidate `['operations-apprehensions']` |
+| **`APPREHENSION_UPDATED`** | Operational Telemetry | `room:operations`, `room:fleet`, `user:{driverUserId}` | `PATCH /api/operations/apprehensions/:id` | Invalidate `['operations-apprehensions']` |
 | **`APPREHENSION_STATUS_UPDATED`** | Operational Telemetry | `room:operations`, `user:{driverUserId}` | `PATCH /api/operations/apprehensions/:id/status` | Update citation resolution status |
 | **`FUEL_LOGGED`** | Operational Telemetry | `room:operations` | `POST /api/operations/fuel` | Invalidate `['operations-fuel']`, update truck odometer |
+| **`FUEL_LOG_UPDATED`** | Operational Telemetry | `room:operations`, `room:fleet`, `user:{driverUserId}` | `PATCH /api/operations/fuel/:id` | Invalidate `['operations-fuel']`, `['fleet-vehicles']` |
+| **`FUEL_LOG_DELETED`** | Operational Telemetry | `room:operations`, `room:fleet`, `user:{driverUserId}` | `DELETE /api/operations/fuel/:id` | Invalidate `['operations-fuel']` |
 | **`AUTH_SESSION_REVOKED`** | User Security | `user:{userId}` | Password change, role update, deactivation | Immediate disconnect, clear token & redirect to login |
 
 

@@ -10,6 +10,9 @@ const ALLOWED_PRODUCT_SORT_FIELDS = {
   container_type: 'container_type',
   netWeightKg: 'net_weight_kg',
   net_weight_kg: 'net_weight_kg',
+  unitPrice: 'unit_price',
+  unit_price: 'unit_price',
+  price: 'unit_price',
   isActive: 'is_active',
   is_active: 'is_active',
 };
@@ -105,7 +108,7 @@ class ProductsController {
    */
   async updateProduct(req, res) {
     try {
-      const product = await productsService.updateProduct(req.params.id, req.body || {});
+      const product = await productsService.updateProduct(req.user, req.params.id, req.body || {});
       return res.status(200).json({
         status: 'success',
         data: { product },
@@ -131,10 +134,31 @@ class ProductsController {
    */
   async deactivateProduct(req, res) {
     try {
-      const product = await productsService.deactivateProduct(req.params.id);
+      const product = await productsService.deactivateProduct(req.user, req.params.id);
       return res.status(200).json({
         status: 'success',
         message: 'Product successfully deactivated',
+        data: { product },
+      });
+    } catch (err) {
+      const isNotFound = err.message === 'Product not found';
+      return res.status(isNotFound ? 404 : 400).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/inventory/products/:id/activate
+   * Re-activate a product item.
+   */
+  async activateProduct(req, res) {
+    try {
+      const product = await productsService.activateProduct(req.user, req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Product successfully activated',
         data: { product },
       });
     } catch (err) {

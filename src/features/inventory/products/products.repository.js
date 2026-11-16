@@ -60,6 +60,7 @@ class ProductsRepository {
           category,
           container_type,
           net_weight_kg,
+          unit_price,
           is_active,
           created_at,
           updated_at
@@ -88,6 +89,7 @@ class ProductsRepository {
         category,
         container_type,
         net_weight_kg,
+        unit_price,
         is_active,
         created_at,
         updated_at
@@ -127,6 +129,7 @@ class ProductsRepository {
         category,
         container_type,
         net_weight_kg,
+        unit_price,
         is_active,
         created_at,
         updated_at
@@ -151,6 +154,7 @@ class ProductsRepository {
         category,
         container_type,
         net_weight_kg,
+        unit_price,
         is_active,
         created_at,
         updated_at
@@ -164,7 +168,7 @@ class ProductsRepository {
 
   /**
    * Creates a new product record.
-   * @param {Object} productData - { name, category, containerType, netWeightKg, isActive }
+   * @param {Object} productData - { name, category, containerType, netWeightKg, unitPrice, isActive }
    * @returns {Promise<Object>} Created product database row
    */
   async createProduct({
@@ -172,6 +176,7 @@ class ProductsRepository {
     category,
     containerType,
     netWeightKg,
+    unitPrice = 0,
     isActive = true,
   }) {
     const sql = `
@@ -180,9 +185,10 @@ class ProductsRepository {
         category,
         container_type,
         net_weight_kg,
+        unit_price,
         is_active
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
 
@@ -191,6 +197,7 @@ class ProductsRepository {
       category,
       containerType,
       netWeightKg,
+      unitPrice,
       isActive,
     ]);
 
@@ -238,6 +245,11 @@ class ProductsRepository {
       params.push(updateData.netWeightKg);
     }
 
+    if (updateData.unitPrice !== undefined) {
+      fields.push(`unit_price = $${paramIndex++}`);
+      params.push(updateData.unitPrice);
+    }
+
     if (updateData.isActive !== undefined) {
       fields.push(`is_active = $${paramIndex++}`);
       params.push(updateData.isActive);
@@ -268,6 +280,23 @@ class ProductsRepository {
     const sql = `
       UPDATE products
       SET is_active = FALSE
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await query(sql, [id]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Re-activates a product by setting is_active to TRUE.
+   * @param {string} id - Product UUID
+   * @returns {Promise<Object|null>} Updated product database row or null
+   */
+  async activateProduct(id) {
+    const sql = `
+      UPDATE products
+      SET is_active = TRUE
       WHERE id = $1
       RETURNING *
     `;

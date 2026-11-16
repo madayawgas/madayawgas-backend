@@ -549,6 +549,70 @@ class FuelRepository {
       totalLiters: Number(totalLiters.toFixed(2)),
     };
   }
+
+  /**
+   * Updates an existing fuel log record.
+   * @param {string} id
+   * @param {Object} updateData
+   * @param {Object|null} client
+   * @returns {Promise<Object|null>}
+   */
+  async updateFuelLog(id, updateData = {}, client = null) {
+    const db = client || { query };
+    const fields = [];
+    const params = [id];
+    let idx = 2;
+
+    const columnMap = {
+      litersPumped: 'liters_pumped',
+      totalCost: 'total_cost',
+      pricePerLiter: 'price_per_liter',
+      fuelStation: 'fuel_station',
+      fuelType: 'fuel_type',
+      odometerReading: 'odometer_reading',
+      receiptMediaKey: 'receipt_media_key',
+      fueledAt: 'fueled_at',
+      notes: 'notes',
+    };
+
+    for (const [key, col] of Object.entries(columnMap)) {
+      if (updateData[key] !== undefined) {
+        fields.push(`${col} = $${idx++}`);
+        params.push(updateData[key]);
+      }
+    }
+
+    if (fields.length === 0) {
+      return this.getFuelLogById(id);
+    }
+
+    fields.push('updated_at = NOW()');
+
+    const sql = `
+      UPDATE vehicle_fuel_logs
+      SET ${fields.join(', ')}
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const res = await db.query(sql, params);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Deletes a fuel log record by UUID.
+   * @param {string} id
+   * @param {Object|null} client
+   * @returns {Promise<Object|null>}
+   */
+  async deleteFuelLog(id, client = null) {
+    const db = client || { query };
+    const res = await db.query(
+      `DELETE FROM vehicle_fuel_logs WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return res.rows[0] || null;
+  }
 }
 
 module.exports = new FuelRepository();

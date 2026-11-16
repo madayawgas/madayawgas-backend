@@ -77,6 +77,18 @@ class ApprehensionsController {
 
     return res.status(200).json(formatPaginatedEnvelope(items, meta));
   }
+
+  /**
+   * PATCH /api/operations/apprehensions/:id
+   */
+  async updateApprehension(req, res) {
+    const data = await apprehensionsService.updateApprehension(req.params.id, req.user, req.body || {});
+    return res.status(200).json({
+      status: 'success',
+      message: 'Apprehension details successfully updated',
+      data,
+    });
+  }
 }
 
 module.exports = new ApprehensionsController();

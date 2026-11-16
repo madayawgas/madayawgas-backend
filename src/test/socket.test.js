@@ -818,4 +818,67 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
     targetClient.disconnect();
     unrelatedClient.disconnect();
   });
+
+  test('23. Frontline Sales Person receives PRODUCT_CATALOG_UPDATED (unitPrice) via room:catalog without leaking room:sales', async () => {
+    const salesRep = await createTestUser(`${TEST_PREFIX}sales_cat`, 'Sales Person');
+    const salesRepSession = await authService.createSession(salesRep.id);
+
+    const adminUser = await createTestUser(`${TEST_PREFIX}admin_cat`, 'Admin');
+    const adminSession = await authService.createSession(adminUser.id);
+
+    server = http.createServer();
+    initializeSocket(server);
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        port = server.address().port;
+        socketUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+
+    const repClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: salesRepSession.token } });
+    const adminClient = ioClient(socketUrl, { transports: ['websocket'], forceNew: true, auth: { token: adminSession.token } });
+
+    await Promise.all([
+      new Promise((res) => repClient.on('connect', res)),
+      new Promise((res) => adminClient.on('connect', res)),
+    ]);
+
+    let repCatalogEvent = null;
+    let repSalesEvent = null;
+    let adminCatalogEvent = null;
+
+    repClient.on('PRODUCT_CATALOG_UPDATED', (p) => { repCatalogEvent = p; });
+    repClient.on('SALES_BATCH_SYNCED', (p) => { repSalesEvent = p; });
+    adminClient.on('PRODUCT_CATALOG_UPDATED', (p) => { adminCatalogEvent = p; });
+
+    const { productsService } = require('../features/inventory');
+    const created = await productsService.createProduct(adminUser, {
+      name: `${TEST_PREFIX}Socket Price Cylinder`,
+      category: 'LPG Cylinder',
+      containerType: 'CYLINDER',
+      netWeightKg: 11.0,
+      unitPrice: 980.0,
+    });
+
+    try {
+      await productsService.updateProduct(adminUser, created.id, { unitPrice: 1015.0 });
+      safeEmitSocketEvent('SALES_BATCH_SYNCED', { tripId: 't-1', processedCount: 1 }, 'room:sales');
+
+      await new Promise((res) => setTimeout(res, 300));
+
+      assert.ok(repCatalogEvent, 'Sales Person must receive PRODUCT_CATALOG_UPDATED via room:catalog');
+      assert.strictEqual(repCatalogEvent.data.action, 'UPDATED');
+      assert.strictEqual(repCatalogEvent.data.previousUnitPrice, 980);
+      assert.strictEqual(repCatalogEvent.data.product.unitPrice, 1015);
+      assert.strictEqual(repSalesEvent, null, 'Sales Person must NOT receive room:sales events');
+      assert.ok(adminCatalogEvent, 'Admin must also receive PRODUCT_CATALOG_UPDATED');
+    } finally {
+      await query(`DELETE FROM history_logs WHERE target_id = $1`, [created.id]);
+      await query(`DELETE FROM products WHERE id = $1`, [created.id]);
+      repClient.disconnect();
+      adminClient.disconnect();
+    }
+  });
 });

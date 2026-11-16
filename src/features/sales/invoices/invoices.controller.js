@@ -74,6 +74,28 @@ class InvoicesController {
     }
   }
 
+  /**
+   * PATCH /api/sales/invoices/:id/payment
+   * Updates payment details on an unverified invoice.
+   */
+  async recordPayment(req, res) {
+    try {
+      const { id } = req.params;
+      const updatedInvoice = await invoicesService.recordPayment(req.user, id, req.body || {});
+      return res.status(200).json({
+        status: 'success',
+        message: 'Invoice payment details updated',
+        data: { invoice: updatedInvoice },
+      });
+    } catch (err) {
+      const isNotFound = err.message === 'Invoice not found';
+      return res.status(err.statusCode || (isNotFound ? 404 : 400)).json({
+        status: 'fail',
+        message: err.message,
+      });
+    }
+  }
+
   // Backward compatibility alias
   async getInvoiceByTransaction(req, res) {
     try {

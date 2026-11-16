@@ -43,6 +43,17 @@ router.patch(
 );
 
 /**
+ * PATCH /api/operations/apprehensions/:id
+ * Updates editable citation details of an apprehension record.
+ */
+router.patch(
+  '/:id',
+  authenticate,
+  requirePermission('apprehensions.manage'),
+  asyncHandler(apprehensionsController.updateApprehension.bind(apprehensionsController))
+);
+
+/**
  * GET /api/operations/apprehensions
  * Retrieves paginated roadside apprehension history with server-side filtering.
  */

@@ -408,6 +408,7 @@ Table Name: products
 | `category` | `VARCHAR(100)` | `NOT NULL` |
 | `container_type` | `container_type_enum` | `NOT NULL` |
 | `net_weight_kg` | `NUMERIC(6, 3)` | `NOT NULL, CHECK (> 0)` |
+| `unit_price` | `NUMERIC(10, 2)` | `NOT NULL, DEFAULT 0.00, CHECK (>= 0)` |
 | `is_active` | `BOOLEAN` | `NOT NULL, DEFAULT TRUE` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
 | `updated_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |

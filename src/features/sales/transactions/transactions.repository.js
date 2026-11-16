@@ -1073,6 +1073,54 @@ class TransactionsRepository {
       total: parseInt(countResult.rows[0]?.count || 0, 10),
     };
   }
+
+  /**
+   * Updates editable header metadata on a sales transaction and keeps canister_ledger customer_id in sync.
+   * @param {Object} [client]
+   * @param {string} id
+   * @param {Object} updateData
+   * @returns {Promise<Object|null>}
+   */
+  async updateTransaction(client, id, updateData = {}) {
+    const [dbQuery, actualId] = this._resolveRunner(client, id);
+
+    const fields = [];
+    const params = [actualId];
+    let idx = 2;
+
+    if (updateData.customerId !== undefined) {
+      fields.push(`customer_id = $${idx++}`);
+      params.push(updateData.customerId);
+    }
+    if (updateData.transactedAt !== undefined) {
+      fields.push(`transacted_at = $${idx++}`);
+      params.push(updateData.transactedAt);
+    }
+    if (updateData.cancellationReason !== undefined) {
+      fields.push(`cancellation_reason = $${idx++}`);
+      params.push(updateData.cancellationReason);
+    }
+
+    if (fields.length === 0) {
+      return this.getTransactionById(client, actualId);
+    }
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+
+    await dbQuery(
+      `UPDATE sales_transactions SET ${fields.join(', ')} WHERE id = $1`,
+      params
+    );
+
+    if (updateData.customerId !== undefined) {
+      await dbQuery(
+        `UPDATE canister_ledger SET customer_id = $2 WHERE transaction_id = $1`,
+        [actualId, updateData.customerId]
+      );
+    }
+
+    return this.getTransactionById(client, actualId);
+  }
 }
 
 module.exports = new TransactionsRepository();
