@@ -105,7 +105,11 @@ class VehiclesService {
     const effectiveFilters = { ...filters };
     if (actorUser) {
       const permissions = actorUser.permissions || [];
-      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasGlobal =
+        permissions.includes('fleet.view') ||
+        permissions.includes('fleet.manage') ||
+        permissions.includes('route.view') ||
+        permissions.includes('route.manage');
       const hasOwn = permissions.includes('fleet.view_own');
       if (!hasGlobal && hasOwn) {
         effectiveFilters.driverId = actorUser.id;
@@ -155,7 +159,11 @@ class VehiclesService {
 
     if (actorUser) {
       const permissions = actorUser.permissions || [];
-      const hasGlobal = permissions.includes('fleet.view') || permissions.includes('fleet.manage');
+      const hasGlobal =
+        permissions.includes('fleet.view') ||
+        permissions.includes('fleet.manage') ||
+        permissions.includes('route.view') ||
+        permissions.includes('route.manage');
       const hasOwn = permissions.includes('fleet.view_own');
       if (!hasGlobal && hasOwn && row.driver_id !== actorUser.id) {
         const err = new Error('Access denied: You can only view details for your assigned vehicle');
