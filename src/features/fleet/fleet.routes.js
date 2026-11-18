@@ -114,14 +114,14 @@ router.get(
 router.get(
   '/vehicles',
   authenticate,
-  requirePermission(['fleet.view', 'fleet.view_own']),
+  requirePermission(['fleet.view', 'fleet.view_own', 'route.view', 'route.manage']),
   asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
 router.get(
   '/',
   authenticate,
-  requirePermission(['fleet.view', 'fleet.view_own']),
+  requirePermission(['fleet.view', 'fleet.view_own', 'route.view', 'route.manage']),
   asyncHandler(vehiclesController.getAllVehicles.bind(vehiclesController))
 );
 
@@ -154,7 +154,7 @@ router.post(
 router.get(
   '/vehicles/:id/status',
   authenticate,
-  requirePermission(['fleet.view', 'fleet.view_own']),
+  requirePermission(['fleet.view', 'fleet.view_own', 'route.view', 'route.manage']),
   asyncHandler(availabilityController.getTruckStatus.bind(availabilityController))
 );
 
@@ -286,7 +286,7 @@ router.get(
 router.get(
   '/vehicles/:id',
   authenticate,
-  requirePermission(['fleet.view', 'fleet.view_own']),
+  requirePermission(['fleet.view', 'fleet.view_own', 'route.view', 'route.manage']),
   asyncHandler(vehiclesController.getVehicleById.bind(vehiclesController))
 );
 

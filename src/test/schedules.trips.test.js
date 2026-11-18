@@ -1581,7 +1581,15 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     assert.equal(repBlockedDrivers.status, 403);
 
-    // 12.2d Route manager (salesSupCookie) can list drivers and available trucks via route.view/route.manage (200 OK)
+    // 12.2d Route manager (salesSupCookie) can list drivers, available trucks, and all vehicles via route.view/route.manage (200 OK)
+    const routeAllVehiclesRes = await fetch(`${baseUrl}/api/fleet/vehicles`, {
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
+    });
+    assert.equal(routeAllVehiclesRes.status, 200);
+    const routeAllVehiclesJson = await routeAllVehiclesRes.json();
+    assert.equal(routeAllVehiclesJson.status, 'success');
+    assert.ok(Array.isArray(routeAllVehiclesJson.data.vehicles));
+
     const routeAvailTrucksRes = await fetch(`${baseUrl}/api/fleet/availability`, {
       headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
