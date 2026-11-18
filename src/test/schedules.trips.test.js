@@ -1590,6 +1590,17 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     assert.equal(routeAllVehiclesJson.status, 'success');
     assert.ok(Array.isArray(routeAllVehiclesJson.data.vehicles));
 
+    const multiStatusTripsRes = await fetch(`${baseUrl}/api/trips?status=IN_PROGRESS,RETURNED`, {
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
+    });
+    assert.equal(multiStatusTripsRes.status, 200);
+    const multiStatusTripsJson = await multiStatusTripsRes.json();
+    assert.equal(multiStatusTripsJson.status, 'success');
+    assert.ok(Array.isArray(multiStatusTripsJson.data.trips));
+    assert.ok(
+      multiStatusTripsJson.data.trips.every((t) => ['IN_PROGRESS', 'RETURNED'].includes(t.status))
+    );
+
     const routeAvailTrucksRes = await fetch(`${baseUrl}/api/fleet/availability`, {
       headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });

@@ -17,8 +17,17 @@ class TripsRepository {
     let paramIndex = 1;
 
     if (status) {
-      conditions.push(`t.status = $${paramIndex++}`);
-      params.push(status.toUpperCase());
+      const statuses = String(status)
+        .split(',')
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(`t.status = $${paramIndex++}`);
+        params.push(statuses[0]);
+      } else if (statuses.length > 1) {
+        conditions.push(`t.status = ANY($${paramIndex++}::trip_status[])`);
+        params.push(statuses);
+      }
     }
 
     if (truckId) {
