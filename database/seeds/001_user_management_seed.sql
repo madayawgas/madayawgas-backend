@@ -24,11 +24,11 @@ VALUES
     ),
     (
         'Logistics Supervisor',
-        'Manages logistics, fleet, route dispatch, vehicle inventory transfers, and operational truck activities.'
+        'Manages fleet, vehicles, maintenance, and operational truck activities (fuel, apprehensions, SOS alerts).'
     ),
     (
         'Sales Supervisor',
-        'Oversees sales, customers, transactions, vehicle stock reconciliation, and delivery fulfillment.'
+        'Oversees sales, customers, transactions, route dispatch, vehicle stock reconciliation, and delivery fulfillment.'
     ),
     (
         'Sales Person',
@@ -374,19 +374,6 @@ JOIN permissions p
         'fleet.view_own',
         'fleet.manage',
 
-        -- Route Dispatch
-        'route.view',
-        'route.end_own',
-        'route.manage',
-
-        -- Inventory Transfers & Catalog Visibility
-        'inventory.view',
-        'inventory.vehicle.manage',
-
-        -- Deliveries
-        'delivery.view',
-        'delivery.update',
-
         -- Road Apprehensions
         'apprehensions.view',
         'apprehensions.view_own',
@@ -425,8 +412,9 @@ FROM roles r
 JOIN permissions p
     ON p.name IN (
 
-        -- Route Dispatch Visibility
+        -- Route Dispatch & Scheduling
         'route.view',
+        'route.manage',
 
         -- Inventory & Vehicle Stock Reconciliation
         'inventory.view',

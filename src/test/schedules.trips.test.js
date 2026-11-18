@@ -34,12 +34,14 @@ function parseCookieHeader(res) {
 test('Schedule & Trip Subsystem Integration Tests', async (t) => {
   let adminCookie;
   let logisticsCookie;
+  let salesSupCookie;
   let salesRep1Cookie;
   let salesRep2Cookie;
   let driverCookie;
 
   let adminUser;
   let logisticsUser;
+  let salesSupUser;
   let salesRep1User;
   let salesRep2User;
   let driverUser;
@@ -136,6 +138,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     // 2. Fetch role IDs
     const adminRoleId = (await query(`SELECT id FROM roles WHERE name = 'Admin'`)).rows[0].id;
     const logisticsRoleId = (await query(`SELECT id FROM roles WHERE name = 'Logistics Supervisor'`)).rows[0].id;
+    const salesSupMainRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Supervisor'`)).rows[0].id;
     const salesPersonRoleId = (await query(`SELECT id FROM roles WHERE name = 'Sales Person'`)).rows[0].id;
     const driverRoleId = (await query(`SELECT id FROM roles WHERE name = 'Driver'`)).rows[0].id;
 
@@ -155,6 +158,13 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       ['test_sched_logistics', passwordHash, 'Carlos', 'Logistics', '+639174000002', logisticsRoleId]
     );
     logisticsUser = logRes.rows[0];
+
+    const ssRes = await query(
+      `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, FALSE) RETURNING *`,
+      ['test_sched_salessup_main', passwordHash, 'Elena', 'SalesSup', '+639174000012', salesSupMainRoleId]
+    );
+    salesSupUser = ssRes.rows[0];
 
     const sp1Res = await query(
       `INSERT INTO users (username, password_hash, first_name, last_name, phone, role_id, is_active, is_blocked, must_change_password)
@@ -249,6 +259,13 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     logisticsCookie = parseCookieHeader(logLogin);
 
+    const ssLogin = await fetch(`${baseUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_sched_salessup_main', password: 'SchedPass123!' }),
+    });
+    salesSupCookie = parseCookieHeader(ssLogin);
+
     const sp1Login = await fetch(`${baseUrl}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -313,12 +330,52 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     assert.equal(spDispatch.status, 403);
 
-    // 1.4 Logistics Supervisor has route.manage -> Can create schedule
-    const logCreateSchedule = await fetch(`${baseUrl}/api/schedules`, {
+    // 1.3b Logistics Supervisor is fleet-only (lacks route.view & route.manage) -> Forbidden on schedules & trips
+    const logGetSchedules = await fetch(`${baseUrl}/api/schedules`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(logGetSchedules.status, 403);
+
+    const logCreateScheduleAttempt = await fetch(`${baseUrl}/api/schedules`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        scheduledDate: '2026-10-01',
+        truckId: activeTruck.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+      }),
+    });
+    assert.equal(logCreateScheduleAttempt.status, 403);
+
+    const logDispatchAttempt = await fetch(`${baseUrl}/api/trips/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${logisticsCookie}`,
+      },
+      body: JSON.stringify({
+        truckId: activeTruck.id,
+        salesUserId: salesRep1User.id,
+        zoneId: testZone.id,
+      }),
+    });
+    assert.equal(logDispatchAttempt.status, 403);
+
+    const logGetTrips = await fetch(`${baseUrl}/api/trips`, {
+      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+    });
+    assert.equal(logGetTrips.status, 403);
+
+    // 1.4 Sales Supervisor has route.manage -> Can create schedule
+    const logCreateSchedule = await fetch(`${baseUrl}/api/schedules`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-01',
@@ -343,7 +400,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         code: 'TEST-SCHED-Z2',
@@ -360,7 +417,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         code: 'TEST-SCHED-Z2',
@@ -374,7 +431,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -393,7 +450,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -406,7 +463,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
 
     // 2.5 List templates
     const listTpl = await fetch(`${baseUrl}/api/schedules/templates?truckId=${activeTruck.id}`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     assert.equal(listTpl.status, 200);
     const listTplBody = await listTpl.json();
@@ -434,7 +491,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         startDate: '2026-10-05',
@@ -456,7 +513,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-05',
@@ -473,7 +530,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({ reason: 'Weather advisory cancellation' }),
     });
@@ -491,7 +548,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-06',
@@ -509,7 +566,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduleId: schedule.id,
@@ -535,7 +592,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
 
     // Verify schedule status transitioned to DISPATCHED
     const schedCheck = await fetch(`${baseUrl}/api/schedules/${schedule.id}`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     const schedCheckBody = await schedCheck.json();
     assert.equal(schedCheckBody.data.schedule.status, 'DISPATCHED');
@@ -545,7 +602,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -566,7 +623,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -587,7 +644,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         transferType: 'DISPATCH_LOAD',
@@ -605,7 +662,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
 
     // 5.3 Fetch all loads for trip
     const loadsRes = await fetch(`${baseUrl}/api/trips/${trip.id}/loads`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     assert.equal(loadsRes.status, 200);
     const loadsBody = await loadsRes.json();
@@ -621,7 +678,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -717,7 +774,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -733,7 +790,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         returnLoads: [
@@ -762,7 +819,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -802,7 +859,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         returnLoads: [
@@ -830,7 +887,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         totalSoldFull: 70,
@@ -856,7 +913,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-10',
@@ -873,7 +930,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({ reason: 'Audit cancellation test' }),
     });
@@ -883,7 +940,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -916,7 +973,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         totalSoldFull: 50,
@@ -960,7 +1017,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-15',
@@ -978,7 +1035,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-15',
@@ -997,7 +1054,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-15',
@@ -1014,7 +1071,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         salesUserId: salesRep1User.id,
@@ -1027,7 +1084,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({ reason: 'Morning cancellation for rescheduling test' }),
     });
@@ -1038,7 +1095,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-15',
@@ -1055,7 +1112,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1070,7 +1127,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck2.id,
@@ -1093,7 +1150,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1111,7 +1168,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck2.id,
@@ -1130,7 +1187,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck2.id,
@@ -1155,7 +1212,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1190,7 +1247,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         totalSoldFull: 0,
@@ -1207,7 +1264,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1238,7 +1295,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1266,7 +1323,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         transferType: 'DISPATCH_LOAD',
@@ -1296,7 +1353,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         transferType: 'DISPATCH_LOAD',
@@ -1315,7 +1372,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         syncCompleted: true,
@@ -1345,7 +1402,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         returnLoads: [
@@ -1378,7 +1435,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         totalSoldFull: 20,
@@ -1396,7 +1453,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck2.id,
@@ -1422,7 +1479,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({ cancellationReason: 'Emergency trip abort at depot' }),
     });
@@ -1456,7 +1513,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
 
     // 12.2 GET /api/schedules/sales-persons accessible to route managers (200 OK)
     const salesPersonsRes = await fetch(`${baseUrl}/api/schedules/sales-persons`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     assert.equal(salesPersonsRes.status, 200);
     const salesPersonsBody = await salesPersonsRes.json();
@@ -1524,9 +1581,14 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     });
     assert.equal(repBlockedDrivers.status, 403);
 
-    // 12.2d Route manager (logisticsCookie) can list drivers via route.view/route.manage (200 OK)
+    // 12.2d Route manager (salesSupCookie) can list drivers and available trucks via route.view/route.manage (200 OK)
+    const routeAvailTrucksRes = await fetch(`${baseUrl}/api/fleet/availability`, {
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
+    });
+    assert.equal(routeAvailTrucksRes.status, 200);
+
     const routeDriversRes = await fetch(`${baseUrl}/api/fleet/drivers`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     assert.equal(routeDriversRes.status, 200);
     const routeDriversJson = await routeDriversRes.json();
@@ -1534,7 +1596,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
     assert.ok(Array.isArray(routeDriversJson.data.drivers));
 
     const routeAvailDriversRes = await fetch(`${baseUrl}/api/fleet/drivers/available`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     assert.equal(routeAvailDriversRes.status, 200);
     const routeAvailDriversJson = await routeAvailDriversRes.json();
@@ -1547,7 +1609,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1566,7 +1628,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: activeTruck.id,
@@ -1584,7 +1646,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-14',
@@ -1603,7 +1665,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-14',
@@ -1622,7 +1684,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: '2026-10-14',
@@ -1638,7 +1700,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
 
     // Retrieve via GET /api/schedules/:id
     const getSchedRes = await fetch(`${baseUrl}/api/schedules/${createdSched.id}`, {
-      headers: { Cookie: `mg_sid=${logisticsCookie}` },
+      headers: { Cookie: `mg_sid=${salesSupCookie}` },
     });
     assert.equal(getSchedRes.status, 200);
     const fetchedSched = (await getSchedRes.json()).data.schedule;
@@ -1650,7 +1712,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         startDate: '2026-10-13', // Tuesday (dayOfWeek: 2)
@@ -1696,7 +1758,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduledDate: schedDate,
@@ -1715,7 +1777,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         scheduleId: advanceSched.id,
@@ -1732,7 +1794,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: testTruck4.id,
@@ -1749,7 +1811,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         currentOdometer: 12100,
@@ -1762,7 +1824,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         totalSoldFull: 0,
@@ -1777,7 +1839,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         truckId: testTruck4.id,
@@ -1796,7 +1858,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         currentOdometer: 12150,
@@ -1809,7 +1871,7 @@ test('Schedule & Trip Subsystem Integration Tests', async (t) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `mg_sid=${logisticsCookie}`,
+        Cookie: `mg_sid=${salesSupCookie}`,
       },
       body: JSON.stringify({
         totalSoldFull: 0,

@@ -496,6 +496,18 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(salesSupervisor.permissions.includes('sales.view'));
     assert.ok(salesSupervisor.permissions.includes('sales.create'));
     assert.ok(salesSupervisor.permissions.includes('route.view'));
+    assert.ok(salesSupervisor.permissions.includes('route.manage'));
+
+    const logisticsSupervisor = roles.find((r) => r.name === 'Logistics Supervisor');
+    assert.ok(logisticsSupervisor.permissions.includes('fleet.view'));
+    assert.ok(logisticsSupervisor.permissions.includes('fleet.manage'));
+    assert.ok(!logisticsSupervisor.permissions.includes('route.view'));
+    assert.ok(!logisticsSupervisor.permissions.includes('route.manage'));
+    assert.ok(!logisticsSupervisor.permissions.includes('route.end_own'));
+    assert.ok(!logisticsSupervisor.permissions.includes('inventory.view'));
+    assert.ok(!logisticsSupervisor.permissions.includes('inventory.vehicle.manage'));
+    assert.ok(!logisticsSupervisor.permissions.includes('delivery.view'));
+    assert.ok(!logisticsSupervisor.permissions.includes('delivery.update'));
 
     const driverRole = roles.find((r) => r.name === 'Driver');
     assert.ok(driverRole.permissions.includes('alerts.trigger'));
@@ -688,7 +700,8 @@ test('User Administration & Management Tests', async (t) => {
     assert.ok(samanthaPerms.includes('sales.update'), 'Must have Sales Supervisor permission');
     assert.ok(samanthaPerms.includes('fleet.view'), 'Must have Logistics Supervisor permission');
     assert.ok(samanthaPerms.includes('fleet.manage'), 'Must have Logistics Supervisor permission');
-    assert.ok(samanthaPerms.includes('route.view'), 'Must have Logistics Supervisor permission');
+    assert.ok(samanthaPerms.includes('route.view'), 'Must have Sales Supervisor permission');
+    assert.ok(samanthaPerms.includes('route.manage'), 'Must have Sales Supervisor permission');
     assert.ok(!samanthaPerms.includes('users.manage'), 'Must not have User Management permission');
 
     // Access Sales endpoint -> 200 OK

@@ -121,8 +121,7 @@ function initializeSocket(httpServer, customOptions = {}) {
       // Fleet Readiness & Maintenance Room
       if (
         permissions.includes('fleet.view') ||
-        permissions.includes('fleet.manage') ||
-        permissions.includes('route.manage')
+        permissions.includes('fleet.manage')
       ) {
         socket.join('room:fleet');
       }

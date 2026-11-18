@@ -402,14 +402,13 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
     });
     assert.equal(plantUsersRes.status, 403);
 
-    // Logistics Supervisor access to suggested-split helper (User Story 2) -> 200 OK
+    // Logistics Supervisor is fleet-only (lacks inventory.view, inventory.vehicle.manage, route.view, route.manage) -> 403 Forbidden
     const logSplitRes = await fetch(
       `${baseUrl}/api/inventory/plant/suggested-split?productId=${testButaneProduct.id}&activeTripCount=4`,
       { headers: { Cookie: `mg_sid=${logisticsCookie}` } }
     );
-    assert.equal(logSplitRes.status, 200);
+    assert.equal(logSplitRes.status, 403);
 
-    // Logistics Supervisor access to dispatch-load and return-unload (User Stories 3 & 4)
     const testRbacTripRes = await query(`
       INSERT INTO trips (trip_number, truck_id, driver_id, sales_user_id, zone_id, status)
       VALUES ('TEST-RECON-RBAC-001', $1, $2, $3, $4, 'IN_PROGRESS')
@@ -424,16 +423,16 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        remarks: 'TEST-RECON- Logistics dispatch load',
+        remarks: 'TEST-RECON- Logistics dispatch load (forbidden)',
         items: [{ productId: testButaneProduct.id, quantityUnits: 10 }],
       }),
     });
-    assert.equal(logDispatchRes.status, 201);
+    assert.equal(logDispatchRes.status, 403);
 
     const logTransfersRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/transfers`, {
       headers: { Cookie: `mg_sid=${logisticsCookie}` },
     });
-    assert.equal(logTransfersRes.status, 200);
+    assert.equal(logTransfersRes.status, 403);
 
     const logUnloadRes = await fetch(`${baseUrl}/api/inventory/trips/${rbacTrip.id}/return-unload`, {
       method: 'POST',
@@ -442,11 +441,11 @@ test('Inventory Subsystem & Route Reconciliation Engine Tests', async (t) => {
         Cookie: `mg_sid=${logisticsCookie}`,
       },
       body: JSON.stringify({
-        remarks: 'TEST-RECON- Logistics return unload',
+        remarks: 'TEST-RECON- Logistics return unload (forbidden)',
         items: [{ productId: testButaneProduct.id, condition: 'FILLED', quantityUnits: 10 }],
       }),
     });
-    assert.equal(logUnloadRes.status, 201);
+    assert.equal(logUnloadRes.status, 403);
 
     // ============================================================
     // Segregation of Duties: Sales Supervisor vs Plant Supervisor

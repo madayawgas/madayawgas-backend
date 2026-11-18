@@ -607,8 +607,11 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
   });
 
   test('19. Server automatically joins clients into room:trips, room:schedules, and room:operations based on RBAC', async () => {
-    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_ops`, 'Logistics Supervisor');
-    const supervisorSession = await authService.createSession(supervisorUser.id);
+    const logisticsUser = await createTestUser(`${TEST_PREFIX}sup_ops`, 'Logistics Supervisor');
+    const logisticsSession = await authService.createSession(logisticsUser.id);
+
+    const salesSupUser = await createTestUser(`${TEST_PREFIX}sup_sales_trips`, 'Sales Supervisor');
+    const salesSupSession = await authService.createSession(salesSupUser.id);
 
     const driverUser = await createTestUser(`${TEST_PREFIX}drv_ops`, 'Driver');
     const driverSession = await authService.createSession(driverUser.id);
@@ -624,10 +627,16 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
       });
     });
 
-    const supClient = ioClient(socketUrl, {
+    const logClient = ioClient(socketUrl, {
       transports: ['websocket'],
       forceNew: true,
-      auth: { token: supervisorSession.token },
+      auth: { token: logisticsSession.token },
+    });
+
+    const salesClient = ioClient(socketUrl, {
+      transports: ['websocket'],
+      forceNew: true,
+      auth: { token: salesSupSession.token },
     });
 
     const drvClient = ioClient(socketUrl, {
@@ -637,18 +646,23 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
     });
 
     await Promise.all([
-      new Promise((res) => supClient.on('connect', res)),
+      new Promise((res) => logClient.on('connect', res)),
+      new Promise((res) => salesClient.on('connect', res)),
       new Promise((res) => drvClient.on('connect', res)),
     ]);
 
-    let supTripPayload = null;
+    let logTripPayload = null;
+    let salesTripPayload = null;
     let drvTripPayload = null;
-    let supOpsPayload = null;
+    let logOpsPayload = null;
+    let salesOpsPayload = null;
     let drvOpsPayload = null;
 
-    supClient.on('TRIP_EVENT', (p) => { supTripPayload = p; });
+    logClient.on('TRIP_EVENT', (p) => { logTripPayload = p; });
+    salesClient.on('TRIP_EVENT', (p) => { salesTripPayload = p; });
     drvClient.on('TRIP_EVENT', (p) => { drvTripPayload = p; });
-    supClient.on('OPS_EVENT', (p) => { supOpsPayload = p; });
+    logClient.on('OPS_EVENT', (p) => { logOpsPayload = p; });
+    salesClient.on('OPS_EVENT', (p) => { salesOpsPayload = p; });
     drvClient.on('OPS_EVENT', (p) => { drvOpsPayload = p; });
 
     // Emit to room:trips
@@ -658,17 +672,20 @@ describe('Socket.IO Foundation & Authentication Integration Tests', () => {
 
     await new Promise((res) => setTimeout(res, 300));
 
-    assert.ok(supTripPayload, 'Logistics Supervisor should receive event from room:trips');
+    assert.strictEqual(logTripPayload, null, 'Logistics Supervisor lacking route permissions must NOT receive event from room:trips');
+    assert.ok(salesTripPayload, 'Sales Supervisor should receive event from room:trips');
     assert.strictEqual(drvTripPayload, null, 'Driver lacking route.view must NOT receive event from room:trips');
-    assert.ok(supOpsPayload, 'Logistics Supervisor should receive event from room:operations');
+    assert.ok(logOpsPayload, 'Logistics Supervisor should receive event from room:operations');
+    assert.strictEqual(salesOpsPayload, null, 'Sales Supervisor lacking operations permissions must NOT receive event from room:operations');
     assert.strictEqual(drvOpsPayload, null, 'Driver lacking operations permissions must NOT receive event from room:operations');
 
-    supClient.disconnect();
+    logClient.disconnect();
+    salesClient.disconnect();
     drvClient.disconnect();
   });
 
   test('20. Targeted trip assignment delivers TRIP_DISPATCHED to room:trips and assigned driver private room', async () => {
-    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_trip`, 'Logistics Supervisor');
+    const supervisorUser = await createTestUser(`${TEST_PREFIX}sup_trip`, 'Sales Supervisor');
     const supervisorSession = await authService.createSession(supervisorUser.id);
 
     const assignedDriver = await createTestUser(`${TEST_PREFIX}assigned_drv`, 'Driver');

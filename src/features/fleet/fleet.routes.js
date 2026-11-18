@@ -36,7 +36,7 @@ router.get(
 router.get(
   '/availability',
   authenticate,
-  requirePermission('fleet.view'),
+  requirePermission(['fleet.view', 'route.view', 'route.manage']),
   asyncHandler(availabilityController.getAvailability.bind(availabilityController))
 );
 

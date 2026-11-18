@@ -162,11 +162,11 @@ test('Inventory Item/Product CRUD Subsystem Tests', async (t) => {
     });
     assert.equal(salesGet.status, 200);
 
-    // Logistics Supervisor (has inventory.view & inventory.vehicle.manage, lacks inventory.manage) -> GET 200, POST 403
+    // Logistics Supervisor (fleet-only, lacks inventory.view and inventory.manage) -> GET 403, POST 403
     const fmGet = await fetch(`${baseUrl}/api/inventory/products`, {
       headers: { Cookie: `mg_sid=${fleetManagerCookie}` },
     });
-    assert.equal(fmGet.status, 200);
+    assert.equal(fmGet.status, 403);
 
     const fmPost = await fetch(`${baseUrl}/api/inventory/products`, {
       method: 'POST',
