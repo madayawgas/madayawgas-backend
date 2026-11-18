@@ -241,7 +241,9 @@ class SchedulesRepository {
    * Automatically sweeps un-dispatched past schedules to CANCELLED with expiration notes.
    * @param {string} [cutoffDate] - YYYY-MM-DD
    */
-  async expirePastSchedules(cutoffDate = new Date().toISOString().slice(0, 10)) {
+  async expirePastSchedules(
+    cutoffDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date())
+  ) {
     const sql = `
       UPDATE truck_schedules
       SET status = 'CANCELLED',

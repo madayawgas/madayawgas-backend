@@ -338,8 +338,9 @@ class TripsService {
 
     const activeTrip = await tripsRepository.findActiveTripByTruckId(vehicle.id);
     if (activeTrip) {
-      const depDate = new Date(activeTrip.departure_time).toISOString().slice(0, 10);
-      const todayDate = new Date().toISOString().slice(0, 10);
+      const manilaFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' });
+      const depDate = manilaFmt.format(new Date(activeTrip.departure_time));
+      const todayDate = manilaFmt.format(new Date());
       const isPreviousDay = depDate < todayDate;
       const err = new Error(
         isPreviousDay
