@@ -53,4 +53,5 @@ module.exports = {
   getTripNetCustomerDebtCreated: (tripId) => transactionsService.getTripNetCustomerDebtCreated(tripId),
   getTripTotalNetCustomerDebtCreated: (tripId) => transactionsService.getTripTotalNetCustomerDebtCreated(tripId),
   getTripTotalSoldFull: (tripId) => transactionsService.getTripTotalSoldFull(tripId),
+  getTripShiftSummary: (tripId) => transactionsRepository.getTripShiftSummary(null, tripId),
 };

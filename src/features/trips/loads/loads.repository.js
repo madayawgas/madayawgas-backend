@@ -237,6 +237,43 @@ class LoadsRepository {
       total_returned_defective: 0,
     };
   }
+
+  /**
+   * Retrieves all existing RETURN_UNLOAD line items for a trip.
+   * @param {string} tripId
+   * @param {Object} [client]
+   */
+  async getReturnUnloadItemsByTripId(tripId, client = null) {
+    const sql = `
+      SELECT tli.product_id, tli.condition, tli.quantity_units
+      FROM trip_load_items tli
+      JOIN trip_loads tl ON tl.id = tli.load_id
+      WHERE tl.trip_id = $1 AND tl.transfer_type = 'RETURN_UNLOAD'
+    `;
+    const runner = client || { query };
+    const res = await runner.query(sql, [tripId]);
+    return res.rows;
+  }
+
+  /**
+   * Deletes all existing RETURN_UNLOAD slips (and their items) for a trip.
+   * @param {string} tripId
+   * @param {Object} [client]
+   */
+  async deleteReturnUnloadsByTripId(tripId, client = null) {
+    const runner = client || { query };
+    await runner.query(
+      `DELETE FROM trip_load_items
+       WHERE load_id IN (
+         SELECT id FROM trip_loads WHERE trip_id = $1 AND transfer_type = 'RETURN_UNLOAD'
+       )`,
+      [tripId]
+    );
+    await runner.query(
+      `DELETE FROM trip_loads WHERE trip_id = $1 AND transfer_type = 'RETURN_UNLOAD'`,
+      [tripId]
+    );
+  }
 }
 
 module.exports = new LoadsRepository();

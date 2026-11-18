@@ -84,6 +84,32 @@ class TripsService {
   }
 
   /**
+   * Formats a trip_stock_reconciliations row with computed discrepancy totals.
+   * @param {Object|null} rec
+   */
+  _formatReconciliation(rec) {
+    if (!rec) return null;
+    const isAwaiting = rec.status === 'AWAITING_SYNC';
+    const fullDiscrepancy = isAwaiting
+      ? null
+      : (rec.total_loaded_full || 0) -
+        (rec.total_sold_full || 0) -
+        (rec.total_returned_full || 0) -
+        (rec.total_returned_defective || 0);
+    const emptyDiscrepancy = isAwaiting
+      ? null
+      : (rec.total_sold_full || 0) -
+        ((rec.total_returned_empty_good || 0) + (rec.net_customer_debt_created || 0));
+
+    return {
+      ...rec,
+      fullDiscrepancy,
+      emptyDiscrepancy,
+      isSettled: rec.status === 'SETTLED',
+    };
+  }
+
+  /**
    * Hydrates an array of trips with their respective load slips and reconciliation records.
    * @param {Array} trips
    */
@@ -100,7 +126,7 @@ class TripsService {
     return trips.map((trip) => ({
       ...trip,
       loads: loadsByTrip[trip.id] || [],
-      reconciliation: reconsByTrip[trip.id] || null,
+      reconciliation: this._formatReconciliation(reconsByTrip[trip.id] || null),
     }));
   }
 
@@ -163,13 +189,37 @@ class TripsService {
       throw err;
     }
 
-    const loads = await loadsRepository.getLoadsByTripId(trip.id);
-    const reconciliation = await reconciliationRepository.getByTripId(trip.id);
+    const [loads, reconciliation, shiftSummary] = await Promise.all([
+      loadsRepository.getLoadsByTripId(trip.id),
+      reconciliationRepository.getByTripId(trip.id),
+      require('../sales')
+        .getTripShiftSummary(trip.id)
+        .catch(() => null),
+    ]);
+
+    const salesSummary = shiftSummary
+      ? {
+          completedTransactions: shiftSummary.completedTransactions || 0,
+          totalSoldFull: (shiftSummary.empties?.breakdown || []).reduce(
+            (sum, item) => sum + (item.quantitySold || 0),
+            0
+          ),
+          netCustomerDebtCreated: shiftSummary.netCustomerDebtCreated || 0,
+          byProduct: (shiftSummary.empties?.breakdown || []).map((item) => ({
+            productId: item.productId,
+            productName: item.productName,
+            quantitySold: item.quantitySold || 0,
+            emptiesReturned: item.emptiesReturned || 0,
+            netCustomerDebtCreated: item.netCustomerDebtCreated || 0,
+          })),
+        }
+      : null;
 
     return {
       ...trip,
       loads,
-      reconciliation,
+      reconciliation: this._formatReconciliation(reconciliation),
+      salesSummary,
     };
   }
 
@@ -881,83 +931,41 @@ class TripsService {
       throw err;
     }
 
-    // 1. If physical return unload items are specified at reconciliation, record a RETURN_UNLOAD transfer slip
-    if (returnLoads && Array.isArray(returnLoads) && returnLoads.length > 0) {
-      const validatedReturnItems = await this.validateLineItems(returnLoads);
-      const client = await pool.connect();
+    const hasReturnLoadsOverride = Array.isArray(returnLoads);
+    const validatedReturnItems =
+      hasReturnLoadsOverride && returnLoads.length > 0
+        ? await this.validateLineItems(returnLoads)
+        : [];
 
-      try {
-        await client.query('BEGIN');
+    // Pre-calculate projected reconciliation totals BEFORE mutating plant inventory / creating RETURN_UNLOAD slips
+    const existingStockSummary = await loadsRepository.calculateTripStockSummary(trip.id);
+    let projectedReturnedFull = hasReturnLoadsOverride ? 0 : existingStockSummary.total_returned_full;
+    let projectedReturnedEmptyGood = hasReturnLoadsOverride
+      ? 0
+      : existingStockSummary.total_returned_empty_good;
+    let projectedReturnedDefective = hasReturnLoadsOverride
+      ? 0
+      : existingStockSummary.total_returned_defective;
 
-        for (const it of validatedReturnItems) {
-          const deltaFilled = it.condition === 'FILLED' ? it.quantityUnits : 0;
-          const deltaEmptyGood = it.condition === 'EMPTY_GOOD' ? it.quantityUnits : 0;
-          const deltaDefective = it.condition === 'DEFECTIVE' ? it.quantityUnits : 0;
-
-          await inventoryRepository.adjustPlantStock(
-            {
-              productId: it.productId,
-              deltaFilled,
-              deltaEmptyGood,
-              deltaDefective,
-            },
-            client
-          );
-        }
-
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-        const returnSlip = `UNLOAD-${dateStr}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-        await loadsRepository.createLoadWithItems(
-          {
-            tripId: trip.id,
-            transferType: 'RETURN_UNLOAD',
-            slipNumber: returnSlip,
-            recordedBy: actorUser?.id || null,
-            remarks: supervisorNotes ? supervisorNotes.trim() : 'Post-trip physical return unload',
-            items: validatedReturnItems,
-          },
-          client
-        );
-
-        await client.query('COMMIT');
-      } catch (unloadErr) {
-        await client.query('ROLLBACK');
-        throw unloadErr;
-      } finally {
-        client.release();
-      }
-
-      safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
-        operation: 'RETURN_UNLOAD',
-        tripId: trip.id,
-        affectedProductIds: returnLoads.map((it) => it.productId).filter(Boolean),
-        updatedAt: new Date().toISOString(),
-      }, 'room:inventory');
+    for (const it of validatedReturnItems) {
+      if (it.condition === 'FILLED') projectedReturnedFull += it.quantityUnits;
+      else if (it.condition === 'EMPTY_GOOD') projectedReturnedEmptyGood += it.quantityUnits;
+      else if (it.condition === 'DEFECTIVE') projectedReturnedDefective += it.quantityUnits;
     }
 
-    // 2. Calculate aggregated inventory numbers from actual recorded loads
-    const stockSummary = await loadsRepository.calculateTripStockSummary(trip.id);
-    const totalLoadedFull = stockSummary.total_loaded_full;
-    const totalReturnedFull = stockSummary.total_returned_full;
-    const totalReturnedEmptyGood = stockSummary.total_returned_empty_good;
-    const totalReturnedDefective = stockSummary.total_returned_defective;
-
-    let status = 'AWAITING_SYNC';
-    let soldFull = 0;
-    let netDebt = 0;
-    let fullDiscrepancy = null;
-    let emptyDiscrepancy = null;
-
     const salesSubsystem = require('../sales');
-
     let resolvedTotalSoldFull = totalSoldFull;
     if (resolvedTotalSoldFull === undefined || resolvedTotalSoldFull === null) {
       if (payload.useSyncedSales || payload.syncSales) {
         resolvedTotalSoldFull = await salesSubsystem.getTripTotalSoldFull(trip.id);
       }
     }
+
+    let status = 'AWAITING_SYNC';
+    let soldFull = 0;
+    let netDebt = 0;
+    let fullDiscrepancy = null;
+    let emptyDiscrepancy = null;
 
     if (resolvedTotalSoldFull !== undefined && resolvedTotalSoldFull !== null) {
       soldFull = parseInt(resolvedTotalSoldFull, 10);
@@ -978,15 +986,121 @@ class TripsService {
         netDebt = await salesSubsystem.getTripTotalNetCustomerDebtCreated(trip.id);
       }
 
-      // Mathematical discrepancy calculations
+      fullDiscrepancy =
+        existingStockSummary.total_loaded_full -
+        soldFull -
+        projectedReturnedFull -
+        projectedReturnedDefective;
+      emptyDiscrepancy = soldFull - (projectedReturnedEmptyGood + netDebt);
+
+      status = fullDiscrepancy === 0 && emptyDiscrepancy === 0 ? 'SETTLED' : 'FLAGGED_VARIANCE';
+    }
+
+    const trimmedNotes = typeof supervisorNotes === 'string' ? supervisorNotes.trim() : '';
+    if (status === 'FLAGGED_VARIANCE') {
+      const existingRecon = await reconciliationRepository.getByTripId(trip.id);
+      const existingNotes = existingRecon?.supervisor_notes ? existingRecon.supervisor_notes.trim() : '';
+      const isExplicitlyCleared = supervisorNotes !== undefined && !trimmedNotes;
+      if (isExplicitlyCleared || (!trimmedNotes && !existingNotes)) {
+        const err = new Error(
+          'Supervisor notes are required when settling a trip with a stock discrepancy (FLAGGED_VARIANCE).'
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    // 1. If returnLoads array is provided, replace any prior RETURN_UNLOAD slips and update plant stock cleanly
+    if (hasReturnLoadsOverride && (validatedReturnItems.length > 0 || trip.status === 'COMPLETED')) {
+      const client = await pool.connect();
+      const affectedProductIds = new Set(validatedReturnItems.map((it) => it.productId));
+
+      try {
+        await client.query('BEGIN');
+
+        // Reverse previous RETURN_UNLOAD plant stock deltas if re-reconciling
+        const previousReturnItems = await loadsRepository.getReturnUnloadItemsByTripId(trip.id, client);
+        if (previousReturnItems.length > 0) {
+          for (const prev of previousReturnItems) {
+            const qty = parseInt(prev.quantity_units, 10) || 0;
+            if (qty <= 0) continue;
+            affectedProductIds.add(prev.product_id);
+            await inventoryRepository.adjustPlantStock(
+              {
+                productId: prev.product_id,
+                deltaFilled: prev.condition === 'FILLED' ? -qty : 0,
+                deltaEmptyGood: prev.condition === 'EMPTY_GOOD' ? -qty : 0,
+                deltaDefective: prev.condition === 'DEFECTIVE' ? -qty : 0,
+              },
+              client
+            );
+          }
+          await loadsRepository.deleteReturnUnloadsByTripId(trip.id, client);
+        }
+
+        if (validatedReturnItems.length > 0) {
+          for (const it of validatedReturnItems) {
+            const deltaFilled = it.condition === 'FILLED' ? it.quantityUnits : 0;
+            const deltaEmptyGood = it.condition === 'EMPTY_GOOD' ? it.quantityUnits : 0;
+            const deltaDefective = it.condition === 'DEFECTIVE' ? it.quantityUnits : 0;
+
+            await inventoryRepository.adjustPlantStock(
+              {
+                productId: it.productId,
+                deltaFilled,
+                deltaEmptyGood,
+                deltaDefective,
+              },
+              client
+            );
+          }
+
+          const now = new Date();
+          const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+          const returnSlip = `UNLOAD-${dateStr}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+          await loadsRepository.createLoadWithItems(
+            {
+              tripId: trip.id,
+              transferType: 'RETURN_UNLOAD',
+              slipNumber: returnSlip,
+              recordedBy: actorUser?.id || null,
+              remarks: trimmedNotes || 'Post-trip physical return unload',
+              items: validatedReturnItems,
+            },
+            client
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (unloadErr) {
+        await client.query('ROLLBACK');
+        throw unloadErr;
+      } finally {
+        client.release();
+      }
+
+      if (affectedProductIds.size > 0) {
+        safeEmitSocketEvent('PLANT_STOCK_UPDATED', {
+          operation: 'RETURN_UNLOAD',
+          tripId: trip.id,
+          affectedProductIds: Array.from(affectedProductIds),
+          updatedAt: new Date().toISOString(),
+        }, 'room:inventory');
+      }
+    }
+
+    // 2. Calculate aggregated inventory numbers from actual recorded loads
+    const stockSummary = await loadsRepository.calculateTripStockSummary(trip.id);
+    const totalLoadedFull = stockSummary.total_loaded_full;
+    const totalReturnedFull = stockSummary.total_returned_full;
+    const totalReturnedEmptyGood = stockSummary.total_returned_empty_good;
+    const totalReturnedDefective = stockSummary.total_returned_defective;
+
+    if (resolvedTotalSoldFull !== undefined && resolvedTotalSoldFull !== null) {
       fullDiscrepancy = totalLoadedFull - soldFull - totalReturnedFull - totalReturnedDefective;
       emptyDiscrepancy = soldFull - (totalReturnedEmptyGood + netDebt);
-
-      if (fullDiscrepancy === 0 && emptyDiscrepancy === 0) {
-        status = 'SETTLED';
-      } else {
-        status = 'FLAGGED_VARIANCE';
-      }
+      status = fullDiscrepancy === 0 && emptyDiscrepancy === 0 ? 'SETTLED' : 'FLAGGED_VARIANCE';
     }
 
     const reconciledRecord = await reconciliationRepository.upsertReconciliation({
@@ -999,7 +1113,7 @@ class TripsService {
       totalReturnedDefective,
       netCustomerDebtCreated: netDebt,
       status,
-      supervisorNotes: supervisorNotes ? supervisorNotes.trim() : null,
+      supervisorNotes: trimmedNotes || null,
       reconciledAt: status !== 'AWAITING_SYNC' ? new Date() : null,
     });
 

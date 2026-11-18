@@ -485,11 +485,19 @@ class TransactionsRepository {
       ORDER BY p.name ASC;
     `;
 
-    // 3. Overall net customer debt created on trip
+    // 3. Per-product and overall net customer debt created on trip
     const netDebtSql = `
-      SELECT COALESCE(SUM(quantity_loaned - quantity_returned), 0)::int AS total_debt
-      FROM canister_ledger
-      WHERE trip_id = $1;
+      SELECT 
+        cl.product_id,
+        p.name AS product_name,
+        p.category,
+        p.container_type,
+        p.net_weight_kg,
+        COALESCE(SUM(cl.quantity_loaned - cl.quantity_returned), 0)::int AS net_debt
+      FROM canister_ledger cl
+      JOIN products p ON p.id = cl.product_id
+      WHERE cl.trip_id = $1
+      GROUP BY cl.product_id, p.name, p.category, p.container_type, p.net_weight_kg;
     `;
 
     const [finRes, emptiesRes, debtRes] = await Promise.all([
@@ -538,19 +546,46 @@ class TransactionsRepository {
       }
     }
 
-    const emptiesBreakdown = emptiesRes.rows.map((r) => ({
-      productId: r.product_id,
-      productName: r.product_name,
-      category: r.category,
-      containerType: r.container_type,
-      netWeightKg: Number(r.net_weight_kg),
-      quantitySold: r.total_quantity_sold,
-      emptiesReturned: r.total_empties_returned,
-    }));
+    const debtByProductMap = new Map();
+    let netCustomerDebtCreated = 0;
+    for (const d of debtRes.rows) {
+      const debt = parseInt(d.net_debt || 0, 10);
+      netCustomerDebtCreated += debt;
+      debtByProductMap.set(d.product_id, {
+        productId: d.product_id,
+        productName: d.product_name,
+        category: d.category,
+        containerType: d.container_type,
+        netWeightKg: Number(d.net_weight_kg),
+        netCustomerDebtCreated: debt,
+      });
+    }
+
+    const emptiesBreakdown = emptiesRes.rows.map((r) => {
+      const debtEntry = debtByProductMap.get(r.product_id);
+      if (debtEntry) debtByProductMap.delete(r.product_id);
+      return {
+        productId: r.product_id,
+        productName: r.product_name,
+        category: r.category,
+        containerType: r.container_type,
+        netWeightKg: Number(r.net_weight_kg),
+        quantitySold: r.total_quantity_sold,
+        emptiesReturned: r.total_empties_returned,
+        netCustomerDebtCreated: debtEntry ? debtEntry.netCustomerDebtCreated : 0,
+      };
+    });
+
+    for (const remaining of debtByProductMap.values()) {
+      emptiesBreakdown.push({
+        ...remaining,
+        quantitySold: 0,
+        emptiesReturned: 0,
+      });
+    }
 
     const totalEmptiesCount = emptiesBreakdown.reduce((sum, item) => sum + item.emptiesReturned, 0);
     const totalRevenue = totalCashAmount + totalGcashAmount;
-    const netCustomerDebtCreated = parseInt(debtRes.rows[0]?.total_debt || 0, 10);
 
     return {
       tripId: actualTripId,
