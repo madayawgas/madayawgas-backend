@@ -187,8 +187,9 @@ Ends an active delivery run upon vehicle return to the plant yard.
 Executes plant physical count reconciliation and settles inventory variance.
 - **Permissions**: `route.manage`, `inventory.vehicle.manage`, or `inventory.plant.manage`.
 - **Prerequisite Condition**: Trip must be in `RETURNED` status (or re-reconciling a `COMPLETED` trip). Attempting reconciliation while `status === 'IN_PROGRESS'` is blocked with `400 Bad Request` (`Trip must be ended by the driver before stock reconciliation can occur`).
-- **Physical Unload Processing**: Optional `returnLoads` array records physical cylinders unloaded at plant, creates a `RETURN_UNLOAD` transfer slip, and directly increments Bunawan bulk plant stock.
-- **Variance Audit Math**: Evaluates full cylinder and empty canister discrepancies against mobile sales records and customer debt.
+- **Physical Unload Processing**: Optional `returnLoads` array records physical cylinders unloaded at plant, creates a `RETURN_UNLOAD` transfer slip, and directly increments Bunawan bulk plant stock. On re-reconciliation, prior `RETURN_UNLOAD` slips are reversed and replaced atomically.
+- **Outbound Load Aggregation**: `totalLoadedFull` aggregates `FILLED` items across both `DISPATCH_LOAD` and `MIDDAY_RELOAD` slips.
+- **Variance Audit Math**: Evaluates full cylinder and empty canister discrepancies against mobile sales records (`useSyncedSales: true` or explicit `totalSoldFull`) and `netCustomerDebtCreated` (defaults to synced `canister_ledger` net debt if omitted, or uses explicit `0` when all sold containers are expected back as empties).
 - **Completion**: Marks reconciliation as `SETTLED` (if 0 discrepancy) or `FLAGGED_VARIANCE`, and transitions trip `status` to `COMPLETED`.
 - **Request Body**:
 ```json

@@ -376,7 +376,7 @@ class InventoryRepository {
         p.category,
         p.container_type,
         p.net_weight_kg,
-        COALESCE(SUM(CASE WHEN tl.transfer_type = 'DISPATCH_LOAD' AND tli.condition = 'FILLED' THEN tli.quantity_units ELSE 0 END), 0)::int AS loaded_full,
+        COALESCE(SUM(CASE WHEN tl.transfer_type IN ('DISPATCH_LOAD', 'MIDDAY_RELOAD') AND tli.condition = 'FILLED' THEN tli.quantity_units ELSE 0 END), 0)::int AS loaded_full,
         COALESCE(SUM(CASE WHEN tl.transfer_type = 'RETURN_UNLOAD' AND tli.condition = 'FILLED' THEN tli.quantity_units ELSE 0 END), 0)::int AS returned_full,
         COALESCE(SUM(CASE WHEN tl.transfer_type = 'RETURN_UNLOAD' AND tli.condition = 'EMPTY_GOOD' THEN tli.quantity_units ELSE 0 END), 0)::int AS returned_empty_good,
         COALESCE(SUM(CASE WHEN tl.transfer_type = 'RETURN_UNLOAD' AND tli.condition = 'DEFECTIVE' THEN tli.quantity_units ELSE 0 END), 0)::int AS returned_defective
