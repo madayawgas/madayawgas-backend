@@ -34,10 +34,10 @@ Subsystem,Table Name,Purpose,Column Count,Primary Key(s),Foreign Key Dependencie
 3. Denormalizes actor context (user_name, user_role) at the moment of the event to ensure historical fidelity.
 4. target_id and target_type provide polymorphic linkages to modified domain entities across any subsystem.
 5. metadata (JSONB) stores dynamic event payload details, changed attributes, and operational context."
-"Fleet & Maintenance",vehicles,"Fleet asset master table storing delivery trucks and operational vehicles, odometer telemetry, driver assignments, and preventive maintenance triggers.",12,id,users(id),"1. vehicles.id is the primary key (UUID, auto-generated via gen_random_uuid()).
+"Fleet & Maintenance",vehicles,"Fleet asset master table storing delivery trucks and operational vehicles, odometer telemetry, driver assignments, and preventive maintenance tracking.",11,id,users(id),"1. vehicles.id is the primary key (UUID, auto-generated via gen_random_uuid()).
 2. vehicles.driver_id is a unique foreign key referencing users.id with ON DELETE SET NULL, enforcing a 1:1 soft assignment between a driver and vehicle.
 3. vehicles.plate_number is unique.
-4. vehicles.pm_due_flag is a PostgreSQL stored generated column: ((current_odometer - last_pm_odometer) >= 5000).
+4. Preventive maintenance due status is evaluated dynamically in the service layer against fleet.pm_odometer_threshold_km in system_settings.
 5. vehicles.status uses the custom ENUM truck_status ('ACTIVE', 'INACTIVE', 'UNDER_MAINTENANCE', 'RETIRED').
 6. Maintains an automated updated_at trigger."
 "Fleet & Maintenance",maintenance_types,Lookup classification catalog for preventive and corrective maintenance operations.,3,id,,"1. maintenance_types.id is the primary key (INTEGER with auto-incrementing sequence SERIAL).
@@ -97,7 +97,7 @@ Subsystem,Table Name,Purpose,Column Count,Primary Key(s),Foreign Key Dependencie
 4. latitude and longitude enforce valid geographic coordinate ranges ([-90, 90] and [-180, 180]).
 5. emergency_type enforces CHECK constraints across valid categories ('GENERAL', 'ACCIDENT', 'VEHICLE_BREAKDOWN', 'MEDICAL', 'SECURITY', 'OTHER').
 6. Maintains an automated updated_at trigger."
-Inventory,products,"Central product SKU catalog defining LPG cylinders and canisters, weight classifications, and container types.",8,id,,"1. products.id is the primary key (UUID, auto-generated via gen_random_uuid()).
+Inventory,products,"Central product SKU catalog defining LPG cylinders and canisters, weight classifications, unit pricing, and container types.",9,id,,"1. products.id is the primary key (UUID, auto-generated via gen_random_uuid()).
 2. products.name is unique.
 3. container_type uses the custom ENUM container_type_enum ('CYLINDER', 'CANISTER').
 4. net_weight_kg stores the exact gas net weight in kilograms.
@@ -177,12 +177,12 @@ Sales & Delivery,sales_transaction_items,"Itemized transaction details specifyin
 3. sales_transaction_items.product_id references products.id with ON DELETE RESTRICT.
 4. Tracks quantity_sold, empties_returned, and empties_defective.
 5. unit_price_at_sale and subtotal_amount use NUMERIC(10, 2) financial precision."
-Sales & Delivery,sales_invoices,"Financial billing and payment records issued for sales transactions, supporting cash, GCash, and payment verification workflows.",15,id,sales_transactions(id); users(id),"1. sales_invoices.id is the primary key (UUID, auto-generated via gen_random_uuid()).
+Sales & Delivery,sales_invoices,"Financial billing and payment records issued for sales transactions, supporting cash, GCash, payment verification, and flagging workflows.",19,id,sales_transactions(id); users(id),"1. sales_invoices.id is the primary key (UUID, auto-generated via gen_random_uuid()).
 2. sales_invoices.transaction_id is a unique foreign key referencing sales_transactions.id with ON DELETE CASCADE, maintaining an exact 1:1 transaction-to-invoice relationship.
 3. invoice_number is unique.
 4. payment_method enforces a CHECK constraint ('CASH', 'GCASH').
-5. payment_status enforces a CHECK constraint ('PAID_UNVERIFIED', 'VERIFIED').
-6. verified_by references users.id with ON DELETE SET NULL upon cash turn-in verification.
+5. payment_status enforces a CHECK constraint ('PAID_UNVERIFIED', 'FLAGGED', 'VERIFIED').
+6. verified_by and flagged_by reference users.id with ON DELETE SET NULL.
 7. Maintains an automated updated_at trigger."
 Sales & Delivery,canister_ledger,"Customer cylinder and canister receivable/liability ledger tracking loan deposits, returns, and outstanding cylinder balances.",11,id,customers(id); products(id); trips(id); sales_transactions(id),"1. canister_ledger.id is the primary key (UUID, auto-generated via gen_random_uuid()).
 2. canister_ledger.customer_id references customers.id with ON DELETE RESTRICT.
@@ -190,6 +190,9 @@ Sales & Delivery,canister_ledger,"Customer cylinder and canister receivable/liab
 4. canister_ledger.trip_id references trips.id with ON DELETE RESTRICT.
 5. canister_ledger.transaction_id references sales_transactions.id with ON DELETE RESTRICT.
 6. Maintains an immutable, append-only historical audit trail of customer cylinder loan movements."
+System Logic,system_settings,"Stores configurable operational business thresholds and system variables managed by Super Admin and Admin accounts.",12,key,users(id),"1. system_settings.key is the primary key (VARCHAR(100)).
+2. updated_by references users.id with ON DELETE SET NULL.
+3. value_type enforces CHECK ('INTEGER', 'NUMBER', 'BOOLEAN', 'STRING')."
 System Logic,schema_migrations,"Internal database migration tracking ledger maintained by the Node.js migration runner (database/scripts/migrate.js) to guarantee ordered, transactional execution.",3,id,,"1. schema_migrations.id is the primary key (INTEGER with auto-incrementing sequence SERIAL).
 2. schema_migrations.filename is unique, recording the executed SQL migration script name (e.g., 001_initial-setup.sql).
 3. applied_at records the exact execution timestamp when the migration transaction was committed."

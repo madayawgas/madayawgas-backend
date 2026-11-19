@@ -5,7 +5,7 @@
 > **Key Architecture Decisions**:
 > - **Generalized Vehicle Entities**: The legacy `trucks` table is generalized to `vehicles` (`vehicle_type`: `DELIVERY_TRUCK`, `SERVICE_PICKUP`, `MOTORCYCLE`, `UTILITY_VAN`).
 > - **Driver Soft-Binding**: 1:1 soft-binding between a driver user and an assigned vehicle (`vehicles.driver_id UNIQUE REFERENCES users(id)`).
-> - **Preventive Maintenance (PM) Automation**: Automated PostgreSQL stored generated column `pm_due_flag` evaluates `(current_odometer - last_pm_odometer) >= 5000` km.
+> - **Preventive Maintenance (PM) Evaluation**: PM due status is evaluated dynamically in the service layer against the configurable `fleet.pm_odometer_threshold_km` setting in `system_settings` (default `5000` km).
 > - **Issue-Reporting Inspections (No Routine Checklist)**: Inspections are captured only when defects or symptoms are observed (`allow_dispatch` preserves supervisor operational discretion).
 > - **Decoupled Work Order Receipts**: Receipts serve strictly as supporting audit evidence (`0..N` per work order), decoupled from parts/labor financial mathematics.
 > - **1:N Multi-Approval Workflow**: Sequential approval requests supported per work order, protected by a PostgreSQL partial unique index (`UQ_approval_requests_pending`) guaranteeing at most one active pending request.
@@ -83,7 +83,6 @@ erDiagram
         int year_model
         int current_odometer "Running odometer (km)"
         int last_pm_odometer "Odometer at last completed 5k PM"
-        boolean pm_due_flag "Stored Generated: (current - last_pm) >= 5000"
         enum status "truck_status: ACTIVE, INACTIVE, UNDER_MAINTENANCE, RETIRED"
         timestamptz created_at
         timestamptz updated_at
@@ -249,7 +248,6 @@ Stores fleet assets across all operational vehicle categories with running telem
 | `year_model` | `INT` | No | Numeric year | Manufacture / model year |
 | `current_odometer` | `INT` | No | `DEFAULT 0, CHECK >= 0` | Running vehicle mileage (km) |
 | `last_pm_odometer` | `INT` | No | `DEFAULT 0, CHECK >= 0` | Mileage reading at last completed 5k PM service |
-| `pm_due_flag` | `BOOLEAN` | No | `GENERATED ALWAYS AS ((current - last_pm) >= 5000) STORED` | Automated reactive preventive maintenance flag |
 | `status` | `truck_status` | No | `DEFAULT 'ACTIVE'` | Operational status: `'ACTIVE'`, `'INACTIVE'`, `'UNDER_MAINTENANCE'`, `'RETIRED'` |
 | `created_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Record creation timestamp |
 | `updated_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Managed automatically via trigger |

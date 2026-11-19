@@ -2,7 +2,7 @@
 
 > **Classification**: Cross-Cutting System Logic & Infrastructure *(Non-Subsystem)*  
 > **Target Database**: PostgreSQL 18.x  
-> **Scope**: Houses cross-cutting event history auditing (`history_logs`) and schema migration tracking (`schema_migrations`) that support all 5 main business subsystems without belonging to a single domain subsystem.
+> **Scope**: Houses cross-cutting event history auditing (`history_logs`), business configuration (`system_settings`), and schema migration tracking (`schema_migrations`) that support all 5 main business subsystems without belonging to a single domain subsystem.
 
 ---
 
@@ -47,9 +47,24 @@ erDiagram
         timestamptz created_at
     }
 
+    SYSTEM_SETTINGS {
+        string key PK
+        string value
+        string value_type "INTEGER, NUMBER, BOOLEAN, STRING"
+        string category
+        string label
+        string description
+        string unit
+        numeric min_value
+        numeric max_value
+        uuid updated_by FK "Nullable (ON DELETE SET NULL)"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
     SCHEMA_MIGRATIONS {
         int id PK
-        string name UK "Migration filename"
+        string filename UK "Migration filename"
         timestamptz applied_at
     }
 
@@ -58,6 +73,7 @@ erDiagram
     %% ==========================================
 
     USERS ||--o{ HISTORY_LOGS : "logs_event (user_id)"
+    USERS ||--o{ SYSTEM_SETTINGS : "updates_setting (updated_by)"
 ```
 
 ---
@@ -82,11 +98,29 @@ Chronological event ledger recording operational, financial, route, and administ
 | `metadata` | `JSONB` | Yes | `DEFAULT '{}'::jsonb` | Structured JSON payload for auxiliary event data |
 | `created_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Event recording timestamp |
 
+### `system_settings`
+Stores configurable operational business thresholds and system variables managed by Super Admin and Admin accounts.
+
+| Column | Data Type | Nullable | Default / Constraints | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `key` | `VARCHAR(100)` | No | `PRIMARY KEY` | Unique dot-delimited setting key (e.g. `fleet.pm_odometer_threshold_km`) |
+| `value` | `TEXT` | No | — | Serialized current setting value |
+| `value_type` | `VARCHAR(20)` | No | `CHECK IN ('INTEGER', 'NUMBER', 'BOOLEAN', 'STRING')` | Runtime type coercion rule |
+| `category` | `VARCHAR(50)` | No | — | Operational domain category (`FLEET`, `OPERATIONS`, `INVENTORY`, `SCHEDULES`) |
+| `label` | `VARCHAR(150)` | No | — | Human-readable display label |
+| `description` | `TEXT` | Yes | `NULL` | Detailed explanation of the setting's operational impact |
+| `unit` | `VARCHAR(30)` | Yes | `NULL` | Measurement unit (`km`, `PHP`, `%`, `seconds`, `units`, `days`) |
+| `min_value` | `NUMERIC` | Yes | `NULL` | Optional lower numeric validation bound |
+| `max_value` | `NUMERIC` | Yes | `NULL` | Optional upper numeric validation bound |
+| `updated_by` | `UUID` | Yes | `FK -> users(id) ON DELETE SET NULL` | Last administrator who updated this setting |
+| `created_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Record creation timestamp |
+| `updated_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Record update timestamp |
+
 ### `schema_migrations`
 Internal PostgreSQL migration tracking ledger managed by `database/scripts/migrate.js`.
 
 | Column | Data Type | Nullable | Default / Constraints | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | `SERIAL` | No | `PRIMARY KEY` | Sequential migration execution ID |
-| `name` | `VARCHAR(255)` | No | `UNIQUE` | Executed SQL migration filename |
+| `filename` | `VARCHAR(255)` | No | `UNIQUE` | Executed SQL migration filename |
 | `applied_at` | `TIMESTAMPTZ` | No | `DEFAULT CURRENT_TIMESTAMP` | Migration execution timestamp |

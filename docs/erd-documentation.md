@@ -2,9 +2,9 @@
 
 > **Database Engine**: PostgreSQL 18.3  
 > **Host Environment**: Windows x86_64 / Cloud PostgreSQL  
-> **Schema Migrations**: `001_initial-setup.sql` through `022_finalize_roles_and_permissions.sql`  
-> **Total Documented Tables**: 37 Base Tables (across 5 Main Subsystems + System Logic Infrastructure)  
-> **Last Updated**: November 14, 2026  
+> **Schema Migrations**: `001_initial-setup.sql` through `027_sales_invoice_flagging.sql`  
+> **Total Documented Tables**: 38 Base Tables (across 5 Main Subsystems + System Logic Infrastructure)  
+> **Last Updated**: November 19, 2026  
 > **Standard**: Single Source of Truth database documentation adhering to the 5 Main Subsystems (`User Management`, `Fleet & Maintenance`, `Trip & Schedule`, `Inventory`, `Sales & Delivery`) plus `System Logic` cross-cutting infrastructure.
 
 ---
@@ -18,7 +18,7 @@
 - [3. Inventory](#3-inventory) (3 Tables)
 - [4. Trip \& Schedule](#4-trip--schedule) (9 Tables)
 - [5. Sales \& Delivery](#5-sales--delivery) (5 Tables)
-- [System Logic (Cross-Cutting Infrastructure — Non-Subsystem)](#system-logic-cross-cutting-infrastructure--non-subsystem) (2 Tables)
+- [System Logic (Cross-Cutting Infrastructure — Non-Subsystem)](#system-logic-cross-cutting-infrastructure--non-subsystem) (3 Tables)
 - [Database Documentation Summary](#database-documentation-summary)
 
 ---
@@ -40,13 +40,13 @@ The MadayawGas backend data architecture is implemented on PostgreSQL 18. All ta
    - **SET NULL**: Applied to supervisory, audit, and dispatch snapshot attributions (`decider_id`, `dispatched_by`, `verified_by`, `inspector_id`, `settled_by`, `uploaded_by`).
 4. **Stored Generated Columns**:
    - Native PostgreSQL generated columns are used for computed business indicators to eliminate calculation drift:
-     - `vehicles.pm_due_flag`: Evaluated automatically as `((current_odometer - last_pm_odometer) >= 5000)`.
      - `maintenance_logs.total_cost`: Evaluated automatically as `("parts_cost" + "labor_cost")`.
 5. **Partial / Conditional Unique Indexes**:
    - `UQ_approval_requests_pending`: Enforces at most one pending approval request per work order (`WHERE is_approved IS NULL`), allowing subsequent requests upon rejection.
    - `UQ_trips_schedule_id`: Enforces a 1:1 execution for scheduled dispatch runs while allowing unscheduled ad-hoc trips (`WHERE schedule_id IS NOT NULL`).
-   - `UQ_trips_active_truck`: Guarantees a truck cannot be dispatched simultaneously on multiple active runs (`WHERE status IN ('PENDING', 'IN_PROGRESS')`).
+   - `UQ_trips_active_truck`: Guarantees a truck cannot be dispatched simultaneously on multiple active runs (`WHERE status IN ('PENDING', 'IN_PROGRESS', 'RETURNED')`).
    - `UQ_truck_schedules_active_date`: Guarantees a vehicle is scheduled at most once per calendar date (`WHERE status != 'CANCELLED'`).
+   - `idx_sales_invoices_flagged`: Partial index on `sales_invoices(payment_status) WHERE payment_status = 'FLAGGED'` for rapid supervisor triage of flagged invoices.
 
 ---
 
@@ -738,10 +738,6 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
               <td><code>vehicle_type</code></td>
               <td>VARCHAR(30) (NOT NULL, Default: <code>'DELIVERY_TRUCK'</code>)</td>
             </tr>
-            <tr>
-              <td><code>pm_due_flag</code></td>
-              <td>BOOLEAN (Stored Generated: <code>((current_odometer - last_pm_odometer) >= 5000)</code>, NULL)</td>
-            </tr>
           </tbody>
         </table>
       </td>
@@ -753,7 +749,7 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
           <li><code>vehicles.id</code> is the primary key (UUID, auto-generated via <code>gen_random_uuid()</code>).</li>
           <li><code>vehicles.driver_id</code> is a unique foreign key referencing <code>users.id</code> with <code>ON DELETE SET NULL</code>, enforcing a 1:1 soft assignment between a driver and vehicle.</li>
           <li><code>vehicles.plate_number</code> is unique.</li>
-          <li><code>vehicles.pm_due_flag</code> is a PostgreSQL stored generated column: <code>((current_odometer - last_pm_odometer) >= 5000)</code>.</li>
+          <li>Preventive maintenance due status is evaluated dynamically in the service layer against the configurable <code>fleet.pm_odometer_threshold_km</code> setting in <code>system_settings</code>.</li>
           <li><code>vehicles.status</code> uses the custom ENUM <code>truck_status</code> (<code>'ACTIVE'</code>, <code>'INACTIVE'</code>, <code>'UNDER_MAINTENANCE'</code>, <code>'RETIRED'</code>).</li>
           <li>Maintains an automated <code>updated_at</code> trigger.</li>
         </ol>
@@ -3131,6 +3127,22 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
               <td>TIMESTAMPTZ (NULL)</td>
             </tr>
             <tr>
+              <td><code>flag_reason</code></td>
+              <td>VARCHAR(100) (NULL)</td>
+            </tr>
+            <tr>
+              <td><code>flag_notes</code></td>
+              <td>TEXT (NULL)</td>
+            </tr>
+            <tr>
+              <td><code>flagged_by</code></td>
+              <td>UUID (Foreign key &rarr; <code>users.id</code>, NULL)</td>
+            </tr>
+            <tr>
+              <td><code>flagged_at</code></td>
+              <td>TIMESTAMPTZ (NULL)</td>
+            </tr>
+            <tr>
               <td><code>transacted_at</code></td>
               <td>TIMESTAMPTZ (NOT NULL)</td>
             </tr>
@@ -3158,8 +3170,9 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
           <li><code>sales_invoices.transaction_id</code> is a unique foreign key referencing <code>sales_transactions.id</code> with <code>ON DELETE CASCADE</code>, maintaining an exact 1:1 transaction-to-invoice relationship.</li>
           <li><code>invoice_number</code> is unique.</li>
           <li><code>payment_method</code> enforces a CHECK constraint (<code>'CASH'</code>, <code>'GCASH'</code>).</li>
-          <li><code>payment_status</code> enforces a CHECK constraint (<code>'PAID_UNVERIFIED'</code>, <code>'VERIFIED'</code>).</li>
+          <li><code>payment_status</code> enforces a CHECK constraint (<code>'PAID_UNVERIFIED'</code>, <code>'FLAGGED'</code>, <code>'VERIFIED'</code>).</li>
           <li><code>verified_by</code> references <code>users.id</code> with <code>ON DELETE SET NULL</code> upon cash turn-in verification.</li>
+          <li><code>flagged_by</code> references <code>users.id</code> with <code>ON DELETE SET NULL</code> when an invoice is flagged for review.</li>
           <li>Maintains an automated <code>updated_at</code> trigger.</li>
         </ol>
       </td>
@@ -3267,8 +3280,65 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 
 ## System Logic (Cross-Cutting Infrastructure — Non-Subsystem)
 
-> **Scope**: Cross-cutting enterprise event history auditing (`history_logs`) and internal schema migration tracking (`schema_migrations`). These tables support all 5 main subsystems and are classified as System Logic infrastructure rather than a business subsystem.  
-> **Tables in Group**: 2 tables (`history_logs` — detailed above; `schema_migrations` — detailed below)
+> **Scope**: Cross-cutting enterprise event history auditing (`history_logs`), configurable business thresholds (`system_settings`), and internal schema migration tracking (`schema_migrations`). These tables support all 5 main subsystems and are classified as System Logic infrastructure rather than a business subsystem.  
+> **Tables in Group**: 3 tables (`history_logs` — detailed above; `system_settings` and `schema_migrations` — detailed below)
+
+### Table: `system_settings`
+
+<table>
+  <thead>
+    <tr>
+      <th width="20%">Field</th>
+      <th width="80%">Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Table Name</strong></td>
+      <td><code>system_settings</code></td>
+    </tr>
+    <tr>
+      <td><strong>Purpose</strong></td>
+      <td>Stores configurable operational business thresholds and system variables managed by Super Admin and Admin accounts.</td>
+    </tr>
+    <tr>
+      <td><strong>Structure</strong></td>
+      <td>
+        <table>
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Datatype</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>key</code></td><td>VARCHAR(100) (Primary key)</td></tr>
+            <tr><td><code>value</code></td><td>TEXT (NOT NULL)</td></tr>
+            <tr><td><code>value_type</code></td><td>VARCHAR(20) (NOT NULL, CHECK IN (<code>'INTEGER'</code>, <code>'NUMBER'</code>, <code>'BOOLEAN'</code>, <code>'STRING'</code>))</td></tr>
+            <tr><td><code>category</code></td><td>VARCHAR(50) (NOT NULL)</td></tr>
+            <tr><td><code>label</code></td><td>VARCHAR(150) (NOT NULL)</td></tr>
+            <tr><td><code>description</code></td><td>TEXT (NULL)</td></tr>
+            <tr><td><code>unit</code></td><td>VARCHAR(30) (NULL)</td></tr>
+            <tr><td><code>min_value</code></td><td>NUMERIC (NULL)</td></tr>
+            <tr><td><code>max_value</code></td><td>NUMERIC (NULL)</td></tr>
+            <tr><td><code>updated_by</code></td><td>UUID (Foreign key &rarr; <code>users.id</code>, NULL)</td></tr>
+            <tr><td><code>created_at</code></td><td>TIMESTAMPTZ (NOT NULL, Default: <code>now()</code>)</td></tr>
+            <tr><td><code>updated_at</code></td><td>TIMESTAMPTZ (NOT NULL, Default: <code>now()</code>)</td></tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Notes</strong></td>
+      <td>
+        <ol>
+          <li><code>system_settings.key</code> is the primary key (dot-delimited identifier such as <code>fleet.pm_odometer_threshold_km</code>).</li>
+          <li><code>updated_by</code> references <code>users.id</code> with <code>ON DELETE SET NULL</code>.</li>
+        </ol>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ### Table: `schema_migrations`
 
@@ -3333,7 +3403,7 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 ## Database Documentation Summary
 
 ### 1. Overall Statistics
-- **Total Tables Documented**: **37** database tables.
+- **Total Tables Documented**: **38** database tables.
 - **Main Subsystems Covered**: **5** business subsystems (`User Management`, `Fleet & Maintenance`, `Trip & Schedule`, `Inventory`, `Sales & Delivery`) + **System Logic** cross-cutting infrastructure.
 - **Verification**: 100% concordance with live PostgreSQL 18.3 database catalog (`information_schema.tables`).
 
@@ -3345,8 +3415,8 @@ The database defines 10 custom PostgreSQL ENUM types to enforce strict state val
 | 3 | **Trip & Schedule** *(Subsystem)* | **9** | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations`, `driver_apprehensions`, `emergency_alerts` |
 | 4 | **Inventory** *(Subsystem)* | **3** | `products`, `plant_inventory`, `plant_stock_adjustments` |
 | 5 | **Sales & Delivery** *(Subsystem)* | **5** | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` |
-| — | **System Logic** *(Cross-Cutting Infrastructure — Non-Subsystem)* | **2** | `history_logs`, `schema_migrations` |
-| | **TOTAL** | **37** | All base tables in `public` schema |
+| — | **System Logic** *(Cross-Cutting Infrastructure — Non-Subsystem)* | **3** | `history_logs`, `system_settings`, `schema_migrations` |
+| | **TOTAL** | **38** | All base tables in `public` schema |
 
 ### 3. Reconciliation with Proposed Architecture Reference
 The table below details all reconciliations between the initial proposed architecture reference and the actual live database schema:

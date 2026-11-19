@@ -15,9 +15,10 @@ erDiagram
     AUDIT_LOGS { }
 
     %% ========================================================
-    %% 2. SYSTEM EVENT HISTORY LOGS (1 Table)
+    %% 2. SYSTEM LOGIC & INFRASTRUCTURE (2 Tables)
     %% ========================================================
     HISTORY_LOGS { }
+    SYSTEM_SETTINGS { }
 
     %% ========================================================
     %% 3. FLEET & MAINTENANCE SUBSYSTEM (10 Tables)
@@ -80,8 +81,9 @@ erDiagram
     USERS ||--o{ SESSIONS : "establishes"
     USERS ||--o{ AUDIT_LOGS : "logs_admin_action"
 
-    %% Users -> History Logs
+    %% Users -> System Logic
     USERS ||--o{ HISTORY_LOGS : "acts_in"
+    USERS ||--o{ SYSTEM_SETTINGS : "updated_by"
 
     %% Users -> Fleet
     USERS ||--o| VEHICLES : "soft_bound_driver"
@@ -157,6 +159,7 @@ erDiagram
     PRODUCTS ||--o{ SALES_TRANSACTION_ITEMS : "catalog_item"
     SALES_TRANSACTIONS ||--|| SALES_INVOICES : "bills"
     USERS ||--o{ SALES_INVOICES : "verified_by"
+    USERS ||--o{ SALES_INVOICES : "flagged_by"
     CUSTOMERS ||--o{ CANISTER_LEDGER : "owes_receivables"
     PRODUCTS ||--o{ CANISTER_LEDGER : "sku"
     TRIPS ||--o{ CANISTER_LEDGER : "trip_attribution"

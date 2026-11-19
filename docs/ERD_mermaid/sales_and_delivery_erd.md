@@ -96,11 +96,15 @@ erDiagram
         varchar declaration_number "CD-<prefix>-XXXX"
         numeric total_amount ">= 0"
         varchar payment_method "CASH, GCASH"
-        varchar payment_status "PAID_UNVERIFIED, VERIFIED"
+        varchar payment_status "PAID_UNVERIFIED, FLAGGED, VERIFIED"
         varchar payment_reference_number "Nullable"
         varchar payment_proof_key "Nullable"
         uuid verified_by FK "users(id)"
         timestamptz verified_at "Nullable"
+        varchar flag_reason "Nullable"
+        text flag_notes "Nullable"
+        uuid flagged_by FK "users(id)"
+        timestamptz flagged_at "Nullable"
         timestamptz transacted_at
         timestamptz synced_at
         timestamptz created_at
@@ -198,11 +202,15 @@ Transactional invoices, customer declaration slips, and payment settlements.
 | `declaration_number`| `VARCHAR(50)`| No | Sequential declaration series | Cylinder declaration number |
 | `total_amount` | `NUMERIC(12,2)`| No | `CHECK (total_amount >= 0)` | Total invoice price |
 | `payment_method` | `VARCHAR(20)` | No | `'CASH'`, `'GCASH'` | Mode of payment |
-| `payment_status` | `VARCHAR(20)` | No | `DEFAULT 'PAID_UNVERIFIED'` (`'PAID_UNVERIFIED'`, `'VERIFIED'`) | Verification state |
+| `payment_status` | `VARCHAR(20)` | No | `DEFAULT 'PAID_UNVERIFIED'` (`'PAID_UNVERIFIED'`, `'FLAGGED'`, `'VERIFIED'`) | Verification state |
 | `payment_reference_number`| `VARCHAR(100)`| Yes | — | GCash reference string |
 | `payment_proof_key` | `VARCHAR(255)`| Yes | — | Media attachment key for receipt screenshot |
 | `verified_by` | `UUID` | Yes | `REFERENCES users(id)` | Cashier/supervisor who verified payment |
 | `verified_at` | `TIMESTAMPTZ` | Yes | — | Verification timestamp |
+| `flag_reason` | `VARCHAR(100)` | Yes | — | Reason code when invoice is flagged |
+| `flag_notes` | `TEXT` | Yes | — | Detailed notes explaining invoice flag |
+| `flagged_by` | `UUID` | Yes | `REFERENCES users(id) ON DELETE SET NULL` | Supervisor who flagged the invoice |
+| `flagged_at` | `TIMESTAMPTZ` | Yes | — | Timestamp when invoice was flagged |
 | `transacted_at` | `TIMESTAMPTZ` | No | Mobile wall-clock | Transaction time |
 | `synced_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Ingestion timestamp |
 | `created_at` | `TIMESTAMPTZ` | No | `DEFAULT NOW()` | Record creation timestamp |

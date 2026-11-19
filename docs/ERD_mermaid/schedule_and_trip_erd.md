@@ -48,7 +48,6 @@ erDiagram
         string plate_number UK
         string model
         int current_odometer
-        boolean pm_due_flag
         enum status
     }
 

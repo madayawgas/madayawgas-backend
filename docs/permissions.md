@@ -39,6 +39,8 @@
 | **`alerts.manage`** | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | Acknowledge and resolve driver emergency alerts |
 | **`users.view`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | View employee profiles and user lists |
 | **`users.manage`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Create accounts, reset credentials, deactivate, manage roles & permissions |
+| **`settings.view`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | View organization business system settings and variable configurations |
+| **`settings.manage`** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | Update organization business system settings and variable configurations |
 | **`history.view`** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | View system event historical audit logs |
 
 > [!NOTE]
@@ -93,4 +95,6 @@
 | `alerts.manage` | Operations | Acknowledge and resolve driver emergency alerts. |
 | `users.view` | User Management | View user directory and employee profiles. |
 | `users.manage` | User Management | Create users, manage credentials, deactivate accounts, and manage roles. |
+| `settings.view` | System Settings | View organization business system settings and variable configurations. |
+| `settings.manage` | System Settings | Update organization business system settings and variable configurations. |
 | `history.view` | System Event Logs | View system event history and audit trails. |

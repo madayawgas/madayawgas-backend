@@ -71,8 +71,9 @@ erDiagram
         uuid customer_id FK
         uuid product_id FK
         uuid trip_id FK
-        int canisters_loaned
-        int canisters_returned
+        int quantity_loaned
+        int quantity_returned
+        int net_balance_change
     }
 
 

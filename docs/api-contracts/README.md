@@ -17,7 +17,7 @@ MadayawGas is organized into **5 Main Subsystems**, supported by **System Logic*
 | **3. Trip & Schedule** | `/api/schedules`, `/api/trips`, `/api/operations/apprehensions`, `/api/operations/alerts` | Service zones, weekly route templates, daily schedules, trip dispatch, loads, reconciliation, road apprehensions, and emergency SOS alerts |
 | **4. Inventory** | `/api/inventory` | LPG product catalog, Bunawan plant bulk stock, adjustments, and stock transfers |
 | **5. Sales & Delivery** | `/api/sales` | Customer profiles, offline batch sync, transactions, invoices, shift closeout, and sales analytics |
-| **System Logic** *(Cross-Cutting Infrastructure)* | `/api/history`, `/api/media` | Centralized system event history logs and media/document storage utilities (non-subsystem) |
+| **System Logic** *(Cross-Cutting Infrastructure)* | `/api/history`, `/api/media`, `/api/settings` | Centralized system event history logs, media/document storage utilities, and configurable business system settings (non-subsystem) |
 
 - **Request / Response Format**: `application/json`
 - **Authentication**: Stateful server-side sessions stored in PostgreSQL, conveyed via HTTP-Only cookie `mg_sid`.
@@ -125,6 +125,9 @@ docs/api-contracts/
 │
 ├── media/                                   # System Logic: Media & Documents
 │   └── media.api.md                         # Ingest, validate, store, resolve canonical media assets
+│
+├── settings/                                # System Logic: Business System Settings
+│   └── settings.api.md                      # Configurable operational thresholds & effective config
 │
 └── _archive/                                # Preserved original monolithic contract files
     ├── fleet-and-maintenance.api.md
@@ -347,6 +350,15 @@ docs/api-contracts/
 | `POST` | `/api/media/upload` | Upload binary media asset & generate canonical storage key | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#41-upload-media-post-apimediaupload) |
 | `POST` | `/api/media/resolve` | Resolve canonical relative storage key into public URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#42-resolve-media-key-post-apimediaresolve) |
 | `DELETE` | `/api/media` | Delete media asset from active storage by key or URL | Authenticated | [media/media.api.md](file:///docs/api-contracts/media/media.api.md#43-delete-media-delete-apimedia) |
+
+#### System Settings (`/api/settings`)
+
+| Method | Endpoint | Description | Permissions | Contract Document |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/settings/effective` | Retrieve non-secret effective operational thresholds for authenticated clients | Authenticated | [settings/settings.api.md](file:///docs/api-contracts/settings/settings.api.md#21-get-effective-operational-config-get-apisettingseffective) |
+| `GET` | `/api/settings` | List all configurable business system settings | `settings.view` | [settings/settings.api.md](file:///docs/api-contracts/settings/settings.api.md#22-list-all-system-settings-get-apisettings) |
+| `GET` | `/api/settings/:key` | Retrieve a single system setting by key | `settings.view` | [settings/settings.api.md](file:///docs/api-contracts/settings/settings.api.md#23-get-setting-by-key-get-apisettingskey) |
+| `PATCH` | `/api/settings/:key` | Update a configurable system setting value | `settings.manage` | [settings/settings.api.md](file:///docs/api-contracts/settings/settings.api.md#24-update-system-setting-patch-apisettingskey) |
 
 ---
 
