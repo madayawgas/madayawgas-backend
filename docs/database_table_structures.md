@@ -92,6 +92,23 @@ Table Name: history_logs
 | `metadata` | `JSONB` | `NULL, DEFAULT '{}'::jsonb` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
 
+Table Name: system_settings
+
+| Column | Data Type | Constraints |
+| :--- | :--- | :--- |
+| `key` | `VARCHAR(100)` | `PK, NOT NULL` |
+| `value` | `TEXT` | `NOT NULL` |
+| `value_type` | `VARCHAR(20)` | `NOT NULL, CHECK IN ('INTEGER', 'NUMBER', 'BOOLEAN', 'STRING')` |
+| `category` | `VARCHAR(50)` | `NOT NULL` |
+| `label` | `VARCHAR(150)` | `NOT NULL` |
+| `description` | `TEXT` | `NULL` |
+| `unit` | `VARCHAR(30)` | `NULL` |
+| `min_value` | `NUMERIC` | `NULL` |
+| `max_value` | `NUMERIC` | `NULL` |
+| `updated_by` | `UUID` | `FK -> users(id) ON DELETE SET NULL, NULL` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
+
 ### Fleet & Maintenance
 
 Table Name: vehicles
@@ -106,7 +123,6 @@ Table Name: vehicles
 | `year_model` | `INT` | `NOT NULL` |
 | `current_odometer` | `INT` | `NOT NULL, DEFAULT 0, CHECK (>= 0)` |
 | `last_pm_odometer` | `INT` | `NOT NULL, DEFAULT 0, CHECK (>= 0)` |
-| `pm_due_flag` | `BOOLEAN` | `NOT NULL, GENERATED ALWAYS AS ((current_odometer - last_pm_odometer) >= 5000) STORED` |
 | `status` | `truck_status` | `NOT NULL, DEFAULT 'ACTIVE'` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
 | `updated_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
@@ -506,11 +522,15 @@ Table Name: sales_invoices
 | `declaration_number` | `VARCHAR(50)` | `NOT NULL` |
 | `total_amount` | `NUMERIC(12, 2)` | `NOT NULL, CHECK (>= 0)` |
 | `payment_method` | `VARCHAR(20)` | `NOT NULL, CHECK IN ('CASH', 'GCASH')` |
-| `payment_status` | `VARCHAR(20)` | `NOT NULL, DEFAULT 'PAID_UNVERIFIED', CHECK IN ('PAID_UNVERIFIED', 'VERIFIED')` |
+| `payment_status` | `VARCHAR(20)` | `NOT NULL, DEFAULT 'PAID_UNVERIFIED', CHECK IN ('PAID_UNVERIFIED', 'FLAGGED', 'VERIFIED')` |
 | `payment_reference_number` | `VARCHAR(100)` | `NULL` |
 | `payment_proof_key` | `VARCHAR(255)` | `NULL` |
 | `verified_by` | `UUID` | `FK -> users(id) ON DELETE SET NULL, NULL` |
 | `verified_at` | `TIMESTAMPTZ` | `NULL` |
+| `flag_reason` | `VARCHAR(100)` | `NULL` |
+| `flag_notes` | `TEXT` | `NULL` |
+| `flagged_by` | `UUID` | `FK -> users(id) ON DELETE SET NULL, NULL` |
+| `flagged_at` | `TIMESTAMPTZ` | `NULL` |
 | `transacted_at` | `TIMESTAMPTZ` | `NOT NULL` |
 | `synced_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` |

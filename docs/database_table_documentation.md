@@ -42,12 +42,17 @@ Table Name: history_logs
 - Structure:
 - Notes: Stores denormalized snapshots of the user's full name and active role at the time of the action so historical logs remain accurate even if the user's profile changes later.
 
+Table Name: system_settings
+- Purpose: Stores configurable operational business thresholds and system variables managed by Super Admin and Admin accounts.
+- Structure:
+- Notes: Keyed by dot-delimited setting identifiers (e.g., `fleet.pm_odometer_threshold_km`, `fleet.work_order_approval_threshold`) with runtime type coercion and optional min/max validation bounds.
+
 ### Fleet & Maintenance
 
 Table Name: vehicles
 - Purpose: Stores master records for all company fleet vehicles, including delivery trucks, pickups, vans, and motorcycles.
 - Structure:
-- Notes: Supports a one-to-one driver assignment (`driver_id`) and automatically calculates the `pm_due_flag` column whenever the running odometer reaches 5,000 kilometers since the last preventive maintenance.
+- Notes: Supports a one-to-one driver assignment (`driver_id`) and tracks `current_odometer` and `last_pm_odometer` for dynamic preventive maintenance evaluation against `system_settings`.
 
 Table Name: maintenance_types
 - Purpose: Stores standard categories for vehicle maintenance services.
@@ -181,9 +186,9 @@ Table Name: sales_transaction_items
 - Notes: Captures a frozen snapshot of the unit price (`unit_price_at_sale`) and subtotal at the time of sale so future catalog price changes do not alter historical orders.
 
 Table Name: sales_invoices
-- Purpose: Stores billing invoices, cylinder declaration numbers, and payment verification details for sales transactions.
+- Purpose: Stores billing invoices, cylinder declaration numbers, and payment verification and flagging details for sales transactions.
 - Structure:
-- Notes: Has a one-to-one relationship with `sales_transactions` and tracks cash or GCash payments, including reference numbers and payment proof images awaiting supervisor verification.
+- Notes: Has a one-to-one relationship with `sales_transactions` and tracks cash or GCash payments, including reference numbers, payment proof images, and supervisor verification or flagging (`FLAGGED` status with `flag_reason`, `flag_notes`, `flagged_by`, `flagged_at`).
 
 Table Name: canister_ledger
 - Purpose: Tracks loaned and returned cylinders or canisters per customer and product when a sale involves an unequal container exchange.

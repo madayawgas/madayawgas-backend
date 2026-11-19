@@ -1,9 +1,9 @@
 # Master Database Architecture — Unified Entity Relationship Diagram (ERD)
 
 > **Database Engine**: PostgreSQL 18.x  
-> **Schema Migrations**: 001 through 021 (`database/migrations/`)  
-> **Total Tables**: 36 application domain tables (+1 internal `schema_migrations`, +2 compatibility views)  
-> **Purpose**: Global enterprise data model showing all 7 core subsystems and all cross-domain foreign key relationships.
+> **Schema Migrations**: 001 through 027 (`database/migrations/`)  
+> **Total Tables**: 37 application/configuration tables (+1 internal `schema_migrations`, +2 compatibility views)  
+> **Purpose**: Global enterprise data model showing all core subsystems, system logic infrastructure, and all cross-domain foreign key relationships.
 
 ---
 
@@ -101,6 +101,27 @@ erDiagram
         timestamptz created_at
     }
 
+    SYSTEM_SETTINGS {
+        string key PK
+        string value
+        string value_type "INTEGER, NUMBER, BOOLEAN, STRING"
+        string category
+        string label
+        string description
+        string unit
+        numeric min_value
+        numeric max_value
+        uuid updated_by FK "users(id) Nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SCHEMA_MIGRATIONS {
+        int id PK
+        string filename UK
+        timestamptz applied_at
+    }
+
 
     %% ========================================================
     %% 3. FLEET & MAINTENANCE SUBSYSTEM (10 Tables)
@@ -115,7 +136,6 @@ erDiagram
         int year_model
         int current_odometer
         int last_pm_odometer
-        boolean pm_due_flag "Stored Generated"
         enum status "truck_status"
         timestamptz created_at
         timestamptz updated_at
@@ -317,11 +337,15 @@ erDiagram
         string declaration_number
         numeric total_amount
         string payment_method "CASH, GCASH"
-        string payment_status "PAID_UNVERIFIED, VERIFIED"
+        string payment_status "PAID_UNVERIFIED, FLAGGED, VERIFIED"
         string payment_reference_number "Nullable"
         string payment_proof_key "Nullable"
         uuid verified_by FK "users(id) Nullable"
         timestamptz verified_at "Nullable"
+        string flag_reason "Nullable"
+        string flag_notes "Nullable"
+        uuid flagged_by FK "users(id) Nullable"
+        timestamptz flagged_at "Nullable"
         timestamptz transacted_at
         timestamptz synced_at
         timestamptz created_at
@@ -594,6 +618,8 @@ erDiagram
     PRODUCTS ||--o{ SALES_TRANSACTION_ITEMS : "catalog_item"
     SALES_TRANSACTIONS ||--|| SALES_INVOICES : "bills"
     USERS ||--o{ SALES_INVOICES : "verified_by"
+    USERS ||--o{ SALES_INVOICES : "flagged_by"
+    USERS ||--o{ SYSTEM_SETTINGS : "updated_by"
     CUSTOMERS ||--o{ CANISTER_LEDGER : "owes_receivables"
     PRODUCTS ||--o{ CANISTER_LEDGER : "sku"
     TRIPS ||--o{ CANISTER_LEDGER : "trip_attribution"
@@ -625,12 +651,11 @@ erDiagram
 | Subsystem | Table Count | Domain Tables | Documentation File |
 | :--- | :--- | :--- | :--- |
 | **User Management & RBAC** | 7 | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [`users_and_rbac_erd.md`](./users_and_rbac_erd.md) |
-| **System Event History Logs** | 1 | `history_logs` | [`system_history_logs_erd.md`](./system_history_logs_erd.md) |
-| **Fleet & Maintenance** | 10 | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts` | [`fleet_and_maintenance_erd.md`](./fleet_and_maintenance_erd.md) |
+| **System Logic & Infrastructure** | 3 | `history_logs`, `system_settings`, `schema_migrations` | [`system_logic_erd.md`](./system_logic_erd.md) |
+| **Fleet & Maintenance** | 11 | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts`, `vehicle_fuel_logs` | [`fleet_and_maintenance_erd.md`](./fleet_and_maintenance_erd.md) |
 | **Inventory** | 3 | `products`, `plant_inventory`, `plant_stock_adjustments` | [`inventory_erd.md`](./inventory_erd.md) |
 | **Sales & Delivery** | 5 | `customers`, `sales_transactions`, `sales_transaction_items`, `sales_invoices`, `canister_ledger` | [`sales_and_delivery_erd.md`](./sales_and_delivery_erd.md) |
-| **Schedule & Trips** | 7 | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations` | [`schedule_and_trip_erd.md`](./schedule_and_trip_erd.md) |
-| **Frontline Operations** | 3 | `driver_apprehensions`, `vehicle_fuel_logs`, `emergency_alerts` | [`operations_erd.md`](./operations_erd.md) |
+| **Schedule & Trips** | 9 | `service_zones`, `schedule_templates`, `truck_schedules`, `trips`, `trip_loads`, `trip_load_items`, `trip_stock_reconciliations`, `driver_apprehensions`, `emergency_alerts` | [`schedule_and_trip_erd.md`](./schedule_and_trip_erd.md) |
 
 ---
 
@@ -642,12 +667,12 @@ erDiagram
    - `SET NULL` is used for supervisory telemetry and historical attribution (`logged_by`, `dispatched_by`, `verified_by`, `uploaded_by`, `created_by`, `inspector_id`).
 
 2. **Automated PostgreSQL Stored Generated Columns**:
-   - `vehicles.pm_due_flag`: `BOOLEAN GENERATED ALWAYS AS (("current_odometer" - "last_pm_odometer") >= 5000) STORED`.
    - `maintenance_logs.total_cost`: `NUMERIC(12, 2) GENERATED ALWAYS AS ("parts_cost" + "labor_cost") STORED`.
 
 3. **Conditional / Partial Unique Indexes**:
    - `UQ_approval_requests_pending`: `CREATE UNIQUE INDEX ... (work_order_id) WHERE is_approved IS NULL` (guarantees at most 1 pending approval request per work order, enabling revised cost submissions).
    - `UQ_trips_schedule_id`: `CREATE UNIQUE INDEX ... (schedule_id) WHERE schedule_id IS NOT NULL` (ensures 1:1 execution for scheduled runs while permitting unconstrained ad-hoc trips).
+   - `idx_sales_invoices_flagged`: `CREATE INDEX ... ON sales_invoices (payment_status) WHERE payment_status = 'FLAGGED'`.
 
 4. **Timestamp Trigger Automation**:
    - All domain tables maintaining mutable state use `BEFORE UPDATE` triggers executing `update_timestamp_column()` or dedicated trigger functions to guarantee reliable `updated_at` synchronization.
