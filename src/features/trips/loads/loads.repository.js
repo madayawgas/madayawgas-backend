@@ -220,7 +220,7 @@ class LoadsRepository {
   async calculateTripStockSummary(tripId) {
     const sql = `
       SELECT 
-        COALESCE(SUM(CASE WHEN tl.transfer_type = 'DISPATCH_LOAD' AND tli.condition = 'FILLED' THEN tli.quantity_units ELSE 0 END), 0)::int AS total_loaded_full,
+        COALESCE(SUM(CASE WHEN tl.transfer_type IN ('DISPATCH_LOAD', 'MIDDAY_RELOAD') AND tli.condition = 'FILLED' THEN tli.quantity_units ELSE 0 END), 0)::int AS total_loaded_full,
         COALESCE(SUM(CASE WHEN tl.transfer_type = 'RETURN_UNLOAD' AND tli.condition = 'FILLED' THEN tli.quantity_units ELSE 0 END), 0)::int AS total_returned_full,
         COALESCE(SUM(CASE WHEN tl.transfer_type = 'RETURN_UNLOAD' AND tli.condition = 'EMPTY_GOOD' THEN tli.quantity_units ELSE 0 END), 0)::int AS total_returned_empty_good,
         COALESCE(SUM(CASE WHEN tl.transfer_type = 'RETURN_UNLOAD' AND tli.condition = 'DEFECTIVE' THEN tli.quantity_units ELSE 0 END), 0)::int AS total_returned_defective
