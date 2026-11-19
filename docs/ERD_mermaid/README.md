@@ -13,6 +13,7 @@ Welcome to the Entity-Relationship Diagram (ERD) directory for the MadayawGas ba
 | Classification | Scope & Tables | Document Link |
 | :--- | :--- | :--- |
 | **Unified Master Database (Full)** | Complete 38-table system diagram with all fields and constraints | [**`master_database_erd.md`**](./master_database_erd.md) |
+| **Unified Master Database (Simplified Core)** | PPT-friendly 15-table core diagram with key fields and relationships | [**`simplified_erd.md`**](./simplified_erd.md) |
 | **Unified Master Database (Relationships Only)** | Clean high-level table-and-connector diagram without fields | [**`master_database_relationships_erd.md`**](./master_database_relationships_erd.md) |
 | **1. User Management** *(Subsystem)* | `roles`, `permissions`, `role_permissions`, `users`, `user_roles`, `sessions`, `audit_logs` | [**`users_and_rbac_erd.md`**](./users_and_rbac_erd.md) |
 | **2. Fleet & Maintenance** *(Subsystem)* | `vehicles`, `maintenance_types`, `incident_types`, `vehicle_odometer_logs`, `vehicle_inspections`, `incident_reports`, `work_orders`, `approval_requests`, `maintenance_logs`, `work_order_receipts`, `vehicle_fuel_logs` | [**`fleet_and_maintenance_erd.md`**](./fleet_and_maintenance_erd.md) |

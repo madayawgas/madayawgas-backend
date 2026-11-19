@@ -3,7 +3,7 @@
 > **Module**: Schedule & Trip Subsystem  
 > **Target Database**: PostgreSQL 18.x  
 > **Key Architecture Decisions**:
-> - **Crew Modeling & Soft-Binding**: Vehicles are generalized under `vehicles` (referenced as `truck_id REFERENCES vehicles(id)`). Drivers have a 1:1 soft-binding to physical trucks without system logins. Frontline sales representatives authenticate in the cabin mobile app.
+> - **Crew Modeling & Soft-Binding**: Vehicles are generalized under `vehicles` (referenced as `truck_id REFERENCES vehicles(id)`). Drivers and sales representatives authenticate through the mobile application. Vehicles maintain an optional default driver assignment, while trips preserve the actual assigned crew for historical accountability.
 > - **Frozen Crew Attribution**: Trips snapshot `driver_id` and `sales_user_id` at dispatch time for strict historical audit integrity.
 > - **Ad-Hoc / Emergency Runs**: `trips.schedule_id` is nullable with a partial unique index (`UQ_trips_schedule_id`), allowing unscheduled dispatches.
 > - **Single-Point Return Telemetry**: Trips record yard return odometer readings via `trips.return_odometer_log_id UNIQUE REFERENCES vehicle_odometer_logs(id)`.
