@@ -8,6 +8,7 @@ const {
   buildPaginationMeta,
 } = require('../../../utils/pagination');
 const { safeEmitSocketEvent } = require('../../../socket');
+const ttlCache = require('../../../utils/ttlCache');
 
 const ALLOWED_INVOICE_SORT_FIELDS = Object.freeze({
   transactedAt: 'si.transacted_at',
@@ -167,6 +168,7 @@ class InvoicesService {
     }
 
     const updatedInvoice = await invoicesRepository.verifyInvoicePayment(null, id, actorUser?.id || null);
+    ttlCache.invalidatePrefix('sales:');
 
     // Centralized Audit Logging
     await historyService.log(EVENTS.SALES_INVOICE_VERIFIED, {
@@ -287,6 +289,7 @@ class InvoicesService {
       paymentStatus: updated.payment_status,
       updatedAt: new Date().toISOString(),
     }, 'room:sales');
+    ttlCache.invalidatePrefix('sales:');
 
     return enrichInvoiceMedia(updated);
   }

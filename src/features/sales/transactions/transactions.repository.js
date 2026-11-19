@@ -621,24 +621,33 @@ class TransactionsRepository {
    */
   _buildTrendsSql(timeframe, conditions) {
     let dateTruncUnit = 'month';
-    if (timeframe === 'daily') dateTruncUnit = 'day';
-    else if (timeframe === 'weekly') dateTruncUnit = 'week';
+    if (timeframe === 'daily') dateTruncUnit = 'hour';
+    else if (timeframe === 'weekly') dateTruncUnit = 'day';
     else if (timeframe === 'annually') dateTruncUnit = 'year';
 
     return `
       SELECT 
-        DATE_TRUNC('${dateTruncUnit}', st.transacted_at AT TIME ZONE 'Asia/Manila') AS bucket_date,
-        COUNT(DISTINCT st.id)::int AS transaction_count,
+        (DATE_TRUNC('${dateTruncUnit}', st.transacted_at AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila') AS bucket_date,
+        COUNT(st.id)::int AS transaction_count,
         COALESCE(SUM(si.total_amount), 0)::numeric AS total_sales,
-        COALESCE(SUM(sti.quantity_sold), 0)::int AS total_units,
-        COALESCE(SUM(CASE WHEN p.container_type = 'CANISTER' THEN sti.quantity_sold ELSE 0 END), 0)::int AS butane,
-        COALESCE(SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg <= 22 THEN sti.quantity_sold ELSE 0 END), 0)::int AS lpg11kg,
-        COALESCE(SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg > 22 THEN sti.quantity_sold ELSE 0 END), 0)::int AS lpg50kg
+        COALESCE(SUM(items_sum.units_sold), 0)::int AS total_units,
+        COALESCE(SUM(items_sum.canister_units), 0)::int AS butane,
+        COALESCE(SUM(items_sum.lpg11kg_units), 0)::int AS lpg11kg,
+        COALESCE(SUM(items_sum.lpg50kg_units), 0)::int AS lpg50kg
       FROM sales_transactions st
-      JOIN sales_invoices si ON si.transaction_id = st.id
+      LEFT JOIN sales_invoices si ON si.transaction_id = st.id
       LEFT JOIN trips tr ON tr.id = st.trip_id
-      LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.id
-      LEFT JOIN products p ON p.id = sti.product_id
+      LEFT JOIN (
+        SELECT
+          sti.transaction_id,
+          SUM(sti.quantity_sold) AS units_sold,
+          SUM(CASE WHEN p.container_type = 'CANISTER' THEN sti.quantity_sold ELSE 0 END) AS canister_units,
+          SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg <= 22 THEN sti.quantity_sold ELSE 0 END) AS lpg11kg_units,
+          SUM(CASE WHEN p.container_type = 'CYLINDER' AND p.net_weight_kg > 22 THEN sti.quantity_sold ELSE 0 END) AS lpg50kg_units
+        FROM sales_transaction_items sti
+        JOIN products p ON p.id = sti.product_id
+        GROUP BY sti.transaction_id
+      ) items_sum ON items_sum.transaction_id = st.id
       WHERE st.status = 'COMPLETED' ${conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : ''}
       GROUP BY bucket_date
       ORDER BY bucket_date ASC;
@@ -655,7 +664,9 @@ class TransactionsRepository {
     return rows.map((t) => {
       const bDate = new Date(t.bucket_date);
       let label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
-      if (timeframe === 'monthly') {
+      if (timeframe === 'daily') {
+        label = bDate.toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: true });
+      } else if (timeframe === 'monthly') {
         label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', year: 'numeric' });
       } else if (timeframe === 'annually') {
         label = bDate.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', year: 'numeric' });
@@ -781,16 +792,25 @@ class TransactionsRepository {
         p.category,
         p.container_type,
         p.net_weight_kg,
-        COALESCE(SUM(sti.quantity_sold), 0)::int AS units_sold,
-        COALESCE(SUM(sti.subtotal_amount), 0)::numeric AS total_revenue,
-        COALESCE(SUM(sti.empties_returned), 0)::int AS empties_returned,
-        COALESCE(SUM(sti.empties_defective), 0)::int AS empties_defective
+        COALESCE(prod_sales.units_sold, 0)::int AS units_sold,
+        COALESCE(prod_sales.total_revenue, 0)::numeric AS total_revenue,
+        COALESCE(prod_sales.empties_returned, 0)::int AS empties_returned,
+        COALESCE(prod_sales.empties_defective, 0)::int AS empties_defective
       FROM products p
-      LEFT JOIN sales_transaction_items sti ON sti.product_id = p.id
-      LEFT JOIN sales_transactions st ON st.id = sti.transaction_id AND st.status = 'COMPLETED'
-      LEFT JOIN trips tr ON tr.id = st.trip_id
-      ${whereClause ? whereClause.replace('WHERE', 'AND') : ''}
-      GROUP BY p.id, p.name, p.category, p.container_type, p.net_weight_kg
+      LEFT JOIN (
+        SELECT
+          sti.product_id,
+          SUM(sti.quantity_sold) AS units_sold,
+          SUM(sti.subtotal_amount) AS total_revenue,
+          SUM(sti.empties_returned) AS empties_returned,
+          SUM(sti.empties_defective) AS empties_defective
+        FROM sales_transaction_items sti
+        JOIN sales_transactions st ON st.id = sti.transaction_id
+        LEFT JOIN trips tr ON tr.id = st.trip_id
+        WHERE st.status = 'COMPLETED'
+          ${conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : ''}
+        GROUP BY sti.product_id
+      ) prod_sales ON prod_sales.product_id = p.id
       ORDER BY total_revenue DESC, p.name ASC;
     `;
 

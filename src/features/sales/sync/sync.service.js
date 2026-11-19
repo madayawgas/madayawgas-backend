@@ -4,6 +4,7 @@ const { historyService } = require('../../history');
 const { EVENTS } = require('../../history/history.events');
 const { safeEmitSocketEvent } = require('../../../socket');
 const { extractStorageKey } = require('../../media');
+const ttlCache = require('../../../utils/ttlCache');
 
 // ============================================================
 // Standardized Sync Error Code Classifier
@@ -555,6 +556,9 @@ class SyncService {
     const totalTransactions = processedCount + ignoredCount;
 
     if (processedCount > 0 || ignoredCount > 0) {
+      if (processedCount > 0) {
+        ttlCache.invalidatePrefix('sales:');
+      }
       safeEmitSocketEvent('SALES_BATCH_SYNCED', {
         tripId: resolvedTripId,
         tripNumber: trip.trip_number,
